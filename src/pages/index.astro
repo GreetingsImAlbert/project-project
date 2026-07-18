@@ -1,5 +1,9 @@
 ---
+import { env } from 'cloudflare:workers';
 
+const { data, error } = await Astro.locals.supabase.from('profiles').select('*');
+
+const r2Objects = await env.R2_BUCKET.list();
 ---
 
 <html lang="en">
@@ -13,5 +17,8 @@
 	</head>
 	<body>
 		<h1>Astro</h1>
+		<p>Logged in user: {Astro.locals.user ? Astro.locals.user.email : 'none'}</p>
+		<p>Supabase says: {error ? `Error: ${error.message}` : `${data.length} rows in profiles`}</p>
+		<p>R2 bucket has {r2Objects.objects.length} objects</p>
 	</body>
 </html>

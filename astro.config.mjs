@@ -9,6 +9,7 @@ import cloudflare from '@astrojs/cloudflare';
 export default defineConfig({
   integrations: [svelte()],
   adapter: cloudflare(),
+  output: 'server',
   server: {
     host: true
   }
