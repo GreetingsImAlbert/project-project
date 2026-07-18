@@ -1,24 +1,8 @@
 ---
-import { env } from 'cloudflare:workers';
+export const prerender = false;
 
-const { data, error } = await Astro.locals.supabase.from('profiles').select('*');
-
-const r2Objects = await env.R2_BUCKET.list();
+if (Astro.locals.user) {
+	return Astro.redirect('/dashboard');
+}
+return Astro.redirect('/login');
 ---
-
-<html lang="en">
-	<head>
-		<meta charset="utf-8" />
-		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-		<link rel="icon" href="/favicon.ico" />
-		<meta name="viewport" content="width=device-width" />
-		<meta name="generator" content={Astro.generator} />
-		<title>Astro</title>
-	</head>
-	<body>
-		<h1>Astro</h1>
-		<p>Logged in user: {Astro.locals.user ? Astro.locals.user.email : 'none'}</p>
-		<p>Supabase says: {error ? `Error: ${error.message}` : `${data.length} rows in profiles`}</p>
-		<p>R2 bucket has {r2Objects.objects.length} objects</p>
-	</body>
-</html>
