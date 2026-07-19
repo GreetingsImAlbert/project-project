@@ -49,10 +49,11 @@ const { data: files } = await Astro.locals.supabase
 
 	<h2>Files</h2>
 	{files && files.length === 0 && <p>No files yet.</p>}
-	<ul>
+	<ul id="file-list">
 		{files?.map((f) => (
 			<li>
-				{f.filename} — {f.size_bytes ? `${Math.round(f.size_bytes / 1024)} KB` : ''} — uploaded by {f.profiles?.display_name}
+				<button type="button" class="download-btn" data-file-id={f.id} data-filename={f.filename}>{f.filename}</button>
+				— {f.size_bytes != null ? `${Math.round(f.size_bytes).toLocaleString()} B` : ''} — uploaded by {f.profiles?.display_name}
 			</li>
 		))}
 	</ul>
@@ -83,64 +84,91 @@ const { data: files } = await Astro.locals.supabase
 )}
 </BaseLayout>
 
-<script define:vars={{ projectId: project.id }}>
+<script define:vars={{ projectId: project.id }} is:inline>
 	const form = document.getElementById('upload-form');
 	const status = document.getElementById('upload-status');
 
-	form.addEventListener('submit', async (e) => {
-		e.preventDefault();
-		const fileInput = document.getElementById('file-input');
-		const file = fileInput.files[0];
-		if (!file) return;
+	if (form) {
+		form.addEventListener('submit', async (e) => {
+			e.preventDefault();
+			const fileInput = document.getElementById('file-input');
+			const file = fileInput.files[0];
+			if (!file) return;
 
-		status.textContent = 'Requesting upload URL...';
+			status.textContent = 'Requesting upload URL...';
 
-		const urlRes = await fetch(`/api/projects/${projectId}/files/upload-url`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ filename: file.name }),
+			const urlRes = await fetch(`/api/projects/${projectId}/files/upload-url`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ filename: file.name }),
+			});
+
+			if (!urlRes.ok) {
+				status.textContent = 'Failed to get upload URL: ' + (await urlRes.text());
+				return;
+			}
+
+			const { uploadUrl, r2Key } = await urlRes.json();
+
+			status.textContent = 'Uploading...';
+
+			const putRes = await fetch(uploadUrl, {
+				method: 'PUT',
+				body: file,
+			});
+
+			if (!putRes.ok) {
+				status.textContent = 'Upload to R2 failed';
+				return;
+			}
+
+			status.textContent = 'Saving file record...';
+
+			const confirmRes = await fetch(`/api/projects/${projectId}/files/confirm`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					r2Key,
+					filename: file.name,
+					size: file.size,
+					mimeType: file.type,
+				}),
+			});
+
+			if (confirmRes.ok) {
+				status.textContent = 'Upload complete!';
+				location.reload();
+			} else {
+				const result = await confirmRes.json();
+				status.textContent = result.cleanedUp
+					? `Upload failed (cleaned up): ${result.error}`
+					: `Upload failed AND cleanup failed: ${result.error}`;
+			}
 		});
-
-		if (!urlRes.ok) {
-			status.textContent = 'Failed to get upload URL: ' + (await urlRes.text());
+	}
+	
+	document.getElementById('file-list')?.addEventListener('click', async (e) => {
+		console.log('clicked:', e.target);
+		const target = e.target;
+		if (!target.classList || !target.classList.contains('download-btn')) {
+			console.log('not a download button, ignoring');
 			return;
 		}
 
-		const { uploadUrl, r2Key } = await urlRes.json();
+		const fileId = target.dataset.fileId;
+		const originalText = target.dataset.filename ?? '';
+		target.textContent = 'Loading...';
 
-		status.textContent = 'Uploading...';
+		const res = await fetch(`/api/files/${fileId}/download-url`);
 
-		const putRes = await fetch(uploadUrl, {
-			method: 'PUT',
-			body: file,
-		});
-
-		if (!putRes.ok) {
-			status.textContent = 'Upload to R2 failed';
+		if (!res.ok) {
+			alert('Failed to get download link');
+			target.textContent = originalText;
 			return;
 		}
 
-		status.textContent = 'Saving file record...';
-
-		const confirmRes = await fetch(`/api/projects/${projectId}/files/confirm`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				r2Key,
-				filename: file.name,
-				size: file.size,
-				mimeType: file.type,
-			}),
-		});
-
-		if (confirmRes.ok) {
-			status.textContent = 'Upload complete!';
-			location.reload();
-		} else {
-			const result = await confirmRes.json();
-			status.textContent = result.cleanedUp
-				? `Upload failed (cleaned up): ${result.error}`
-				: `Upload failed AND cleanup failed: ${result.error}`;
-		}
+		const { downloadUrl } = await res.json();
+		window.location.href = downloadUrl;
 	});
+
 </script>
