@@ -35,7 +35,7 @@ export const POST: APIRoute = async ({ params, request, locals, redirect }) => {
 	const { data: targetUser, error: lookupError } = await admin
 		.from('profiles')
 		.select('id')
-		.eq('email', email)
+		.eq('email', email.trim().toLowerCase())
 		.single();
 
 	if (lookupError || !targetUser) {
