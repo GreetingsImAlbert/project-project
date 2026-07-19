@@ -1,8 +1,29 @@
 ---
+import BaseLayout from '../layouts/BaseLayout.astro';
+
 export const prerender = false;
 
-if (Astro.locals.user) {
-	return Astro.redirect('/dashboard');
+const user = Astro.locals.user;
+
+if (!user) {
+	return Astro.redirect('/login');
 }
-return Astro.redirect('/login');
+
+const { data: profile } = await Astro.locals.supabase
+	.from('profiles')
+	.select('display_name')
+	.eq('id', user.id)
+	.single();
+
+const displayName = profile?.display_name;
 ---
+<BaseLayout title="Dashboard">
+	<h1>Dashboard</h1>
+	<p>Welcome, {displayName ?? user.email}</p>
+	<form method="GET" action="/projects">
+		<button type="submit">Go to Projects</button>
+	</form>
+	<form method="POST" action="/api/auth/logout">
+		<button type="submit">Log out</button>
+	</form>
+</BaseLayout>
