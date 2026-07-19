@@ -1,0 +1,26 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+
+export const prerender = false;
+
+if (!Astro.locals.user) {
+    return Astro.redirect('/login');
+}
+
+const { id } = Astro.params;
+
+const { data: project, error } = await Astro.locals.supabase
+    .from('projects')
+    .select('id, name, description, created_at')
+    .eq('id', id)
+    .single();
+
+if (error || !project) {
+    return new Response('Project not found', { status: 404 });
+}
+---
+<BaseLayout title={project.name}>
+    <h1>{project.name}</h1>
+    {project.description && <p>{project.description}</p>}
+    <p><a href="/projects">← Back to Projects</a></p>
+</BaseLayout>
