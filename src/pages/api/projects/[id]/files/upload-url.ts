@@ -22,7 +22,11 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 		return new Response('Forbidden', { status: 403 });
 	}
 
-	const body = await request.json() as { filename?: string };
+	const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB, adjust to what CAD files realistically need
+	const body = await request.json() as { filename?: string; size?: number };
+	if (body.size && body.size > MAX_FILE_SIZE) {
+		return new Response('File too large', { status: 400 });
+	}
     const filename = body.filename;
 
     if (!filename || typeof filename !== 'string') {
