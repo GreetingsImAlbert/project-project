@@ -1,9 +1,10 @@
 import { createServerClient, parseCookieHeader } from "@supabase/ssr";
 import type { AstroCookies } from 'astro';
 import { env } from 'cloudflare:workers';
+import type { Database } from './database.types';
 
 export function createSupabaseServerClient(request: Request, cookies: AstroCookies) {
-    return createServerClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY, {
+    return createServerClient<Database>(env.SUPABASE_URL, env.SUPABASE_ANON_KEY, {
         cookies: {
             getAll() {
                 return parseCookieHeader(request.headers.get('Cookie') ?? '');

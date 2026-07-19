@@ -1,26 +1,56 @@
 ---
-import BaseLayout from "../../layouts/BaseLayout.astro";
+import { string } from 'astro:schema';
+import BaseLayout from '../../layouts/BaseLayout.astro';
 
 export const prerender = false;
 
 if (!Astro.locals.user) {
-    return Astro.redirect('/login');
+	return Astro.redirect('/login');
 }
 
 const { id } = Astro.params;
 
 const { data: project, error } = await Astro.locals.supabase
-    .from('projects')
-    .select('id, name, description, created_at')
-    .eq('id', id)
-    .single();
+	.from('projects')
+	.select('id, name, description, owner_id')
+	.eq('id', id)
+	.single();
 
 if (error || !project) {
-    return new Response('Project not found', { status: 404 });
+	return new Response('Project not found', { status: 404 });
 }
+
+const isOwner = project.owner_id === Astro.locals.user.id;
+
+const { data: members } = await Astro.locals.supabase
+	.from('project_members')
+	.select('role, profiles(display_name, email)')
+	.eq('project_id', id)
+	.overrideTypes<{ role: string; profiles: { display_name: string; email: string } }[]>();
 ---
 <BaseLayout title={project.name}>
-    <h1>{project.name}</h1>
-    {project.description && <p>{project.description}</p>}
-    <p><a href="/projects">← Back to Projects</a></p>
+	<h1>{project.name}</h1>
+	{project.description && <p>{project.description}</p>}
+	<p><a href="/projects">← Back to projects</a></p>
+
+	<h2>Members</h2>
+	<ul>
+		{members?.map((m) => (
+			<li>{m.profiles?.display_name} ({m.profiles?.email}) — {m.role}</li>
+		))}
+	</ul>
+
+	{isOwner && (
+		<>
+			<h2>Add a member</h2>
+			<form method="POST" action={`/api/projects/${project.id}/members`} onsubmit="this.querySelector('button').disabled = true">
+				<input type="email" name="email" placeholder="User's email" required />
+				<select name="role">
+					<option value="editor">Editor</option>
+					<option value="viewer">Viewer</option>
+				</select>
+				<button type="submit">Add</button>
+			</form>
+		</>
+	)}
 </BaseLayout>
