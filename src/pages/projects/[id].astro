@@ -1,10 +1,10 @@
 ---
-import { string } from 'astro:schema';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 
 export const prerender = false;
 
-if (!Astro.locals.user) {
+const user = Astro.locals.user;
+if (!user) {
 	return Astro.redirect('/login');
 }
 
@@ -20,13 +20,20 @@ if (error || !project) {
 	return new Response('Project not found', { status: 404 });
 }
 
-const isOwner = project.owner_id === Astro.locals.user.id;
-
 const { data: members } = await Astro.locals.supabase
 	.from('project_members')
-	.select('role, profiles(display_name, email)')
+	.select('role, user_id, profiles(display_name, email)')
 	.eq('project_id', id)
-	.overrideTypes<{ role: string; profiles: { display_name: string; email: string } }[]>();
+	.overrideTypes<{ role: string; user_id: string, profiles: { display_name: string; email: string } }[]>();
+
+const userRole = members?.find(member => member.user_id === user.id)?.role;
+
+const { data: files } = await Astro.locals.supabase
+	.from('files')
+	.select('id, filename, size_bytes, mime_type, created_at, profiles(display_name)')
+	.eq('project_id', id)
+	.order('created_at', { ascending: false })
+	.overrideTypes<{ id: string; filename: string; size_bytes: number | null; mime_type: string | null; created_at: string; profiles: { display_name: string } }[]>()
 ---
 <BaseLayout title={project.name}>
 	<h1>{project.name}</h1>
@@ -40,7 +47,17 @@ const { data: members } = await Astro.locals.supabase
 		))}
 	</ul>
 
-	{isOwner && (
+	<h2>Files</h2>
+	{files && files.length === 0 && <p>No files yet.</p>}
+	<ul>
+		{files?.map((f) => (
+			<li>
+				{f.filename} — {f.size_bytes ? `${Math.round(f.size_bytes / 1024)} KB` : ''} — uploaded by {f.profiles?.display_name}
+			</li>
+		))}
+	</ul>
+
+	{userRole === 'owner' && (
 		<>
 			<h2>Add a member</h2>
 			<form method="POST" action={`/api/projects/${project.id}/members`} onsubmit="this.querySelector('button').disabled = true">
@@ -53,4 +70,77 @@ const { data: members } = await Astro.locals.supabase
 			</form>
 		</>
 	)}
+
+	{(userRole === 'owner' || userRole === 'editor') && (
+	<>
+		<h2>Upload a file</h2>
+		<form id="upload-form">
+			<input type="file" id="file-input" required />
+			<button type="submit">Upload</button>
+		</form>
+		<p id="upload-status"></p>
+	</>
+)}
 </BaseLayout>
+
+<script define:vars={{ projectId: project.id }}>
+	const form = document.getElementById('upload-form');
+	const status = document.getElementById('upload-status');
+
+	form.addEventListener('submit', async (e) => {
+		e.preventDefault();
+		const fileInput = document.getElementById('file-input');
+		const file = fileInput.files[0];
+		if (!file) return;
+
+		status.textContent = 'Requesting upload URL...';
+
+		const urlRes = await fetch(`/api/projects/${projectId}/files/upload-url`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ filename: file.name }),
+		});
+
+		if (!urlRes.ok) {
+			status.textContent = 'Failed to get upload URL: ' + (await urlRes.text());
+			return;
+		}
+
+		const { uploadUrl, r2Key } = await urlRes.json();
+
+		status.textContent = 'Uploading...';
+
+		const putRes = await fetch(uploadUrl, {
+			method: 'PUT',
+			body: file,
+		});
+
+		if (!putRes.ok) {
+			status.textContent = 'Upload to R2 failed';
+			return;
+		}
+
+		status.textContent = 'Saving file record...';
+
+		const confirmRes = await fetch(`/api/projects/${projectId}/files/confirm`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				r2Key,
+				filename: file.name,
+				size: file.size,
+				mimeType: file.type,
+			}),
+		});
+
+		if (confirmRes.ok) {
+			status.textContent = 'Upload complete!';
+			location.reload();
+		} else {
+			const result = await confirmRes.json();
+			status.textContent = result.cleanedUp
+				? `Upload failed (cleaned up): ${result.error}`
+				: `Upload failed AND cleanup failed: ${result.error}`;
+		}
+	});
+</script>
