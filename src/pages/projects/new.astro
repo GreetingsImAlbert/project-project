@@ -1,0 +1,17 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+
+export const prerender = false;
+
+if (!Astro.locals.user) {
+	return Astro.redirect('/login');
+}
+---
+<BaseLayout title="New Project">
+	<h1>Create a project</h1>
+	<form method="POST" action="/api/projects/create" onsubmit="this.querySelector('button').disabled = true">
+		<input type="text" name="name" placeholder="Project name" required />
+		<textarea name="description" placeholder="Description (optional)"></textarea>
+		<button type="submit">Create</button>
+	</form>
+</BaseLayout>

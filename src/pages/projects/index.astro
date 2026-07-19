@@ -1,0 +1,33 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+
+export const prerender = false;
+
+if (!Astro.locals.user) {
+	return Astro.redirect('/login');
+}
+
+const { data: projects, error } = await Astro.locals.supabase
+	.from('projects')
+	.select('id, name, description, created_at')
+	.order('created_at', { ascending: false });
+---
+<BaseLayout title="My Projects">
+	<h1>My Projects</h1>
+	<p><a href="/dashboard">Back to Dashboard</a></p>
+	
+	<p><a href="/projects/new">+ New project</a></p>
+
+	{error && <p>Error loading projects: {error.message}</p>}
+
+	{projects && projects.length === 0 && <p>No projects yet.</p>}
+
+	<ul>
+		{projects?.map((project) => (
+			<li>
+				<a href={`/projects/${project.id}`}>{project.name}</a>
+				{project.description && <p>{project.description}</p>}
+			</li>
+		))}
+	</ul>
+</BaseLayout>

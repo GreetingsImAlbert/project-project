@@ -17,8 +17,10 @@ const r2Objects = await env.R2_BUCKET.list();
 
     <p>Supabase says: {error ? `Error: ${error.message}` : `${data.length} rows in profiles`}</p>
     <p>R2 bucket has {r2Objects.objects.length} objects</p>
+
+    <p><a href="/projects">Go to Projects</a></p>
     
-    <form method="POST" action="/api/auth/logout">
+    <form method="POST" action="/api/auth/logout" onsubmit="this.querySelector('button').disabled = true">
         <button type="submit">Log out</button>
     </form>
 </BaseLayout>
