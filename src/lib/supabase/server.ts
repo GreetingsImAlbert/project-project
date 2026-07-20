@@ -12,7 +12,13 @@ export function createSupabaseServerClient(request: Request, cookies: AstroCooki
         
             setAll(cookiesToSet) {
                 cookiesToSet.forEach(({ name, value, options }) => 
-                    cookies.set(name, value, options)            
+                    cookies.set(name, value, {
+                        ...options,
+                        httpOnly: true,
+                        secure: true,
+                        sameSite: 'lax',
+                        path: '/',
+                    })            
                 );
             }
         }
