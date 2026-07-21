@@ -5,10 +5,15 @@ export const prerender = false;
 if (Astro.locals.user) {
 	return Astro.redirect('/');
 }
+
+const checkEmail = Astro.url.searchParams.get('checkEmail') === '1';
 ---
 
 <BaseLayout title="Login">
     <h1>Welcome to P2!</h1>
+    {checkEmail && (
+        <p role="status">Account created! Check your email for a confirmation link before logging in.</p>
+    )}
     <h2>Log in</h2>
     <form method="POST" action="/api/auth/login" onsubmit="this.querySelector('button').disabled = true">
         <input type="email" name="email" placeholder="Email" required/>

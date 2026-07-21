@@ -16,12 +16,20 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
         email: email.trim().toLowerCase(),
         password,
         options: {
-            data: { display_name: displayName }
+            data: { display_name: displayName },
+            emailRedirectTo: new URL('/login', request.url).toString(),
         }
     });
 
 	if (signUpError || !data.user) {
 		return new Response(`Signup failed: ${signUpError?.message}`, { status: 400 });
+	}
+
+	// No session means Supabase requires email confirmation before the account
+	// is usable — send the user back to login with a message instead of
+	// silently bouncing them there via the auth redirect.
+	if (!data.session) {
+		return redirect('/login?checkEmail=1');
 	}
 
 	return redirect('/');
