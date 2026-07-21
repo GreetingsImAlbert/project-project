@@ -28,6 +28,19 @@ export const POST: APIRoute = async ({ params, request, locals, redirect }) => {
 		return new Response('Folder name is required', { status: 400 });
 	}
 
+	if (parentFolderId) {
+		const { data: parentFolder } = await locals.supabase
+			.from('folders')
+			.select('id')
+			.eq('id', parentFolderId)
+			.eq('project_id', projectId)
+			.single();
+
+		if (!parentFolder) {
+			return new Response('Parent folder not found in this project', { status: 400 });
+		}
+	}
+
 	const { error } = await locals.supabase
 		.from('folders')
 		.insert({ project_id: projectId, name, parent_folder_id: parentFolderId });

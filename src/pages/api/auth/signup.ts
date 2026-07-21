@@ -12,8 +12,8 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
 		return new Response('Missing required fields', { status: 400 });
 	}
 
-	const { data, error: signUpError } = await locals.supabase.auth.signUp({ 
-        email, 
+	const { data, error: signUpError } = await locals.supabase.auth.signUp({
+        email: email.trim().toLowerCase(),
         password,
         options: {
             data: { display_name: displayName }

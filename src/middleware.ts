@@ -22,7 +22,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
     context.locals.user = error || !data ? null : {
         id: data.claims.sub,
         email: data.claims.email,
-    } as typeof context.locals.user;
+    };
 
     return next();
 });
