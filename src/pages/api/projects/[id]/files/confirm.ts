@@ -9,7 +9,7 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 	}
 
 	const projectId = params.id;
-	const body = await request.json() as { r2Key?: string; filename?: string; size?: number; mimeType?: string };
+	const body = await request.json() as { r2Key?: string; filename?: string; size?: number; mimeType?: string; folderId?: string };
 
 	if (!body.r2Key || !body.filename) {
 		return new Response('Missing r2Key or filename', { status: 400 });
@@ -19,6 +19,7 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 		.from('files')
 		.insert({
 			project_id: projectId,
+			folder_id: body.folderId ?? null,
 			uploaded_by: locals.user.id,
 			filename: body.filename,
 			r2_key: body.r2Key,

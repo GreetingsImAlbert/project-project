@@ -27,12 +27,39 @@ const { data: members } = await Astro.locals.supabase
 	.overrideTypes<{ role: string; user_id: string, profiles: { display_name: string; email: string } }[]>();
 
 const userRole = members?.find(member => member.user_id === user.id)?.role;
+const canEdit = userRole === 'owner' || userRole === 'editor';
 
-const { data: files } = await Astro.locals.supabase
+const currentFolderId = Astro.url.searchParams.get('folder');
+
+const { data: allFolders } = await Astro.locals.supabase
+	.from('folders')
+	.select('id, name, parent_folder_id')
+	.eq('project_id', id);
+
+const folderById = new Map((allFolders ?? []).map((f) => [f.id, f]));
+
+if (currentFolderId && !folderById.has(currentFolderId)) {
+	return new Response('Folder not found', { status: 404 });
+}
+
+const breadcrumbs: NonNullable<typeof allFolders>[number][] = [];
+let cursor = currentFolderId ? folderById.get(currentFolderId) : undefined;
+while (cursor) {
+	breadcrumbs.unshift(cursor);
+	cursor = cursor.parent_folder_id ? folderById.get(cursor.parent_folder_id) : undefined;
+}
+
+const subfolders = (allFolders ?? []).filter((f) => (f.parent_folder_id ?? null) === currentFolderId);
+
+let filesQuery = Astro.locals.supabase
 	.from('files')
 	.select('id, filename, size_bytes, mime_type, created_at, profiles(display_name)')
 	.eq('project_id', id)
-	.order('created_at', { ascending: false })
+	.order('created_at', { ascending: false });
+
+filesQuery = currentFolderId ? filesQuery.eq('folder_id', currentFolderId) : filesQuery.is('folder_id', null);
+
+const { data: files } = await filesQuery
 	.overrideTypes<{ id: string; filename: string; size_bytes: number | null; mime_type: string | null; created_at: string; profiles: { display_name: string } }[]>()
 ---
 <BaseLayout title={project.name}>
@@ -48,12 +75,71 @@ const { data: files } = await Astro.locals.supabase
 	</ul>
 
 	<h2>Files</h2>
-	{files && files.length === 0 && <p>No files yet.</p>}
+
+	<p class="breadcrumbs">
+		<a href={`/projects/${project.id}`}>Root</a>
+		{breadcrumbs.map((b) => (
+			<>
+				{' / '}
+				<a href={`/projects/${project.id}?folder=${b.id}`}>{b.name}</a>
+			</>
+		))}
+	</p>
+
+	{subfolders.length > 0 && (
+		<ul id="folder-list">
+			{subfolders.map((f) => (
+				<li>
+					📁 <a href={`/projects/${project.id}?folder=${f.id}`}>{f.name}</a>
+					{canEdit && (
+						<form method="POST" action={`/api/projects/${project.id}/folders/${f.id}/delete`} style="display:inline">
+							<button type="submit">Delete</button>
+						</form>
+					)}
+				</li>
+			))}
+		</ul>
+	)}
+
+	{canEdit && (
+		<form method="POST" action={`/api/projects/${project.id}/folders/create`} onsubmit="this.querySelector('button').disabled = true">
+			<input type="hidden" name="parentFolderId" value={currentFolderId ?? ''} />
+			<input type="text" name="name" placeholder="New folder name" required />
+			<button type="submit">Create folder</button>
+		</form>
+	)}
+
+	{files && files.length === 0 && <p>No files here.</p>}
 	<ul id="file-list">
 		{files?.map((f) => (
 			<li>
 				<button type="button" class="download-btn" data-file-id={f.id} data-filename={f.filename}>{f.filename}</button>
 				— {f.size_bytes != null ? `${Math.round(f.size_bytes).toLocaleString()} B` : ''} — uploaded by {f.profiles?.display_name}
+
+				{canEdit && (
+					<>
+						<form method="POST" action={`/api/files/${f.id}/move`} style="display:inline">
+							<input type="hidden" name="returnFolderId" value={currentFolderId ?? ''} />
+							<select name="folderId">
+								<option value="">Root</option>
+								{allFolders?.map((folder) => (
+									<option value={folder.id} selected={folder.id === currentFolderId}>{folder.name}</option>
+								))}
+							</select>
+							<button type="submit">Move</button>
+						</form>
+						<form method="POST" action={`/api/files/${f.id}/copy`} style="display:inline">
+							<input type="hidden" name="returnFolderId" value={currentFolderId ?? ''} />
+							<select name="folderId">
+								<option value="">Root</option>
+								{allFolders?.map((folder) => (
+									<option value={folder.id} selected={folder.id === currentFolderId}>{folder.name}</option>
+								))}
+							</select>
+							<button type="submit">Copy</button>
+						</form>
+					</>
+				)}
 			</li>
 		))}
 	</ul>
@@ -72,7 +158,7 @@ const { data: files } = await Astro.locals.supabase
 		</>
 	)}
 
-	{(userRole === 'owner' || userRole === 'editor') && (
+	{canEdit && (
 	<>
 		<h2>Upload a file</h2>
 		<form id="upload-form">
@@ -84,7 +170,7 @@ const { data: files } = await Astro.locals.supabase
 )}
 </BaseLayout>
 
-<script define:vars={{ projectId: project.id }} is:inline>
+<script define:vars={{ projectId: project.id, currentFolderId }} is:inline>
 	const form = document.getElementById('upload-form');
 	const status = document.getElementById('upload-status');
 
@@ -132,6 +218,7 @@ const { data: files } = await Astro.locals.supabase
 					filename: file.name,
 					size: file.size,
 					mimeType: file.type,
+					folderId: currentFolderId,
 				}),
 			});
 
@@ -146,7 +233,7 @@ const { data: files } = await Astro.locals.supabase
 			}
 		});
 	}
-	
+
 	document.getElementById('file-list')?.addEventListener('click', async (e) => {
 		console.log('clicked:', e.target);
 		const target = e.target;
