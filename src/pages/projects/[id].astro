@@ -186,7 +186,7 @@ const { data: files } = await filesQuery
 			const urlRes = await fetch(`/api/projects/${projectId}/files/upload-url`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ filename: file.name }),
+				body: JSON.stringify({ filename: file.name, size: file.size }),
 			});
 
 			if (!urlRes.ok) {

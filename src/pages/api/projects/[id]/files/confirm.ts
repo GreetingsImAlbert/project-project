@@ -1,4 +1,5 @@
 import type { APIRoute } from 'astro';
+import { AwsClient } from 'aws4fetch';
 import { env } from 'cloudflare:workers';
 
 export const prerender = false;
@@ -30,7 +31,21 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 	if (error) {
 		let cleanedUp = false;
 		try {
-			await env.R2_BUCKET.delete(body.r2Key);
+			// Real server-to-R2 DELETE over the same remote endpoint upload/download use
+			// (not the R2 binding — that resolves to a separate local-only store under
+			// plain `wrangler dev`, so it would silently "succeed" without touching the
+			// real orphaned object).
+			const r2 = new AwsClient({
+				accessKeyId: env.R2_ACCESS_KEY_ID,
+				secretAccessKey: env.R2_SECRET_ACCESS_KEY,
+				service: 's3',
+				region: 'auto',
+			});
+			const deleteUrl = `https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${env.R2_BUCKET_NAME}/${body.r2Key}`;
+			const deleteRes = await r2.fetch(deleteUrl, { method: 'DELETE' });
+			if (!deleteRes.ok) {
+				throw new Error(`R2 delete responded with ${deleteRes.status}`);
+			}
 			cleanedUp = true;
 		} catch (cleanupError) {
 			console.error(`Failed to clean up orphaned R2 object ${body.r2Key}:`, cleanupError);

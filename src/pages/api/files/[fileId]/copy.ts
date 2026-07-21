@@ -1,5 +1,8 @@
 import type { APIRoute } from 'astro';
+import { AwsClient } from 'aws4fetch';
 import { env } from 'cloudflare:workers';
+import { getSupabaseAdmin } from '../../../../lib/supabase/admin';
+import { wouldExceedStorageQuota } from '../../../../lib/r2-quota';
 
 export const prerender = false;
 
@@ -48,16 +51,37 @@ export const POST: APIRoute = async ({ params, request, locals, redirect }) => {
 		}
 	}
 
-	const source = await env.R2_BUCKET.get(file.r2_key);
-	if (!source) {
-		return new Response('Source file missing from storage', { status: 404 });
+	if (file.size_bytes) {
+		const admin = getSupabaseAdmin(env);
+		if (await wouldExceedStorageQuota(admin, file.size_bytes)) {
+			return new Response('Storage quota exceeded', { status: 507 });
+		}
 	}
 
 	const newR2Key = `${file.project_id}/${crypto.randomUUID()}-${file.filename}`;
 
-	await env.R2_BUCKET.put(newR2Key, source.body, {
-		httpMetadata: source.httpMetadata,
+	const r2 = new AwsClient({
+		accessKeyId: env.R2_ACCESS_KEY_ID,
+		secretAccessKey: env.R2_SECRET_ACCESS_KEY,
+		service: 's3',
+		region: 'auto',
 	});
+
+	// Real server-to-R2 COPY over the same remote endpoint upload/download use
+	// (not the R2 binding — that resolves to a separate local-only store under
+	// plain `wrangler dev`, so it would never see objects written via presigned URLs).
+	const destUrl = `https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${env.R2_BUCKET_NAME}/${newR2Key}`;
+	const encodedSourceKey = file.r2_key.split('/').map(encodeURIComponent).join('/');
+	const copySource = `/${env.R2_BUCKET_NAME}/${encodedSourceKey}`;
+
+	const copyRes = await r2.fetch(destUrl, {
+		method: 'PUT',
+		headers: { 'x-amz-copy-source': copySource },
+	});
+
+	if (!copyRes.ok) {
+		return new Response(`Failed to copy source file in storage: ${await copyRes.text()}`, { status: 502 });
+	}
 
 	const { error: insertError } = await locals.supabase.from('files').insert({
 		project_id: file.project_id,
@@ -70,7 +94,7 @@ export const POST: APIRoute = async ({ params, request, locals, redirect }) => {
 	});
 
 	if (insertError) {
-		await env.R2_BUCKET.delete(newR2Key);
+		await r2.fetch(destUrl, { method: 'DELETE' }).catch(() => {});
 		return new Response(`Failed to save copied file: ${insertError.message}`, { status: 500 });
 	}
 

@@ -8,7 +8,7 @@ P2 is a project-management web app for engineering students/hobbyists (CAD files
 
 ## Task tracking
 
-Every time you create a commit in this repo, first update `CHECKLIST.md` to reflect it — move finished items to Done, add newly-discovered follow-ups, and keep In progress/Next up current. Do this as part of the same commit, not a separate one.
+Every time you provide a commit message, first update `CHECKLIST.md` to reflect it — move finished items to Done, add newly-discovered follow-ups, and keep In progress/Next up current. Do this as part of the same commit, not a separate one.
 
 ## Development
 

@@ -1,6 +1,8 @@
 import type { APIRoute } from 'astro';
 import { AwsClient } from 'aws4fetch';
 import { env } from 'cloudflare:workers';
+import { getSupabaseAdmin } from '../../../../../lib/supabase/admin';
+import { wouldExceedStorageQuota } from '../../../../../lib/r2-quota';
 
 export const prerender = false;
 
@@ -27,6 +29,14 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 	if (body.size && body.size > MAX_FILE_SIZE) {
 		return new Response('File too large', { status: 400 });
 	}
+
+	if (body.size) {
+		const admin = getSupabaseAdmin(env);
+		if (await wouldExceedStorageQuota(admin, body.size)) {
+			return new Response('Storage quota exceeded', { status: 507 });
+		}
+	}
+
     const filename = body.filename;
 
     if (!filename || typeof filename !== 'string') {
