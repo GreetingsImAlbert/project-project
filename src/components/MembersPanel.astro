@@ -1,0 +1,35 @@
+---
+interface Member {
+	role: string;
+	user_id: string;
+	profiles: { display_name: string; email: string };
+}
+
+interface Props {
+	projectId: string;
+	members: Member[];
+	userRole: string | undefined;
+}
+
+const { projectId, members, userRole } = Astro.props;
+---
+
+<h2>Members</h2>
+<ul class="list-plain">
+	{members.map((m) => (
+		<li>
+			{m.profiles?.display_name} <span class="muted">({m.profiles?.email})</span> — {m.role}
+		</li>
+	))}
+</ul>
+
+{userRole === 'owner' && (
+	<form method="POST" action={`/api/projects/${projectId}/members`} onsubmit="this.querySelector('button').disabled = true">
+		<input type="email" name="email" placeholder="User's email" required />
+		<select name="role">
+			<option value="editor">Editor</option>
+			<option value="viewer">Viewer</option>
+		</select>
+		<button type="submit">Add member</button>
+	</form>
+)}

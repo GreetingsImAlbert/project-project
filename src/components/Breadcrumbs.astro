@@ -1,0 +1,23 @@
+---
+interface Crumb {
+	id: string;
+	name: string;
+}
+
+interface Props {
+	projectId: string;
+	crumbs: Crumb[];
+}
+
+const { projectId, crumbs } = Astro.props;
+---
+
+<p class="breadcrumbs">
+	<a href={`/projects/${projectId}`}>Root</a>
+	{crumbs.map((c) => (
+		<>
+			{' / '}
+			<a href={`/projects/${projectId}?folder=${c.id}`}>{c.name}</a>
+		</>
+	))}
+</p>

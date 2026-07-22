@@ -19,11 +19,6 @@ const displayName = profile?.display_name;
 ---
 <BaseLayout title="Dashboard">
 	<h1>Dashboard</h1>
-	<p>Welcome, {displayName ?? user.email}</p>
-	<form method="GET" action="/projects">
-		<button type="submit">Go to Projects</button>
-	</form>
-	<form method="POST" action="/api/auth/logout">
-		<button type="submit">Log out</button>
-	</form>
+	<p class="muted">Welcome, {displayName ?? user.email}</p>
+	<p><a href="/projects">Go to Projects →</a></p>
 </BaseLayout>

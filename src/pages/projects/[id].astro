@@ -1,5 +1,11 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import Breadcrumbs from '../../components/Breadcrumbs.astro';
+import FolderList from '../../components/FolderList.astro';
+import FileList from '../../components/FileList.svelte';
+import BomTable from '../../components/BomTable.svelte';
+import MembersPanel from '../../components/MembersPanel.astro';
+import UploadForm from '../../components/UploadForm.svelte';
 
 export const prerender = false;
 
@@ -70,311 +76,31 @@ const { data: bomItems } = await Astro.locals.supabase
 ---
 <BaseLayout title={project.name}>
 	<h1>{project.name}</h1>
-	{project.description && <p>{project.description}</p>}
+	{project.description && <p class="muted">{project.description}</p>}
 	<p><a href="/projects">← Back to projects</a></p>
 
-	<h2>Members</h2>
-	<ul>
-		{members?.map((m) => (
-			<li>{m.profiles?.display_name} ({m.profiles?.email}) — {m.role}</li>
-		))}
-	</ul>
+	<MembersPanel projectId={project.id} members={members ?? []} userRole={userRole} />
 
 	<h2>Files</h2>
 
-	<p class="breadcrumbs">
-		<a href={`/projects/${project.id}`}>Root</a>
-		{breadcrumbs.map((b) => (
-			<>
-				{' / '}
-				<a href={`/projects/${project.id}?folder=${b.id}`}>{b.name}</a>
-			</>
-		))}
-	</p>
+	<Breadcrumbs projectId={project.id} crumbs={breadcrumbs} />
 
-	{subfolders.length > 0 && (
-		<ul id="folder-list">
-			{subfolders.map((f) => (
-				<li>
-					📁 <a href={`/projects/${project.id}?folder=${f.id}`}>{f.name}</a>
-					{canEdit && (
-						<form method="POST" action={`/api/projects/${project.id}/folders/${f.id}/delete`} style="display:inline">
-							<button type="submit">Delete</button>
-						</form>
-					)}
-				</li>
-			))}
-		</ul>
-	)}
+	<FolderList
+		projectId={project.id}
+		subfolders={subfolders}
+		currentFolderId={currentFolderId}
+		canEdit={canEdit}
+	/>
 
-	{canEdit && (
-		<form method="POST" action={`/api/projects/${project.id}/folders/create`} onsubmit="this.querySelector('button').disabled = true">
-			<input type="hidden" name="parentFolderId" value={currentFolderId ?? ''} />
-			<input type="text" name="name" placeholder="New folder name" required />
-			<button type="submit">Create folder</button>
-		</form>
-	)}
+	<FileList
+		client:load
+		canEdit={canEdit}
+		currentFolderId={currentFolderId}
+		allFolders={allFolders ?? []}
+		files={files ?? []}
+	/>
 
-	{files && files.length === 0 && <p>No files here.</p>}
-	<ul id="file-list">
-		{files?.map((f) => (
-			<li>
-				<button type="button" class="download-btn" data-file-id={f.id} data-filename={f.filename}>{f.filename}</button>
-				— {f.size_bytes != null ? `${Math.round(f.size_bytes).toLocaleString()} B` : ''} — uploaded by {f.profiles?.display_name}
+	<BomTable client:load projectId={project.id} items={bomItems ?? []} canEdit={canEdit} />
 
-				{canEdit && (
-					<>
-						<form method="POST" action={`/api/files/${f.id}/move`} style="display:inline">
-							<input type="hidden" name="returnFolderId" value={currentFolderId ?? ''} />
-							<select name="folderId">
-								<option value="">Root</option>
-								{allFolders?.map((folder) => (
-									<option value={folder.id} selected={folder.id === currentFolderId}>{folder.name}</option>
-								))}
-							</select>
-							<button type="submit">Move</button>
-						</form>
-						<form method="POST" action={`/api/files/${f.id}/copy`} style="display:inline">
-							<input type="hidden" name="returnFolderId" value={currentFolderId ?? ''} />
-							<select name="folderId">
-								<option value="">Root</option>
-								{allFolders?.map((folder) => (
-									<option value={folder.id} selected={folder.id === currentFolderId}>{folder.name}</option>
-								))}
-							</select>
-							<button type="submit">Copy</button>
-						</form>
-					</>
-				)}
-			</li>
-		))}
-	</ul>
-
-	<h2>Bill of Materials</h2>
-
-	{bomItems && bomItems.length === 0 && <p>No BOM items yet.</p>}
-	{bomItems && bomItems.length > 0 && (
-		<table id="bom-table">
-			<thead>
-				<tr>
-					<th>Part name</th>
-					<th>Description</th>
-					<th>Qty</th>
-					<th>Unit</th>
-					<th>Unit cost</th>
-					<th>Supplier</th>
-					<th>Total cost</th>
-					{canEdit && <th></th>}
-				</tr>
-			</thead>
-			<tbody>
-				{bomItems.map((item) => (
-					<>
-						<tr class="bom-row" data-bom-id={item.id}>
-							<td>{item.part_name}</td>
-							<td>{item.description}</td>
-							<td>{item.quantity}</td>
-							<td>{item.unit}</td>
-							<td>{item.unit_cost}</td>
-							<td>
-								{item.supplier && (
-									item.item_url
-										? <a href={item.item_url} target="_blank" rel="noopener noreferrer">{item.supplier}</a>
-										: item.supplier
-								)}
-							</td>
-							<td>{item.total_cost}</td>
-							{canEdit && (
-								<td>
-									<button type="button" class="bom-edit-btn" data-bom-id={item.id}>Edit</button>
-									<button form={`bom-delete-${item.id}`} type="submit" class="bom-delete-btn">Delete</button>
-								</td>
-							)}
-						</tr>
-						{canEdit && (
-							<tr class="bom-edit-row" data-bom-id={item.id} style="display:none">
-								<td><input form={`bom-update-${item.id}`} type="text" name="partName" value={item.part_name} maxlength="200" required /></td>
-								<td><input form={`bom-update-${item.id}`} type="text" name="description" value={item.description ?? ''} maxlength="1000" /></td>
-								<td><input form={`bom-update-${item.id}`} type="number" step="any" min="0" name="quantity" value={item.quantity ?? ''} /></td>
-								<td><input form={`bom-update-${item.id}`} type="text" name="unit" value={item.unit ?? ''} placeholder="e.g. 5 pcs" maxlength="50" /></td>
-								<td><input form={`bom-update-${item.id}`} type="number" step="any" min="0" name="unitCost" value={item.unit_cost ?? ''} /></td>
-								<td>
-									<input form={`bom-update-${item.id}`} type="text" name="supplier" value={item.supplier ?? ''} placeholder="Supplier name" maxlength="200" />
-									<input form={`bom-update-${item.id}`} type="url" name="itemUrl" value={item.item_url ?? ''} placeholder="Supplier link" />
-								</td>
-								<td>—</td>
-								<td>
-									<button form={`bom-update-${item.id}`} type="submit" class="bom-save-btn">Save</button>
-									<button type="button" class="bom-cancel-btn" data-bom-id={item.id}>Cancel</button>
-								</td>
-							</tr>
-						)}
-					</>
-				))}
-			</tbody>
-		</table>
-	)}
-
-	{canEdit && bomItems && bomItems.map((item) => (
-		<>
-			<form id={`bom-update-${item.id}`} method="POST" action={`/api/bom/${item.id}/update`}></form>
-			<form id={`bom-delete-${item.id}`} method="POST" action={`/api/bom/${item.id}/delete`}></form>
-		</>
-	))}
-
-	{canEdit && (
-		<form method="POST" action={`/api/projects/${project.id}/bom/create`} onsubmit="this.querySelector('button').disabled = true">
-			<input type="text" name="partName" placeholder="Part name" maxlength="200" required />
-			<input type="text" name="description" placeholder="Description" maxlength="1000" />
-			<input type="number" step="any" min="0" name="quantity" placeholder="Qty" />
-			<input type="text" name="unit" placeholder="Unit (e.g. 5 pcs)" maxlength="50" />
-			<input type="number" step="any" min="0" name="unitCost" placeholder="Unit cost" />
-			<input type="text" name="supplier" placeholder="Supplier" maxlength="200" />
-			<input type="url" name="itemUrl" placeholder="Supplier link" />
-			<button type="submit">Add BOM item</button>
-		</form>
-	)}
-
-	{userRole === 'owner' && (
-		<>
-			<h2>Add a member</h2>
-			<form method="POST" action={`/api/projects/${project.id}/members`} onsubmit="this.querySelector('button').disabled = true">
-				<input type="email" name="email" placeholder="User's email" required />
-				<select name="role">
-					<option value="editor">Editor</option>
-					<option value="viewer">Viewer</option>
-				</select>
-				<button type="submit">Add</button>
-			</form>
-		</>
-	)}
-
-	{canEdit && (
-	<>
-		<h2>Upload a file</h2>
-		<form id="upload-form">
-			<input type="file" id="file-input" required />
-			<button type="submit">Upload</button>
-		</form>
-		<p id="upload-status"></p>
-	</>
-)}
+	{canEdit && <UploadForm client:load projectId={project.id} currentFolderId={currentFolderId} />}
 </BaseLayout>
-
-<script define:vars={{ projectId: project.id, currentFolderId }} is:inline>
-	const form = document.getElementById('upload-form');
-	const status = document.getElementById('upload-status');
-
-	if (form) {
-		form.addEventListener('submit', async (e) => {
-			e.preventDefault();
-			const fileInput = document.getElementById('file-input');
-			const file = fileInput.files[0];
-			if (!file) return;
-
-			status.textContent = 'Requesting upload URL...';
-
-			const urlRes = await fetch(`/api/projects/${projectId}/files/upload-url`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ filename: file.name, size: file.size }),
-			});
-
-			if (!urlRes.ok) {
-				status.textContent = 'Failed to get upload URL: ' + (await urlRes.text());
-				return;
-			}
-
-			const { uploadUrl, r2Key } = await urlRes.json();
-
-			status.textContent = 'Uploading...';
-
-			const putRes = await fetch(uploadUrl, {
-				method: 'PUT',
-				body: file,
-			});
-
-			if (!putRes.ok) {
-				status.textContent = 'Upload to R2 failed';
-				return;
-			}
-
-			status.textContent = 'Saving file record...';
-
-			const confirmRes = await fetch(`/api/projects/${projectId}/files/confirm`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					r2Key,
-					filename: file.name,
-					size: file.size,
-					mimeType: file.type,
-					folderId: currentFolderId,
-				}),
-			});
-
-			if (confirmRes.ok) {
-				status.textContent = 'Upload complete!';
-				location.reload();
-			} else {
-				const result = await confirmRes.json();
-				status.textContent = result.cleanedUp
-					? `Upload failed (cleaned up): ${result.error}`
-					: `Upload failed AND cleanup failed: ${result.error}`;
-			}
-		});
-	}
-
-	document.getElementById('file-list')?.addEventListener('click', async (e) => {
-		console.log('clicked:', e.target);
-		const target = e.target;
-		if (!target.classList || !target.classList.contains('download-btn')) {
-			console.log('not a download button, ignoring');
-			return;
-		}
-
-		const fileId = target.dataset.fileId;
-		const originalText = target.dataset.filename ?? '';
-		target.textContent = 'Loading...';
-
-		const res = await fetch(`/api/files/${fileId}/download-url`);
-
-		if (!res.ok) {
-			alert('Failed to get download link');
-			target.textContent = originalText;
-			return;
-		}
-
-		const { downloadUrl } = await res.json();
-		window.location.href = downloadUrl;
-	});
-
-	document.getElementById('bom-table')?.addEventListener('click', (e) => {
-		const target = e.target;
-		if (!target.classList) return;
-
-		if (target.classList.contains('bom-edit-btn')) {
-			const id = target.dataset.bomId;
-			document.querySelector(`tr.bom-row[data-bom-id="${id}"]`).style.display = 'none';
-			document.querySelector(`tr.bom-edit-row[data-bom-id="${id}"]`).style.display = '';
-		}
-
-		if (target.classList.contains('bom-cancel-btn')) {
-			const id = target.dataset.bomId;
-			document.querySelector(`tr.bom-edit-row[data-bom-id="${id}"]`).style.display = 'none';
-			document.querySelector(`tr.bom-row[data-bom-id="${id}"]`).style.display = '';
-		}
-
-		if (target.classList.contains('bom-delete-btn') && !confirm('Delete this BOM item?')) {
-			e.preventDefault();
-		}
-	});
-
-	document.querySelectorAll('form[id^="bom-update-"]').forEach((f) => {
-		f.addEventListener('submit', () => {
-			const saveBtn = document.querySelector(`.bom-save-btn[form="${f.id}"]`);
-			if (saveBtn) saveBtn.disabled = true;
-		});
-	});
-
-</script>

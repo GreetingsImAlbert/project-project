@@ -9,9 +9,17 @@ if (!Astro.locals.user) {
 ---
 <BaseLayout title="New Project">
 	<h1>Create a project</h1>
-	<form method="POST" action="/api/projects/create" onsubmit="this.querySelector('button').disabled = true">
+	<form method="POST" action="/api/projects/create" onsubmit="this.querySelector('button').disabled = true" class="new-project-form">
 		<input type="text" name="name" placeholder="Project name" required />
 		<textarea name="description" placeholder="Description (optional)"></textarea>
 		<button type="submit">Create</button>
 	</form>
 </BaseLayout>
+
+<style>
+	.new-project-form {
+		flex-direction: column;
+		align-items: stretch;
+		max-width: 420px;
+	}
+</style>

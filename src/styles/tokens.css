@@ -1,0 +1,21 @@
+:root {
+	--font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+
+	--color-bg: #ffffff;
+	--color-fg: #111111;
+	--color-muted: #666666;
+	--color-border: #e0e0e0;
+	--color-border-strong: #111111;
+	--color-danger: #b3261e;
+
+	--space-1: 4px;
+	--space-2: 8px;
+	--space-3: 12px;
+	--space-4: 16px;
+	--space-5: 24px;
+	--space-6: 32px;
+	--space-7: 48px;
+
+	--radius-sm: 6px;
+	--max-width: 960px;
+}
