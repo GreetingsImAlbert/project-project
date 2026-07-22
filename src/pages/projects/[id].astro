@@ -1,8 +1,6 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
-import Breadcrumbs from '../../components/Breadcrumbs.astro';
-import FolderList from '../../components/FolderList.astro';
-import FileList from '../../components/FileList.svelte';
+import FileBrowser from '../../components/FileBrowser.svelte';
 import BomTable from '../../components/BomTable.svelte';
 import MembersPanel from '../../components/MembersPanel.astro';
 import UploadForm from '../../components/UploadForm.svelte';
@@ -48,15 +46,6 @@ if (currentFolderId && !folderById.has(currentFolderId)) {
 	return new Response('Folder not found', { status: 404 });
 }
 
-const breadcrumbs: NonNullable<typeof allFolders>[number][] = [];
-let cursor = currentFolderId ? folderById.get(currentFolderId) : undefined;
-while (cursor) {
-	breadcrumbs.unshift(cursor);
-	cursor = cursor.parent_folder_id ? folderById.get(cursor.parent_folder_id) : undefined;
-}
-
-const subfolders = (allFolders ?? []).filter((f) => (f.parent_folder_id ?? null) === currentFolderId);
-
 let filesQuery = Astro.locals.supabase
 	.from('files')
 	.select('id, filename, size_bytes, mime_type, created_at, profiles(display_name)')
@@ -83,21 +72,13 @@ const { data: bomItems } = await Astro.locals.supabase
 
 	<h2>Files</h2>
 
-	<Breadcrumbs projectId={project.id} crumbs={breadcrumbs} />
-
-	<FolderList
-		projectId={project.id}
-		subfolders={subfolders}
-		currentFolderId={currentFolderId}
-		canEdit={canEdit}
-	/>
-
-	<FileList
+	<FileBrowser
 		client:load
+		projectId={project.id}
 		canEdit={canEdit}
-		currentFolderId={currentFolderId}
 		allFolders={allFolders ?? []}
-		files={files ?? []}
+		initialFolderId={currentFolderId}
+		initialFiles={files ?? []}
 	/>
 
 	<BomTable client:load projectId={project.id} items={bomItems ?? []} canEdit={canEdit} />
