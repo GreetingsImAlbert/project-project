@@ -2,7 +2,7 @@ import type { APIRoute } from 'astro';
 
 export const prerender = false;
 
-export const POST: APIRoute = async ({ params, request, locals, redirect }) => {
+export const POST: APIRoute = async ({ params, request, locals }) => {
 	if (!locals.user) {
 		return new Response('Unauthorized', { status: 401 });
 	}
@@ -41,17 +41,15 @@ export const POST: APIRoute = async ({ params, request, locals, redirect }) => {
 		}
 	}
 
-	const { error } = await locals.supabase
+	const { data: created, error } = await locals.supabase
 		.from('folders')
-		.insert({ project_id: projectId, name, parent_folder_id: parentFolderId });
+		.insert({ project_id: projectId, name, parent_folder_id: parentFolderId })
+		.select('id, name, parent_folder_id')
+		.single();
 
 	if (error) {
 		return new Response(`Failed to create folder: ${error.message}`, { status: 500 });
 	}
 
-	const redirectUrl = parentFolderId
-		? `/projects/${projectId}?folder=${parentFolderId}`
-		: `/projects/${projectId}`;
-
-	return redirect(redirectUrl);
+	return Response.json(created);
 };

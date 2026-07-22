@@ -2,7 +2,7 @@ import type { APIRoute } from 'astro';
 
 export const prerender = false;
 
-export const POST: APIRoute = async ({ params, request, locals, redirect }) => {
+export const POST: APIRoute = async ({ params, request, locals }) => {
 	if (!locals.user) {
 		return new Response('Unauthorized', { status: 401 });
 	}
@@ -30,9 +30,8 @@ export const POST: APIRoute = async ({ params, request, locals, redirect }) => {
 		return new Response('Forbidden', { status: 403 });
 	}
 
-	const formData = await request.formData();
-	const targetFolderId = formData.get('folderId')?.toString() || null;
-	const returnFolderId = formData.get('returnFolderId')?.toString() || null;
+	const body = await request.json() as { folderId?: string | null };
+	const targetFolderId = body.folderId || null;
 
 	if (targetFolderId) {
 		const { data: targetFolder } = await locals.supabase
@@ -56,9 +55,5 @@ export const POST: APIRoute = async ({ params, request, locals, redirect }) => {
 		return new Response(`Failed to move file: ${error.message}`, { status: 500 });
 	}
 
-	const redirectUrl = returnFolderId
-		? `/projects/${file.project_id}?folder=${returnFolderId}`
-		: `/projects/${file.project_id}`;
-
-	return redirect(redirectUrl);
+	return new Response(null, { status: 204 });
 };

@@ -13,48 +13,90 @@
 
 	let {
 		projectId,
-		items,
+		initialItems,
 		canEdit,
 	}: {
 		projectId: string;
-		items: BomItem[];
+		initialItems: BomItem[];
 		canEdit: boolean;
 	} = $props();
 
+	let items = $state(initialItems);
+
 	let editingId = $state<string | null>(null);
 	let savingId = $state<string | null>(null);
-	let saveError = $state<{ id: string; message: string } | null>(null);
+	let deletingId = $state<string | null>(null);
+	let rowError = $state<{ id: string; message: string } | null>(null);
+
+	let adding = $state(false);
+	let addError = $state<string | null>(null);
 
 	function startEdit(id: string) {
 		editingId = id;
-		saveError = null;
+		rowError = null;
 	}
 
 	function cancelEdit() {
 		editingId = null;
-		saveError = null;
+		rowError = null;
 	}
 
 	async function handleSave(id: string) {
-		saveError = null;
+		rowError = null;
 		savingId = id;
 
 		const form = document.getElementById(`bom-update-${id}`) as HTMLFormElement;
 		const res = await fetch(form.action, { method: 'POST', body: new FormData(form) });
 
-		if (res.ok) {
-			location.reload();
+		if (!res.ok) {
+			rowError = { id, message: await res.text() };
+			savingId = null;
 			return;
 		}
 
-		saveError = { id, message: await res.text() };
+		const updated: BomItem = await res.json();
+		items = items.map((item) => (item.id === id ? updated : item));
+		editingId = null;
 		savingId = null;
 	}
 
-	function handleDeleteSubmit(e: SubmitEvent) {
-		if (!confirm('Delete this BOM item?')) {
-			e.preventDefault();
+	async function handleDelete(id: string) {
+		if (!confirm('Delete this BOM item?')) return;
+
+		rowError = null;
+		deletingId = id;
+
+		const res = await fetch(`/api/bom/${id}/delete`, { method: 'POST' });
+
+		if (!res.ok) {
+			rowError = { id, message: await res.text() };
+			deletingId = null;
+			return;
 		}
+
+		items = items.filter((item) => item.id !== id);
+		deletingId = null;
+	}
+
+	async function handleAddSubmit(e: SubmitEvent) {
+		e.preventDefault();
+		const form = e.currentTarget as HTMLFormElement;
+
+		adding = true;
+		addError = null;
+
+		const res = await fetch(form.action, { method: 'POST', body: new FormData(form) });
+
+		if (!res.ok) {
+			addError = await res.text();
+			adding = false;
+			return;
+		}
+
+		const created: BomItem = await res.json();
+		items = [...items, created];
+		form.reset();
+		adding = false;
 	}
 </script>
 
@@ -124,11 +166,6 @@
 							</td>
 						{/if}
 					</tr>
-					{#if saveError?.id === item.id}
-						<tr>
-							<td colspan={canEdit ? 8 : 7} class="save-error">{saveError.message}</td>
-						</tr>
-					{/if}
 				{:else}
 					<tr>
 						<td>{item.part_name}</td>
@@ -149,9 +186,16 @@
 						{#if canEdit}
 							<td class="row-actions">
 								<button type="button" class="btn-plain" onclick={() => startEdit(item.id)}>Edit</button>
-								<button form={`bom-delete-${item.id}`} type="submit" class="btn-danger">Delete</button>
+								<button type="button" class="btn-danger" onclick={() => handleDelete(item.id)} disabled={deletingId === item.id}>
+									{deletingId === item.id ? 'Deleting…' : 'Delete'}
+								</button>
 							</td>
 						{/if}
+					</tr>
+				{/if}
+				{#if rowError?.id === item.id}
+					<tr>
+						<td colspan={canEdit ? 8 : 7} class="row-error">{rowError.message}</td>
 					</tr>
 				{/if}
 			{/each}
@@ -163,10 +207,9 @@
 {#if canEdit}
 	{#each items as item (item.id)}
 		<form id={`bom-update-${item.id}`} method="POST" action={`/api/bom/${item.id}/update`} class="hidden-form"></form>
-		<form id={`bom-delete-${item.id}`} method="POST" action={`/api/bom/${item.id}/delete`} class="hidden-form" onsubmit={handleDeleteSubmit}></form>
 	{/each}
 
-	<form method="POST" action={`/api/projects/${projectId}/bom/create`} onsubmit={(e) => (e.currentTarget.querySelector('button')!.disabled = true)}>
+	<form method="POST" action={`/api/projects/${projectId}/bom/create`} onsubmit={handleAddSubmit}>
 		<input type="text" name="partName" placeholder="Part name" maxlength="200" required />
 		<input type="text" name="description" placeholder="Description" maxlength="1000" />
 		<input type="number" step="any" min="0" name="quantity" placeholder="Qty" />
@@ -174,8 +217,9 @@
 		<input type="number" step="any" min="0" name="unitCost" placeholder="Unit cost" />
 		<input type="text" name="supplier" placeholder="Supplier" maxlength="200" />
 		<input type="url" name="itemUrl" placeholder="Supplier link" />
-		<button type="submit">Add BOM item</button>
+		<button type="submit" disabled={adding}>{adding ? 'Adding…' : 'Add BOM item'}</button>
 	</form>
+	{#if addError}<p class="row-error">{addError}</p>{/if}
 {/if}
 
 <style>
@@ -229,7 +273,7 @@
 		display: none;
 	}
 
-	.save-error {
+	.row-error {
 		color: var(--color-danger);
 	}
 </style>

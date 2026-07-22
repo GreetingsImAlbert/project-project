@@ -6,7 +6,7 @@ import { wouldExceedStorageQuota } from '../../../../lib/r2-quota';
 
 export const prerender = false;
 
-export const POST: APIRoute = async ({ params, request, locals, redirect }) => {
+export const POST: APIRoute = async ({ params, request, locals }) => {
 	if (!locals.user) {
 		return new Response('Unauthorized', { status: 401 });
 	}
@@ -34,9 +34,8 @@ export const POST: APIRoute = async ({ params, request, locals, redirect }) => {
 		return new Response('Forbidden', { status: 403 });
 	}
 
-	const formData = await request.formData();
-	const targetFolderId = formData.get('folderId')?.toString() || null;
-	const returnFolderId = formData.get('returnFolderId')?.toString() || null;
+	const body = await request.json() as { folderId?: string | null };
+	const targetFolderId = body.folderId || null;
 
 	if (targetFolderId) {
 		const { data: targetFolder } = await locals.supabase
@@ -83,24 +82,24 @@ export const POST: APIRoute = async ({ params, request, locals, redirect }) => {
 		return new Response(`Failed to copy source file in storage: ${await copyRes.text()}`, { status: 502 });
 	}
 
-	const { error: insertError } = await locals.supabase.from('files').insert({
-		project_id: file.project_id,
-		folder_id: targetFolderId,
-		uploaded_by: locals.user.id,
-		filename: file.filename,
-		r2_key: newR2Key,
-		mime_type: file.mime_type,
-		size_bytes: file.size_bytes,
-	});
+	const { data: created, error: insertError } = await locals.supabase
+		.from('files')
+		.insert({
+			project_id: file.project_id,
+			folder_id: targetFolderId,
+			uploaded_by: locals.user.id,
+			filename: file.filename,
+			r2_key: newR2Key,
+			mime_type: file.mime_type,
+			size_bytes: file.size_bytes,
+		})
+		.select('id, filename, size_bytes, mime_type, created_at, profiles(display_name)')
+		.single();
 
 	if (insertError) {
 		await r2.fetch(destUrl, { method: 'DELETE' }).catch(() => {});
 		return new Response(`Failed to save copied file: ${insertError.message}`, { status: 500 });
 	}
 
-	const redirectUrl = returnFolderId
-		? `/projects/${file.project_id}?folder=${returnFolderId}`
-		: `/projects/${file.project_id}`;
-
-	return redirect(redirectUrl);
+	return Response.json(created);
 };

@@ -76,12 +76,12 @@ const { data: bomItems } = await Astro.locals.supabase
 		client:load
 		projectId={project.id}
 		canEdit={canEdit}
-		allFolders={allFolders ?? []}
+		initialAllFolders={allFolders ?? []}
 		initialFolderId={currentFolderId}
 		initialFiles={files ?? []}
 	/>
 
-	<BomTable client:load projectId={project.id} items={bomItems ?? []} canEdit={canEdit} />
+	<BomTable client:load projectId={project.id} initialItems={bomItems ?? []} canEdit={canEdit} />
 
 	{canEdit && <UploadForm client:load projectId={project.id} currentFolderId={currentFolderId} />}
 </BaseLayout>

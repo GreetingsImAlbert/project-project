@@ -9,7 +9,7 @@ function parseNumeric(value: FormDataEntryValue | null): number | null {
 	return Number.isFinite(num) ? num : NaN;
 }
 
-export const POST: APIRoute = async ({ params, request, locals, redirect }) => {
+export const POST: APIRoute = async ({ params, request, locals }) => {
 	if (!locals.user) {
 		return new Response('Unauthorized', { status: 401 });
 	}
@@ -84,7 +84,7 @@ export const POST: APIRoute = async ({ params, request, locals, redirect }) => {
 		}
 	}
 
-	const { error } = await locals.supabase
+	const { data: updated, error } = await locals.supabase
 		.from('bom_items')
 		.update({
 			part_name: partName,
@@ -95,11 +95,13 @@ export const POST: APIRoute = async ({ params, request, locals, redirect }) => {
 			supplier,
 			item_url: itemUrl,
 		})
-		.eq('id', itemId);
+		.eq('id', itemId)
+		.select('id, part_name, description, quantity, unit, unit_cost, supplier, item_url, total_cost')
+		.single();
 
 	if (error) {
 		return new Response(`Failed to update BOM item: ${error.message}`, { status: 500 });
 	}
 
-	return redirect(`/projects/${item.project_id}`);
+	return Response.json(updated);
 };

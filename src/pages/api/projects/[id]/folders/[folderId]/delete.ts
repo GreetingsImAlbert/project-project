@@ -2,7 +2,7 @@ import type { APIRoute } from 'astro';
 
 export const prerender = false;
 
-export const POST: APIRoute = async ({ params, locals, redirect }) => {
+export const POST: APIRoute = async ({ params, locals }) => {
 	if (!locals.user) {
 		return new Response('Unauthorized', { status: 401 });
 	}
@@ -52,9 +52,5 @@ export const POST: APIRoute = async ({ params, locals, redirect }) => {
 		return new Response(`Failed to delete folder: ${error.message}`, { status: 500 });
 	}
 
-	const redirectUrl = folder.parent_folder_id
-		? `/projects/${projectId}?folder=${folder.parent_folder_id}`
-		: `/projects/${projectId}`;
-
-	return redirect(redirectUrl);
+	return new Response(null, { status: 204 });
 };

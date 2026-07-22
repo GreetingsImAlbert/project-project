@@ -16,14 +16,24 @@
 		currentFolderId,
 		allFolders,
 		files,
+		onFileMoved,
+		onFileCopied,
 	}: {
 		canEdit: boolean;
 		currentFolderId: string | null;
 		allFolders: Folder[];
 		files: FileRow[];
+		onFileMoved: (fileId: string, targetFolderId: string | null) => void;
+		onFileCopied: (file: FileRow, targetFolderId: string | null) => void;
 	} = $props();
 
 	let loadingId = $state<string | null>(null);
+	let movingId = $state<string | null>(null);
+	let copyingId = $state<string | null>(null);
+	let rowError = $state<{ id: string; message: string } | null>(null);
+
+	let moveSelectEls: Record<string, HTMLSelectElement> = {};
+	let copySelectEls: Record<string, HTMLSelectElement> = {};
 
 	async function download(file: FileRow) {
 		loadingId = file.id;
@@ -38,6 +48,49 @@
 		const { downloadUrl } = await res.json();
 		window.location.href = downloadUrl;
 		loadingId = null;
+	}
+
+	async function handleMove(fileId: string) {
+		const targetFolderId = moveSelectEls[fileId]?.value || null;
+		rowError = null;
+		movingId = fileId;
+
+		const res = await fetch(`/api/files/${fileId}/move`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ folderId: targetFolderId }),
+		});
+
+		if (!res.ok) {
+			rowError = { id: fileId, message: await res.text() };
+			movingId = null;
+			return;
+		}
+
+		onFileMoved(fileId, targetFolderId);
+		movingId = null;
+	}
+
+	async function handleCopy(fileId: string) {
+		const targetFolderId = copySelectEls[fileId]?.value || null;
+		rowError = null;
+		copyingId = fileId;
+
+		const res = await fetch(`/api/files/${fileId}/copy`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ folderId: targetFolderId }),
+		});
+
+		if (!res.ok) {
+			rowError = { id: fileId, message: await res.text() };
+			copyingId = null;
+			return;
+		}
+
+		const copied: FileRow = await res.json();
+		onFileCopied(copied, targetFolderId);
+		copyingId = null;
 	}
 </script>
 
@@ -60,27 +113,33 @@
 
 			{#if canEdit}
 				<div class="file-actions">
-					<form method="POST" action={`/api/files/${file.id}/move`}>
-						<input type="hidden" name="returnFolderId" value={currentFolderId ?? ''} />
-						<select name="folderId">
+					<div class="file-action-group">
+						<select bind:this={moveSelectEls[file.id]}>
 							<option value="">Root</option>
 							{#each allFolders as folder (folder.id)}
 								<option value={folder.id} selected={folder.id === currentFolderId}>{folder.name}</option>
 							{/each}
 						</select>
-						<button type="submit" class="btn-plain">Move</button>
-					</form>
-					<form method="POST" action={`/api/files/${file.id}/copy`}>
-						<input type="hidden" name="returnFolderId" value={currentFolderId ?? ''} />
-						<select name="folderId">
+						<button type="button" class="btn-plain" onclick={() => handleMove(file.id)} disabled={movingId === file.id}>
+							{movingId === file.id ? 'Moving…' : 'Move'}
+						</button>
+					</div>
+					<div class="file-action-group">
+						<select bind:this={copySelectEls[file.id]}>
 							<option value="">Root</option>
 							{#each allFolders as folder (folder.id)}
 								<option value={folder.id} selected={folder.id === currentFolderId}>{folder.name}</option>
 							{/each}
 						</select>
-						<button type="submit" class="btn-plain">Copy</button>
-					</form>
+						<button type="button" class="btn-plain" onclick={() => handleCopy(file.id)} disabled={copyingId === file.id}>
+							{copyingId === file.id ? 'Copying…' : 'Copy'}
+						</button>
+					</div>
 				</div>
+			{/if}
+
+			{#if rowError?.id === file.id}
+				<p class="row-error">{rowError.message}</p>
 			{/if}
 		</li>
 	{/each}
@@ -103,10 +162,16 @@
 	.file-actions {
 		display: flex;
 		flex-wrap: wrap;
-		gap: var(--space-3);
+		gap: var(--space-4);
 	}
 
-	.file-actions form {
+	.file-action-group {
+		display: flex;
+		gap: var(--space-2);
+	}
+
+	.row-error {
+		color: var(--color-danger);
 		margin: 0;
 	}
 </style>

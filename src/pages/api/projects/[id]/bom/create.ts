@@ -9,7 +9,7 @@ function parseNumeric(value: FormDataEntryValue | null): number | null {
 	return Number.isFinite(num) ? num : NaN;
 }
 
-export const POST: APIRoute = async ({ params, request, locals, redirect }) => {
+export const POST: APIRoute = async ({ params, request, locals }) => {
 	if (!locals.user) {
 		return new Response('Unauthorized', { status: 401 });
 	}
@@ -74,20 +74,24 @@ export const POST: APIRoute = async ({ params, request, locals, redirect }) => {
 		}
 	}
 
-	const { error } = await locals.supabase.from('bom_items').insert({
-		project_id: projectId,
-		part_name: partName,
-		description,
-		quantity,
-		unit,
-		unit_cost: unitCost,
-		supplier,
-		item_url: itemUrl,
-	});
+	const { data: created, error } = await locals.supabase
+		.from('bom_items')
+		.insert({
+			project_id: projectId,
+			part_name: partName,
+			description,
+			quantity,
+			unit,
+			unit_cost: unitCost,
+			supplier,
+			item_url: itemUrl,
+		})
+		.select('id, part_name, description, quantity, unit, unit_cost, supplier, item_url, total_cost')
+		.single();
 
 	if (error) {
 		return new Response(`Failed to create BOM item: ${error.message}`, { status: 500 });
 	}
 
-	return redirect(`/projects/${projectId}`);
+	return Response.json(created);
 };
