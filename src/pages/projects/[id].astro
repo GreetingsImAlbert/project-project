@@ -63,12 +63,12 @@ const { data: bomItems } = await Astro.locals.supabase
 	.order('created_at', { ascending: true });
 ---
 <BaseLayout title={project.name}>
+	<p><a href="/projects">← Back to projects</a></p>
+
 	<div class="project-shell">
 		<ProjectSidebar project={project} members={members ?? []} userRole={userRole} />
 
 		<div class="project-main">
-			<p><a href="/projects">← Back to projects</a></p>
-
 			<h2 id="files">Files</h2>
 
 			<FileBrowser
@@ -97,9 +97,16 @@ const { data: bomItems } = await Astro.locals.supabase
 		min-width: 0;
 	}
 
+	.project-main > h2:first-child {
+		margin-top: 0;
+		padding-top: 0;
+		border-top: none;
+	}
+
 	@media (max-width: 768px) {
 		.project-shell {
 			flex-direction: column;
+			align-items: stretch;
 		}
 	}
 </style>
