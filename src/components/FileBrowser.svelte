@@ -158,13 +158,24 @@
 	});
 </script>
 
-<p class="breadcrumbs">
-	<a href={hrefFor(null)} onclick={(e) => handleLinkClick(e, null)}>Root</a>
-	{#each breadcrumbs as crumb (crumb.id)}
-		{' / '}
-		<a href={hrefFor(crumb.id)} onclick={(e) => handleLinkClick(e, crumb.id)}>{crumb.name}</a>
-	{/each}
-</p>
+<div class="browser-header">
+	<p class="breadcrumbs">
+		<a href={hrefFor(null)} onclick={(e) => handleLinkClick(e, null)}>Root</a>
+		{#each breadcrumbs as crumb (crumb.id)}
+			{' / '}
+			<a href={hrefFor(crumb.id)} onclick={(e) => handleLinkClick(e, crumb.id)}>{crumb.name}</a>
+		{/each}
+	</p>
+
+	{#if canEdit}
+		<form class="create-folder-form" onsubmit={handleCreateFolder} action={`/api/projects/${projectId}/folders/create`}>
+			<input type="hidden" name="parentFolderId" value={currentFolderId ?? ''} />
+			<input type="text" name="name" placeholder="New folder name" required />
+			<button type="submit" disabled={creatingFolder}>{creatingFolder ? 'Creating…' : 'Create folder'}</button>
+		</form>
+	{/if}
+</div>
+{#if createFolderError}<p class="row-error">{createFolderError}</p>{/if}
 
 {#if subfolders.length > 0}
 	<ul class="list-plain folder-list">
@@ -184,15 +195,6 @@
 	</ul>
 {/if}
 
-{#if canEdit}
-	<form onsubmit={handleCreateFolder} action={`/api/projects/${projectId}/folders/create`}>
-		<input type="hidden" name="parentFolderId" value={currentFolderId ?? ''} />
-		<input type="text" name="name" placeholder="New folder name" required />
-		<button type="submit" disabled={creatingFolder}>{creatingFolder ? 'Creating…' : 'Create folder'}</button>
-	</form>
-	{#if createFolderError}<p class="row-error">{createFolderError}</p>{/if}
-{/if}
-
 {#if error}<p class="row-error">{error}</p>{/if}
 
 <FileList
@@ -210,6 +212,18 @@
 {/if}
 
 <style>
+	.browser-header {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: space-between;
+		align-items: flex-start;
+		gap: var(--space-3);
+	}
+
+	.create-folder-form {
+		margin: 0;
+	}
+
 	.folder-row {
 		display: flex;
 		align-items: center;

@@ -18,11 +18,44 @@
 
 	let status = $state('');
 	let uploading = $state(false);
+	let dragging = $state(false);
+	let selectedFile: File | null = $state(null);
 	let fileInput: HTMLInputElement | undefined = $state();
+
+	function openPicker() {
+		fileInput?.click();
+	}
+
+	function handleKeydown(e: KeyboardEvent) {
+		if (e.key === 'Enter' || e.key === ' ') {
+			e.preventDefault();
+			openPicker();
+		}
+	}
+
+	function handleDragOver(e: DragEvent) {
+		e.preventDefault();
+		dragging = true;
+	}
+
+	function handleDragLeave() {
+		dragging = false;
+	}
+
+	function handleDrop(e: DragEvent) {
+		e.preventDefault();
+		dragging = false;
+		const file = e.dataTransfer?.files?.[0];
+		if (file) selectedFile = file;
+	}
+
+	function handleFileInputChange() {
+		selectedFile = fileInput?.files?.[0] ?? null;
+	}
 
 	async function handleSubmit(e: SubmitEvent) {
 		e.preventDefault();
-		const file = fileInput?.files?.[0];
+		const file = selectedFile;
 		if (!file) return;
 
 		uploading = true;
@@ -73,6 +106,7 @@
 			const created: FileRow = await confirmRes.json();
 			onUploaded(created);
 			status = 'Upload complete!';
+			selectedFile = null;
 			if (fileInput) fileInput.value = '';
 		} else {
 			const result: { cleanedUp: boolean; error: string } = await confirmRes.json();
@@ -85,9 +119,55 @@
 	}
 </script>
 
-<h2>Upload a file</h2>
 <form onsubmit={handleSubmit}>
-	<input type="file" bind:this={fileInput} required />
-	<button type="submit" disabled={uploading}>Upload</button>
+	<input type="file" bind:this={fileInput} onchange={handleFileInputChange} class="visually-hidden" tabindex="-1" />
+	<div
+		class="dropzone"
+		class:dragging
+		class:has-file={!!selectedFile}
+		role="button"
+		tabindex="0"
+		onclick={openPicker}
+		onkeydown={handleKeydown}
+		ondragover={handleDragOver}
+		ondragleave={handleDragLeave}
+		ondrop={handleDrop}
+	>
+		{selectedFile ? selectedFile.name : 'Drag a file here, or click to browse'}
+	</div>
+	<button type="submit" disabled={uploading || !selectedFile}>Upload</button>
 </form>
 {#if status}<p class="muted">{status}</p>{/if}
+
+<style>
+	.visually-hidden {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip: rect(0 0 0 0);
+		white-space: nowrap;
+	}
+
+	.dropzone {
+		width: 260px;
+		max-width: 100%;
+		background: var(--color-bg);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-sm);
+		padding: var(--space-2) var(--space-3);
+		color: var(--color-muted);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		cursor: pointer;
+	}
+
+	.dropzone.dragging {
+		border-color: var(--color-border-strong);
+	}
+
+	.dropzone.has-file {
+		color: var(--color-fg);
+	}
+</style>
