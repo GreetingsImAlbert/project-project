@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import FileList from './FileList.svelte';
+	import UploadForm from './UploadForm.svelte';
 
 	interface Folder {
 		id: string;
@@ -104,6 +105,10 @@
 		}
 	}
 
+	function handleUploaded(file: FileRow) {
+		files = [...files, file];
+	}
+
 	async function handleCreateFolder(e: SubmitEvent) {
 		e.preventDefault();
 		const form = e.currentTarget as HTMLFormElement;
@@ -199,6 +204,10 @@
 	onFileCopied={handleFileCopied}
 />
 {#if loading}<p class="muted">Loading…</p>{/if}
+
+{#if canEdit}
+	<UploadForm projectId={projectId} currentFolderId={currentFolderId} onUploaded={handleUploaded} />
+{/if}
 
 <style>
 	.folder-row {

@@ -3,7 +3,6 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 import FileBrowser from '../../components/FileBrowser.svelte';
 import BomTable from '../../components/BomTable.svelte';
 import MembersPanel from '../../components/MembersPanel.astro';
-import UploadForm from '../../components/UploadForm.svelte';
 
 export const prerender = false;
 
@@ -82,6 +81,4 @@ const { data: bomItems } = await Astro.locals.supabase
 	/>
 
 	<BomTable client:load projectId={project.id} initialItems={bomItems ?? []} canEdit={canEdit} />
-
-	{canEdit && <UploadForm client:load projectId={project.id} currentFolderId={currentFolderId} />}
 </BaseLayout>

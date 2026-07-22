@@ -1,5 +1,20 @@
 <script lang="ts">
-	let { projectId, currentFolderId }: { projectId: string; currentFolderId: string | null } = $props();
+	interface FileRow {
+		id: string;
+		filename: string;
+		size_bytes: number | null;
+		profiles: { display_name: string } | null;
+	}
+
+	let {
+		projectId,
+		currentFolderId,
+		onUploaded,
+	}: {
+		projectId: string;
+		currentFolderId: string | null;
+		onUploaded: (file: FileRow) => void;
+	} = $props();
 
 	let status = $state('');
 	let uploading = $state(false);
@@ -55,15 +70,18 @@
 		});
 
 		if (confirmRes.ok) {
+			const created: FileRow = await confirmRes.json();
+			onUploaded(created);
 			status = 'Upload complete!';
-			location.reload();
+			if (fileInput) fileInput.value = '';
 		} else {
 			const result: { cleanedUp: boolean; error: string } = await confirmRes.json();
 			status = result.cleanedUp
 				? `Upload failed (cleaned up): ${result.error}`
 				: `Upload failed AND cleanup failed: ${result.error}`;
-			uploading = false;
 		}
+
+		uploading = false;
 	}
 </script>
 

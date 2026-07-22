@@ -65,7 +65,7 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 		return new Response('Storage quota exceeded', { status: 507 });
 	}
 
-	const { error } = await locals.supabase
+	const { data: created, error } = await locals.supabase
 		.from('files')
 		.insert({
 			project_id: projectId,
@@ -75,7 +75,9 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 			r2_key: body.r2Key,
 			mime_type: body.mimeType ?? null,
 			size_bytes: sizeBytes,
-		});
+		})
+		.select('id, filename, size_bytes, mime_type, created_at, profiles(display_name)')
+		.single();
 
 	if (error) {
 		let cleanedUp = false;
@@ -98,5 +100,5 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 		);
 	}
 
-	return new Response('OK', { status: 200 });
+	return Response.json(created);
 };
