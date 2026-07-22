@@ -19,10 +19,10 @@ Every time you provide a commit message, first update `CHECKLIST.md` to reflect 
 
 ## Commit messages
 
-Give the user the commit message text — do not run `git commit` yourself. Format: a short summary line, blank line, then a bulleted list of what changed, one bullet per change, starting with a verb (`Add`/`Change`/`Fix`/`Remove`/...):
+Give the user the commit message text — do not run `git commit` yourself. Format: a short summary line prefixed with a conventional-commit type (`feat:`, `fix:`, `docs:`, `refactor:`, `style:`, `chore:`, ...), blank line, then a bulleted list of what changed, one bullet per change, starting with a verb (`Add`/`Change`/`Fix`/`Remove`/...):
 
 ```
-<short summary line>
+<type>: <short summary line>
 
 - Add ...
 - Change ...
@@ -67,7 +67,7 @@ npx astro check           # Astro-aware type-check (.astro files + TS)
 - `bom_items` RLS mirrors the `folders` pattern (`is_project_member`/`project_role`, no creator column to check).
 - Two triggers run automatically outside app code: `on_auth_user_created` creates the `profiles` row, `on_project_created` adds the creator to `project_members` as owner.
 
-**File upload/download flow** (see `src/pages/projects/[id].astro` inline script + the API routes it calls): client asks `POST /api/projects/[id]/files/upload-url` for a presigned R2 PUT URL, `PUT`s the file directly to R2 from the browser, then calls `POST /api/projects/[id]/files/confirm` to insert the `files` row (which re-derives the real size via an R2 `HEAD` request rather than trusting the client); if that insert fails, the endpoint compensates by deleting the just-uploaded R2 object (no real transaction across R2 + Postgres). Downloads go through `GET /api/files/[fileId]/download-url` for a presigned GET. When touching presigned URLs: don't sign/send `Content-Type`; add query params like `response-content-disposition` before signing, not after.
+**File upload/download flow** (see `src/components/UploadForm.svelte`/`FileList.svelte` + the API routes they call): client asks `POST /api/projects/[id]/files/upload-url` for a presigned R2 PUT URL, `PUT`s the file directly to R2 from the browser, then calls `POST /api/projects/[id]/files/confirm` to insert the `files` row (which re-derives the real size via an R2 `HEAD` request rather than trusting the client); if that insert fails, the endpoint compensates by deleting the just-uploaded R2 object (no real transaction across R2 + Postgres). Downloads go through `GET /api/files/[fileId]/download-url` for a presigned GET. When touching presigned URLs: don't sign/send `Content-Type`; add query params like `response-content-disposition` before signing, not after.
 
 **Type surface gotchas:**
 - `src/env.d.ts` declares `App.Locals` (`supabase`, `user`) — it imports types, so it must stay wrapped in `declare global { ... } / export {}` or it stops being treated as ambient.

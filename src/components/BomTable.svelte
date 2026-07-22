@@ -48,6 +48,7 @@
 {#if items.length === 0}
 	<p class="muted">No BOM items yet.</p>
 {:else}
+	<div class="table-scroll">
 	<table>
 		<thead>
 			<tr>
@@ -110,6 +111,7 @@
 			{/each}
 		</tbody>
 	</table>
+	</div>
 {/if}
 
 {#if canEdit}

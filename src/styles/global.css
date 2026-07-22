@@ -190,3 +190,44 @@ thead th {
 .breadcrumbs a {
 	color: var(--color-muted);
 }
+
+/* Tables that may need to scroll instead of overflowing on narrow viewports */
+
+.table-scroll {
+	overflow-x: auto;
+	-webkit-overflow-scrolling: touch;
+}
+
+/* Responsive */
+
+@media (max-width: 640px) {
+	.container {
+		padding: 0 var(--space-4) var(--space-6);
+	}
+
+	h1 {
+		font-size: 1.25rem;
+	}
+
+	h2 {
+		font-size: 0.95rem;
+		margin-top: var(--space-6);
+	}
+
+	form {
+		flex-direction: column;
+		align-items: stretch;
+	}
+
+	form input,
+	form select,
+	form textarea {
+		width: 100%;
+	}
+
+	th,
+	td {
+		padding: var(--space-2);
+		font-size: 0.85rem;
+	}
+}
