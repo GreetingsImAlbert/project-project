@@ -17,38 +17,41 @@ export type Database = {
       bom_items: {
         Row: {
           created_at: string | null
+          description: string | null
           id: string
           item_url: string | null
-          notes: string | null
           part_name: string
-          part_number: string | null
           project_id: string
           quantity: number | null
           supplier: string | null
+          total_cost: number | null
+          unit: string | null
           unit_cost: number | null
         }
         Insert: {
           created_at?: string | null
+          description?: string | null
           id?: string
           item_url?: string | null
-          notes?: string | null
           part_name: string
-          part_number?: string | null
           project_id: string
           quantity?: number | null
           supplier?: string | null
+          total_cost?: number | null
+          unit?: string | null
           unit_cost?: number | null
         }
         Update: {
           created_at?: string | null
+          description?: string | null
           id?: string
           item_url?: string | null
-          notes?: string | null
           part_name?: string
-          part_number?: string | null
           project_id?: string
           quantity?: number | null
           supplier?: string | null
+          total_cost?: number | null
+          unit?: string | null
           unit_cost?: number | null
         }
         Relationships: [
@@ -71,6 +74,7 @@ export type Database = {
           project_id: string
           r2_key: string
           size_bytes: number | null
+          storage_provider: string
           uploaded_by: string
         }
         Insert: {
@@ -82,6 +86,7 @@ export type Database = {
           project_id: string
           r2_key: string
           size_bytes?: number | null
+          storage_provider?: string
           uploaded_by: string
         }
         Update: {
@@ -93,6 +98,7 @@ export type Database = {
           project_id?: string
           r2_key?: string
           size_bytes?: number | null
+          storage_provider?: string
           uploaded_by?: string
         }
         Relationships: [
@@ -259,6 +265,7 @@ export type Database = {
         Args: { check_project_id: string }
         Returns: boolean
       }
+      project_role: { Args: { check_project_id: string }; Returns: string }
       shares_project_with: {
         Args: { target_user_id: string }
         Returns: boolean

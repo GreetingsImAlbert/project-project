@@ -61,6 +61,12 @@ filesQuery = currentFolderId ? filesQuery.eq('folder_id', currentFolderId) : fil
 
 const { data: files } = await filesQuery
 	.overrideTypes<{ id: string; filename: string; size_bytes: number | null; mime_type: string | null; created_at: string; profiles: { display_name: string } }[]>()
+
+const { data: bomItems } = await Astro.locals.supabase
+	.from('bom_items')
+	.select('id, part_name, description, quantity, unit, unit_cost, supplier, item_url, total_cost')
+	.eq('project_id', id)
+	.order('created_at', { ascending: true });
 ---
 <BaseLayout title={project.name}>
 	<h1>{project.name}</h1>
@@ -143,6 +149,91 @@ const { data: files } = await filesQuery
 			</li>
 		))}
 	</ul>
+
+	<h2>Bill of Materials</h2>
+
+	{bomItems && bomItems.length === 0 && <p>No BOM items yet.</p>}
+	{bomItems && bomItems.length > 0 && (
+		<table id="bom-table">
+			<thead>
+				<tr>
+					<th>Part name</th>
+					<th>Description</th>
+					<th>Qty</th>
+					<th>Unit</th>
+					<th>Unit cost</th>
+					<th>Supplier</th>
+					<th>Total cost</th>
+					{canEdit && <th></th>}
+				</tr>
+			</thead>
+			<tbody>
+				{bomItems.map((item) => (
+					<>
+						<tr class="bom-row" data-bom-id={item.id}>
+							<td>{item.part_name}</td>
+							<td>{item.description}</td>
+							<td>{item.quantity}</td>
+							<td>{item.unit}</td>
+							<td>{item.unit_cost}</td>
+							<td>
+								{item.supplier && (
+									item.item_url
+										? <a href={item.item_url} target="_blank" rel="noopener noreferrer">{item.supplier}</a>
+										: item.supplier
+								)}
+							</td>
+							<td>{item.total_cost}</td>
+							{canEdit && (
+								<td>
+									<button type="button" class="bom-edit-btn" data-bom-id={item.id}>Edit</button>
+									<button form={`bom-delete-${item.id}`} type="submit" class="bom-delete-btn">Delete</button>
+								</td>
+							)}
+						</tr>
+						{canEdit && (
+							<tr class="bom-edit-row" data-bom-id={item.id} style="display:none">
+								<td><input form={`bom-update-${item.id}`} type="text" name="partName" value={item.part_name} maxlength="200" required /></td>
+								<td><input form={`bom-update-${item.id}`} type="text" name="description" value={item.description ?? ''} maxlength="1000" /></td>
+								<td><input form={`bom-update-${item.id}`} type="number" step="any" min="0" name="quantity" value={item.quantity ?? ''} /></td>
+								<td><input form={`bom-update-${item.id}`} type="text" name="unit" value={item.unit ?? ''} placeholder="e.g. 5 pcs" maxlength="50" /></td>
+								<td><input form={`bom-update-${item.id}`} type="number" step="any" min="0" name="unitCost" value={item.unit_cost ?? ''} /></td>
+								<td>
+									<input form={`bom-update-${item.id}`} type="text" name="supplier" value={item.supplier ?? ''} placeholder="Supplier name" maxlength="200" />
+									<input form={`bom-update-${item.id}`} type="url" name="itemUrl" value={item.item_url ?? ''} placeholder="Supplier link" />
+								</td>
+								<td>—</td>
+								<td>
+									<button form={`bom-update-${item.id}`} type="submit" class="bom-save-btn">Save</button>
+									<button type="button" class="bom-cancel-btn" data-bom-id={item.id}>Cancel</button>
+								</td>
+							</tr>
+						)}
+					</>
+				))}
+			</tbody>
+		</table>
+	)}
+
+	{canEdit && bomItems && bomItems.map((item) => (
+		<>
+			<form id={`bom-update-${item.id}`} method="POST" action={`/api/bom/${item.id}/update`}></form>
+			<form id={`bom-delete-${item.id}`} method="POST" action={`/api/bom/${item.id}/delete`}></form>
+		</>
+	))}
+
+	{canEdit && (
+		<form method="POST" action={`/api/projects/${project.id}/bom/create`} onsubmit="this.querySelector('button').disabled = true">
+			<input type="text" name="partName" placeholder="Part name" maxlength="200" required />
+			<input type="text" name="description" placeholder="Description" maxlength="1000" />
+			<input type="number" step="any" min="0" name="quantity" placeholder="Qty" />
+			<input type="text" name="unit" placeholder="Unit (e.g. 5 pcs)" maxlength="50" />
+			<input type="number" step="any" min="0" name="unitCost" placeholder="Unit cost" />
+			<input type="text" name="supplier" placeholder="Supplier" maxlength="200" />
+			<input type="url" name="itemUrl" placeholder="Supplier link" />
+			<button type="submit">Add BOM item</button>
+		</form>
+	)}
 
 	{userRole === 'owner' && (
 		<>
@@ -256,6 +347,34 @@ const { data: files } = await filesQuery
 
 		const { downloadUrl } = await res.json();
 		window.location.href = downloadUrl;
+	});
+
+	document.getElementById('bom-table')?.addEventListener('click', (e) => {
+		const target = e.target;
+		if (!target.classList) return;
+
+		if (target.classList.contains('bom-edit-btn')) {
+			const id = target.dataset.bomId;
+			document.querySelector(`tr.bom-row[data-bom-id="${id}"]`).style.display = 'none';
+			document.querySelector(`tr.bom-edit-row[data-bom-id="${id}"]`).style.display = '';
+		}
+
+		if (target.classList.contains('bom-cancel-btn')) {
+			const id = target.dataset.bomId;
+			document.querySelector(`tr.bom-edit-row[data-bom-id="${id}"]`).style.display = 'none';
+			document.querySelector(`tr.bom-row[data-bom-id="${id}"]`).style.display = '';
+		}
+
+		if (target.classList.contains('bom-delete-btn') && !confirm('Delete this BOM item?')) {
+			e.preventDefault();
+		}
+	});
+
+	document.querySelectorAll('form[id^="bom-update-"]').forEach((f) => {
+		f.addEventListener('submit', () => {
+			const saveBtn = document.querySelector(`.bom-save-btn[form="${f.id}"]`);
+			if (saveBtn) saveBtn.disabled = true;
+		});
 	});
 
 </script>

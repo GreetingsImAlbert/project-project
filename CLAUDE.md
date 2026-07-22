@@ -17,6 +17,20 @@ P2 is a project-management web app for engineering students/hobbyists (CAD files
 
 Every time you provide a commit message, first update `CHECKLIST.md` to reflect it — move finished items to Done, add newly-discovered follow-ups, and keep In progress/Next up current. Do this as part of the same commit, not a separate one.
 
+## Commit messages
+
+Give the user the commit message text — do not run `git commit` yourself. Format: a short summary line, blank line, then a bulleted list of what changed, one bullet per change, starting with a verb (`Add`/`Change`/`Fix`/`Remove`/...):
+
+```
+<short summary line>
+
+- Add ...
+- Change ...
+- Fix ...
+```
+
+Never use `"` (double quotes) anywhere in a commit message — use single quotes or backticks instead.
+
 ## Development
 
 Do not start the dev server yourself. When a change is ready to test, tell the user and let them start/run it manually — they will test it themselves.
