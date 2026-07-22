@@ -12,6 +12,8 @@ P2 is a project-management web app for engineering students/hobbyists (CAD files
 - Cloudflare Workers via `@astrojs/cloudflare`, custom domain p2.albertmendoza.com, Wrangler CLI for local dev/deploy
 - Supabase: Postgres (schema + RLS) and Auth (email/password, JWT)
 - Cloudflare R2 for file storage, accessed via presigned S3-style URLs signed with `aws4fetch` (no AWS SDK)
+- Resend as custom SMTP provider for Supabase Auth emails (configured in the Supabase dashboard, not in app code — see CHECKLIST.md)
+- Plain CSS (no Tailwind/UnoCSS) — design tokens + global styles in `src/styles/`, self-hosted IBM Plex Mono via `@fontsource/ibm-plex-mono`
 
 ## Task tracking
 

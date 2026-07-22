@@ -23,17 +23,32 @@
 
 	let editingId = $state<string | null>(null);
 	let savingId = $state<string | null>(null);
+	let saveError = $state<{ id: string; message: string } | null>(null);
 
 	function startEdit(id: string) {
 		editingId = id;
+		saveError = null;
 	}
 
 	function cancelEdit() {
 		editingId = null;
+		saveError = null;
 	}
 
-	function handleSaveSubmit(id: string) {
+	async function handleSave(id: string) {
+		saveError = null;
 		savingId = id;
+
+		const form = document.getElementById(`bom-update-${id}`) as HTMLFormElement;
+		const res = await fetch(form.action, { method: 'POST', body: new FormData(form) });
+
+		if (res.ok) {
+			location.reload();
+			return;
+		}
+
+		saveError = { id, message: await res.text() };
+		savingId = null;
 	}
 
 	function handleDeleteSubmit(e: SubmitEvent) {
@@ -50,6 +65,28 @@
 {:else}
 	<div class="table-scroll">
 	<table>
+		{#if canEdit}
+			<colgroup>
+				<col style="width:14%" />
+				<col style="width:18%" />
+				<col style="width:8%" />
+				<col style="width:8%" />
+				<col style="width:9%" />
+				<col style="width:15%" />
+				<col style="width:9%" />
+				<col style="width:19%" />
+			</colgroup>
+		{:else}
+			<colgroup>
+				<col style="width:16%" />
+				<col style="width:22%" />
+				<col style="width:9%" />
+				<col style="width:9%" />
+				<col style="width:11%" />
+				<col style="width:18%" />
+				<col style="width:15%" />
+			</colgroup>
+		{/if}
 		<thead>
 			<tr>
 				<th>Part name</th>
@@ -72,17 +109,26 @@
 						<td><input form={`bom-update-${item.id}`} type="text" name="unit" value={item.unit ?? ''} placeholder="e.g. 5 pcs" maxlength="50" /></td>
 						<td><input form={`bom-update-${item.id}`} type="number" step="any" min="0" name="unitCost" value={item.unit_cost ?? ''} /></td>
 						<td>
-							<input form={`bom-update-${item.id}`} type="text" name="supplier" value={item.supplier ?? ''} placeholder="Supplier name" maxlength="200" />
-							<input form={`bom-update-${item.id}`} type="url" name="itemUrl" value={item.item_url ?? ''} placeholder="Supplier link" />
+							<div class="stacked-inputs">
+								<input form={`bom-update-${item.id}`} type="text" name="supplier" value={item.supplier ?? ''} placeholder="Supplier name" maxlength="200" />
+								<input form={`bom-update-${item.id}`} type="url" name="itemUrl" value={item.item_url ?? ''} placeholder="Supplier link" />
+							</div>
 						</td>
 						<td class="muted">—</td>
 						{#if canEdit}
 							<td class="row-actions">
-								<button form={`bom-update-${item.id}`} type="submit" onclick={() => handleSaveSubmit(item.id)} disabled={savingId === item.id}>Save</button>
+								<button type="button" onclick={() => handleSave(item.id)} disabled={savingId === item.id}>
+									{savingId === item.id ? 'Saving…' : 'Save'}
+								</button>
 								<button type="button" class="btn-plain" onclick={cancelEdit}>Cancel</button>
 							</td>
 						{/if}
 					</tr>
+					{#if saveError?.id === item.id}
+						<tr>
+							<td colspan={canEdit ? 8 : 7} class="save-error">{saveError.message}</td>
+						</tr>
+					{/if}
 				{:else}
 					<tr>
 						<td>{item.part_name}</td>
@@ -133,13 +179,57 @@
 {/if}
 
 <style>
+	.table-scroll table {
+		table-layout: fixed;
+		font-size: 0.85rem;
+	}
+
+	.table-scroll th,
+	.table-scroll td {
+		overflow-wrap: break-word;
+		word-break: break-word;
+	}
+
+	.table-scroll td {
+		position: relative;
+	}
+
+	.table-scroll td input,
+	.table-scroll td select {
+		width: 100%;
+		min-width: 0;
+		box-sizing: border-box;
+	}
+
+	.table-scroll td input:focus {
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 220px;
+		max-width: calc(100vw - var(--space-6));
+		z-index: 2;
+		background: var(--color-bg);
+		border-color: var(--color-border-strong);
+		box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+	}
+
+	.stacked-inputs {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-1);
+	}
+
 	.row-actions {
 		display: flex;
+		flex-wrap: wrap;
 		gap: var(--space-2);
-		white-space: nowrap;
 	}
 
 	.hidden-form {
 		display: none;
+	}
+
+	.save-error {
+		color: var(--color-danger);
 	}
 </style>
