@@ -2,7 +2,7 @@
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import FileBrowser from '../../components/FileBrowser.svelte';
 import BomTable from '../../components/BomTable.svelte';
-import MembersPanel from '../../components/MembersPanel.astro';
+import ProjectSidebar from '../../components/ProjectSidebar.astro';
 
 export const prerender = false;
 
@@ -63,22 +63,43 @@ const { data: bomItems } = await Astro.locals.supabase
 	.order('created_at', { ascending: true });
 ---
 <BaseLayout title={project.name}>
-	<h1>{project.name}</h1>
-	{project.description && <p class="muted">{project.description}</p>}
-	<p><a href="/projects">← Back to projects</a></p>
+	<div class="project-shell">
+		<ProjectSidebar project={project} members={members ?? []} userRole={userRole} />
 
-	<MembersPanel projectId={project.id} members={members ?? []} userRole={userRole} />
+		<div class="project-main">
+			<p><a href="/projects">← Back to projects</a></p>
 
-	<h2>Files</h2>
+			<h2 id="files">Files</h2>
 
-	<FileBrowser
-		client:load
-		projectId={project.id}
-		canEdit={canEdit}
-		initialAllFolders={allFolders ?? []}
-		initialFolderId={currentFolderId}
-		initialFiles={files ?? []}
-	/>
+			<FileBrowser
+				client:load
+				projectId={project.id}
+				canEdit={canEdit}
+				initialAllFolders={allFolders ?? []}
+				initialFolderId={currentFolderId}
+				initialFiles={files ?? []}
+			/>
 
-	<BomTable client:load projectId={project.id} initialItems={bomItems ?? []} canEdit={canEdit} />
+			<BomTable client:load projectId={project.id} initialItems={bomItems ?? []} canEdit={canEdit} />
+		</div>
+	</div>
 </BaseLayout>
+
+<style>
+	.project-shell {
+		display: flex;
+		gap: var(--space-6);
+		align-items: flex-start;
+	}
+
+	.project-main {
+		flex: 1;
+		min-width: 0;
+	}
+
+	@media (max-width: 768px) {
+		.project-shell {
+			flex-direction: column;
+		}
+	}
+</style>

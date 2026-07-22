@@ -1,0 +1,158 @@
+---
+interface Member {
+	role: string;
+	user_id: string;
+	profiles: { display_name: string; email: string };
+}
+
+interface Props {
+	project: { id: string; name: string; description: string | null };
+	members: Member[];
+	userRole: string | undefined;
+}
+
+const { project, members, userRole } = Astro.props;
+---
+
+<aside class="project-sidebar" id="project-sidebar">
+	<button type="button" class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle sidebar">☰</button>
+
+	<div class="sidebar-content">
+		<p class="sidebar-title">{project.name}</p>
+		{project.description && <p class="muted sidebar-description">{project.description}</p>}
+
+		<p class="sidebar-label">Members:</p>
+		<ul class="member-list">
+			{members.map((m) => (
+				<li class={`member-row role-${m.role}`}>{m.profiles?.display_name} ({m.role})</li>
+			))}
+		</ul>
+
+		{userRole === 'owner' && (
+			<form method="POST" action={`/api/projects/${project.id}/members`} onsubmit="this.querySelector('button').disabled = true">
+				<input type="email" name="email" placeholder="User's email" required />
+				<select name="role">
+					<option value="editor">Editor</option>
+					<option value="viewer">Viewer</option>
+				</select>
+				<button type="submit">Add member</button>
+			</form>
+		)}
+
+		<nav class="sidebar-nav">
+			<a href="#files">Files</a>
+			<a href="#bom">Bill of Materials</a>
+		</nav>
+	</div>
+</aside>
+
+<script>
+	const sidebar = document.getElementById('project-sidebar');
+	const toggle = document.getElementById('sidebar-toggle');
+	const key = 'p2-sidebar-collapsed';
+
+	if (sidebar && toggle) {
+		if (localStorage.getItem(key) === '1') {
+			sidebar.classList.add('collapsed');
+		}
+		toggle.addEventListener('click', () => {
+			sidebar.classList.toggle('collapsed');
+			localStorage.setItem(key, sidebar.classList.contains('collapsed') ? '1' : '0');
+		});
+	}
+</script>
+
+<style>
+	.project-sidebar {
+		flex: 0 0 240px;
+		min-width: 0;
+		position: sticky;
+		top: var(--space-5);
+		font-size: 0.85rem;
+		align-self: flex-start;
+	}
+
+	.project-sidebar.collapsed {
+		flex: 0 0 auto;
+	}
+
+	.project-sidebar.collapsed .sidebar-content {
+		display: none;
+	}
+
+	.sidebar-toggle {
+		background: transparent;
+		border: none;
+		color: var(--color-fg);
+		padding: 0;
+		margin-bottom: var(--space-3);
+		cursor: pointer;
+		font-size: 1rem;
+		line-height: 1;
+	}
+
+	.sidebar-content {
+		min-width: 0;
+	}
+
+	.sidebar-title {
+		font-weight: 700;
+		font-size: 1rem;
+		margin: 0 0 var(--space-2);
+	}
+
+	.sidebar-description {
+		margin: 0 0 var(--space-4);
+	}
+
+	.sidebar-label {
+		font-weight: 700;
+		margin: 0 0 var(--space-2);
+	}
+
+	.member-list {
+		list-style: none;
+		margin: 0 0 var(--space-3);
+		padding: 0;
+		min-width: 0;
+	}
+
+	.member-row {
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+	}
+
+	.member-row.role-owner {
+		color: var(--color-role-owner);
+	}
+
+	.member-row.role-editor {
+		color: var(--color-role-editor);
+	}
+
+	.member-row.role-viewer {
+		color: var(--color-role-viewer);
+	}
+
+	.sidebar-content form {
+		flex-direction: column;
+		align-items: stretch;
+		margin: 0 0 var(--space-4);
+	}
+
+	.sidebar-nav {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-2);
+		margin-top: var(--space-7);
+	}
+
+	@media (max-width: 768px) {
+		.project-sidebar {
+			position: static;
+			flex-basis: auto;
+			width: 100%;
+		}
+	}
+</style>

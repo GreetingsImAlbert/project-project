@@ -8,6 +8,10 @@
 	--color-border-strong: #111111;
 	--color-danger: #b3261e;
 
+	--color-role-owner: #b3261e;
+	--color-role-editor: #2f6690;
+	--color-role-viewer: #3f7d52;
+
 	--space-1: 4px;
 	--space-2: 8px;
 	--space-3: 12px;
@@ -17,5 +21,5 @@
 	--space-7: 48px;
 
 	--radius-sm: 6px;
-	--max-width: 960px;
+	--max-width: 1280px;
 }

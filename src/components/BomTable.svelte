@@ -31,6 +31,13 @@
 	let adding = $state(false);
 	let addError = $state<string | null>(null);
 
+	let expandedId = $state<string | null>(null);
+
+	function handleRowClick(e: MouseEvent, id: string) {
+		if ((e.target as HTMLElement).closest('.row-actions, a')) return;
+		expandedId = expandedId === id ? null : id;
+	}
+
 	function startEdit(id: string) {
 		editingId = id;
 		rowError = null;
@@ -100,7 +107,7 @@
 	}
 </script>
 
-<h2>Bill of Materials</h2>
+<h2 id="bom">Bill of Materials</h2>
 
 {#if items.length === 0}
 	<p class="muted">No BOM items yet.</p>
@@ -109,24 +116,24 @@
 	<table>
 		{#if canEdit}
 			<colgroup>
-				<col style="width:14%" />
-				<col style="width:18%" />
-				<col style="width:8%" />
-				<col style="width:8%" />
-				<col style="width:9%" />
-				<col style="width:15%" />
-				<col style="width:9%" />
-				<col style="width:19%" />
+				<col style="width:140px" />
+				<col style="width:200px" />
+				<col style="width:60px" />
+				<col style="width:90px" />
+				<col style="width:100px" />
+				<col style="width:150px" />
+				<col style="width:100px" />
+				<col style="width:170px" />
 			</colgroup>
 		{:else}
 			<colgroup>
-				<col style="width:16%" />
-				<col style="width:22%" />
-				<col style="width:9%" />
-				<col style="width:9%" />
-				<col style="width:11%" />
-				<col style="width:18%" />
-				<col style="width:15%" />
+				<col style="width:140px" />
+				<col style="width:200px" />
+				<col style="width:60px" />
+				<col style="width:90px" />
+				<col style="width:100px" />
+				<col style="width:150px" />
+				<col style="width:100px" />
 			</colgroup>
 		{/if}
 		<thead>
@@ -167,7 +174,7 @@
 						{/if}
 					</tr>
 				{:else}
-					<tr>
+					<tr class="display-row" class:expanded={expandedId === item.id} onclick={(e) => handleRowClick(e, item.id)}>
 						<td>{item.part_name}</td>
 						<td>{item.description}</td>
 						<td>{item.quantity}</td>
@@ -228,14 +235,41 @@
 		font-size: 0.85rem;
 	}
 
-	.table-scroll th,
-	.table-scroll td {
-		overflow-wrap: break-word;
-		word-break: break-word;
+	.table-scroll th {
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 
 	.table-scroll td {
 		position: relative;
+	}
+
+	tr.display-row {
+		cursor: pointer;
+	}
+
+	tr.display-row td {
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+	}
+
+	tr.display-row td.row-actions {
+		overflow: visible;
+		cursor: default;
+	}
+
+	tr.display-row.expanded {
+		background: rgba(17, 17, 17, 0.035);
+	}
+
+	tr.display-row.expanded td {
+		overflow: visible;
+		white-space: normal;
+		text-overflow: clip;
+		overflow-wrap: break-word;
+		word-break: break-word;
 	}
 
 	.table-scroll td input,
@@ -267,6 +301,12 @@
 		display: flex;
 		flex-wrap: wrap;
 		gap: var(--space-2);
+		white-space: nowrap;
+	}
+
+	.row-actions button {
+		white-space: nowrap;
+		flex-shrink: 0;
 	}
 
 	.hidden-form {
