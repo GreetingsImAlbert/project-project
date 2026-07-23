@@ -3,6 +3,7 @@ import BaseLayout from '../../../layouts/BaseLayout.astro';
 import ProjectShell from '../../../components/ProjectShell.astro';
 import BomTable from '../../../components/BomTable.svelte';
 import TransactionsTable from '../../../components/TransactionsTable.svelte';
+import MemberContributionsTable from '../../../components/MemberContributionsTable.svelte';
 
 export const prerender = false;
 
@@ -25,9 +26,11 @@ if (error || !project) {
 
 const { data: members } = await Astro.locals.supabase
 	.from('project_members')
-	.select('role, user_id, profiles(display_name, email)')
+	.select('role, user_id, contribution_percent, profiles(display_name, email)')
 	.eq('project_id', id)
-	.overrideTypes<{ role: string; user_id: string, profiles: { display_name: string; email: string } }[]>();
+	.overrideTypes<
+		{ role: string; user_id: string; contribution_percent: number | null; profiles: { display_name: string; email: string } }[]
+	>();
 
 const userRole = members?.find(member => member.user_id === user.id)?.role;
 const canEdit = userRole === 'owner' || userRole === 'editor';
@@ -62,6 +65,12 @@ const memberOptions = (members ?? []).map((member) => ({
 	id: member.user_id,
 	displayName: member.profiles.display_name,
 }));
+
+const contributionMembers = (members ?? []).map((member) => ({
+	id: member.user_id,
+	displayName: member.profiles.display_name,
+	contributionPercent: member.contribution_percent,
+}));
 ---
 <BaseLayout title={`${project.name} — Money`}>
 	<ProjectShell project={project} members={members ?? []} userRole={userRole} activePage="money">
@@ -71,6 +80,13 @@ const memberOptions = (members ?? []).map((member) => ({
 			projectId={project.id}
 			initialTransactions={transactions ?? []}
 			members={memberOptions}
+			canEdit={canEdit}
+		/>
+		<MemberContributionsTable
+			client:load
+			projectId={project.id}
+			members={contributionMembers}
+			transactions={transactions ?? []}
 			canEdit={canEdit}
 		/>
 	</ProjectShell>

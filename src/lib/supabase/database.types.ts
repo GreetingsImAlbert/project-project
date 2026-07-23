@@ -190,18 +190,21 @@ export type Database = {
       }
       project_members: {
         Row: {
+          contribution_percent: number | null
           joined_at: string | null
           project_id: string
           role: string
           user_id: string
         }
         Insert: {
+          contribution_percent?: number | null
           joined_at?: string | null
           project_id: string
           role: string
           user_id: string
         }
         Update: {
+          contribution_percent?: number | null
           joined_at?: string | null
           project_id?: string
           role?: string
