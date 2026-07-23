@@ -36,12 +36,8 @@
 		canEdit: boolean;
 	} = $props();
 
-	function round2(value: number): number {
-		return Math.round(value * 100) / 100;
-	}
-
 	let percents = $state<Record<string, number>>(
-		Object.fromEntries(members.map((m) => [m.id, round2(m.contributionPercent ?? 100 / members.length)])),
+		Object.fromEntries(members.map((m) => [m.id, m.contributionPercent ?? 100 / members.length])),
 	);
 
 	let editingPercents = $state(false);
@@ -52,12 +48,11 @@
 
 	// The last member column is the remainder: it's never directly edited, it's always
 	// whatever makes the other members' percentages add up to 100 — so the total can
-	// never be wrong by construction, no cross-field validation needed.
+	// never be wrong by construction, no cross-field validation needed. Kept at full
+	// float precision (only rounded for display) so the underlying math stays accurate.
 	let remainderMember = $derived(members[members.length - 1]);
 	let editableMembers = $derived(members.slice(0, -1));
-	let remainderPercent = $derived(
-		round2(100 - editableMembers.reduce((sum, m) => sum + (draftPercents[m.id] ?? 0), 0)),
-	);
+	let remainderPercent = $derived(100 - editableMembers.reduce((sum, m) => sum + (draftPercents[m.id] ?? 0), 0));
 	let remainderValid = $derived(remainderPercent >= 0 && remainderPercent <= 100);
 
 	const TYPE_LABELS: Record<TransactionType, string> = {
@@ -106,13 +101,13 @@
 
 	function resetToEqualSplit() {
 		rowError = null;
-		draftPercents = Object.fromEntries(editableMembers.map((m) => [m.id, round2(100 / members.length)]));
+		draftPercents = Object.fromEntries(editableMembers.map((m) => [m.id, 100 / members.length]));
 	}
 
 	function handlePercentInput(memberId: string, value: string) {
 		const parsed = Number(value);
 		if (Number.isFinite(parsed)) {
-			draftPercents = { ...draftPercents, [memberId]: round2(parsed) };
+			draftPercents = { ...draftPercents, [memberId]: parsed };
 		}
 	}
 
@@ -207,7 +202,7 @@
 								step="0.01"
 								min="0"
 								max="100"
-								value={draftPercents[member.id]}
+								value={(draftPercents[member.id] ?? 0).toFixed(2)}
 								disabled={saving}
 								onchange={(e) => handlePercentInput(member.id, (e.currentTarget as HTMLInputElement).value)}
 							/>
