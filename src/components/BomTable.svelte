@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
+	import { formatCurrency, initCurrency } from '../lib/currency.svelte';
+
 	interface BomItem {
 		id: string;
 		part_name: string;
@@ -52,6 +55,12 @@
 	});
 
 	let showGroupHeaders = $derived(groups.length > 1 || groups[0]?.category !== UNCATEGORIZED);
+
+	let grandTotal = $derived(items.reduce((sum, item) => sum + (item.total_cost ?? 0), 0));
+
+	onMount(() => {
+		initCurrency();
+	});
 
 	function handleRowClick(e: MouseEvent, id: string) {
 		if ((e.target as HTMLElement).closest('.row-actions, a')) return;
@@ -210,7 +219,7 @@
 							<td>{item.description}</td>
 							<td>{item.quantity}</td>
 							<td>{item.unit}</td>
-							<td>{item.unit_cost}</td>
+							<td>{item.unit_cost != null ? formatCurrency(item.unit_cost) : ''}</td>
 							<td>
 								{#if item.supplier}
 									{#if item.item_url}
@@ -220,7 +229,7 @@
 									{/if}
 								{/if}
 							</td>
-							<td>{item.total_cost}</td>
+							<td>{item.total_cost != null ? formatCurrency(item.total_cost) : ''}</td>
 							{#if canEdit}
 								<td class="row-actions">
 									<button type="button" class="btn-plain" onclick={() => startEdit(item.id)}>Edit</button>
@@ -239,6 +248,13 @@
 				{/each}
 			{/each}
 		</tbody>
+		<tfoot>
+			<tr class="total-row">
+				<td colspan="6">Total</td>
+				<td>{formatCurrency(grandTotal)}</td>
+				{#if canEdit}<td></td>{/if}
+			</tr>
+		</tfoot>
 	</table>
 	</div>
 {/if}
@@ -277,6 +293,11 @@
 	.category-row:first-child .category-header {
 		border-top: none;
 		padding-top: var(--space-2);
+	}
+
+	.total-row td {
+		font-weight: 700;
+		border-top: 1px solid var(--color-border-strong);
 	}
 
 	.table-scroll th {
