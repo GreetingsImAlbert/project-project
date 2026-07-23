@@ -176,13 +176,15 @@
 					</td>
 				{/each}
 				{#if canEdit}
-					<td class="row-actions">
-						{#if editingPercents}
-							<button type="button" onclick={savePercents} disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
-							<button type="button" class="btn-plain" onclick={cancelEditPercents} disabled={saving}>Cancel</button>
-						{:else}
-							<button type="button" class="btn-plain" onclick={startEditPercents}>Edit</button>
-						{/if}
+					<td class="actions-cell">
+						<div class="row-actions">
+							{#if editingPercents}
+								<button type="button" onclick={savePercents} disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+								<button type="button" class="btn-plain" onclick={cancelEditPercents} disabled={saving}>Cancel</button>
+							{:else}
+								<button type="button" class="btn-plain" onclick={startEditPercents}>Edit</button>
+							{/if}
+						</div>
 					</td>
 				{/if}
 			</tr>
@@ -254,6 +256,7 @@
 	.table-scroll td input {
 		width: 80px;
 		box-sizing: border-box;
+		padding: 2px var(--space-2);
 	}
 
 	.dues-row .dues-owed {
@@ -279,6 +282,8 @@
 	.row-actions button {
 		white-space: nowrap;
 		flex-shrink: 0;
+		padding: 2px var(--space-2);
+		font-size: 0.8rem;
 	}
 
 	.detail-row td {

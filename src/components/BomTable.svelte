@@ -186,7 +186,7 @@
 				{/if}
 				{#each group.items as item (item.id)}
 					{#if editingId === item.id}
-						<tr>
+						<tr class="editing-row">
 							<td>
 								<div class="stacked-inputs">
 									<input form={`bom-update-${item.id}`} type="text" name="partName" value={item.part_name} maxlength="200" required />
@@ -205,11 +205,13 @@
 							</td>
 							<td class="muted">—</td>
 							{#if canEdit}
-								<td class="row-actions">
-									<button type="button" onclick={() => handleSave(item.id)} disabled={savingId === item.id}>
-										{savingId === item.id ? 'Saving…' : 'Save'}
-									</button>
-									<button type="button" class="btn-plain" onclick={cancelEdit}>Cancel</button>
+								<td class="actions-cell">
+									<div class="row-actions">
+										<button type="button" onclick={() => handleSave(item.id)} disabled={savingId === item.id}>
+											{savingId === item.id ? 'Saving…' : 'Save'}
+										</button>
+										<button type="button" class="btn-plain" onclick={cancelEdit}>Cancel</button>
+									</div>
 								</td>
 							{/if}
 						</tr>
@@ -231,11 +233,13 @@
 							</td>
 							<td>{item.total_cost != null ? formatCurrency(item.total_cost) : ''}</td>
 							{#if canEdit}
-								<td class="row-actions">
-									<button type="button" class="btn-plain" onclick={() => startEdit(item.id)}>Edit</button>
-									<button type="button" class="btn-danger" onclick={() => handleDelete(item.id)} disabled={deletingId === item.id}>
-										{deletingId === item.id ? 'Deleting…' : 'Delete'}
-									</button>
+								<td class="actions-cell">
+									<div class="row-actions">
+										<button type="button" class="btn-plain" onclick={() => startEdit(item.id)}>Edit</button>
+										<button type="button" class="btn-danger" onclick={() => handleDelete(item.id)} disabled={deletingId === item.id}>
+											{deletingId === item.id ? 'Deleting…' : 'Delete'}
+										</button>
+									</div>
 								</td>
 							{/if}
 						</tr>
@@ -287,12 +291,14 @@
 	.category-header {
 		font-weight: 700;
 		padding-top: var(--space-3);
-		border-top: 1px solid var(--color-border);
 	}
 
 	.category-row:first-child .category-header {
-		border-top: none;
 		padding-top: var(--space-2);
+	}
+
+	.table-scroll tbody tr:last-child td {
+		border-bottom: none;
 	}
 
 	.total-row td {
@@ -306,7 +312,7 @@
 		text-overflow: ellipsis;
 	}
 
-	.table-scroll td {
+	tr.editing-row td {
 		position: relative;
 	}
 
@@ -320,7 +326,7 @@
 		text-overflow: ellipsis;
 	}
 
-	tr.display-row td.row-actions {
+	tr.display-row td.actions-cell {
 		overflow: visible;
 		cursor: default;
 	}
@@ -342,6 +348,7 @@
 		width: 100%;
 		min-width: 0;
 		box-sizing: border-box;
+		padding: 2px var(--space-2);
 	}
 
 	.table-scroll td input:focus {
@@ -371,6 +378,8 @@
 	.row-actions button {
 		white-space: nowrap;
 		flex-shrink: 0;
+		padding: 2px var(--space-2);
+		font-size: 0.8rem;
 	}
 
 	.hidden-form {

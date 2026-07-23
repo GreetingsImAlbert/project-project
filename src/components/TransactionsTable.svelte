@@ -211,7 +211,7 @@
 				</tr>
 				{#each group.items as t (t.id)}
 					{#if editingId === t.id}
-						<tr>
+						<tr class="editing-row">
 							<td>
 								<input form={`transaction-update-${t.id}`} type="date" name="transactionDate" value={t.transaction_date} required />
 							</td>
@@ -276,11 +276,13 @@
 								</select>
 							</td>
 							{#if canEdit}
-								<td class="row-actions">
-									<button type="button" onclick={() => handleSave(t.id)} disabled={savingId === t.id}>
-										{savingId === t.id ? 'Saving…' : 'Save'}
-									</button>
-									<button type="button" class="btn-plain" onclick={cancelEdit}>Cancel</button>
+								<td class="actions-cell">
+									<div class="row-actions">
+										<button type="button" onclick={() => handleSave(t.id)} disabled={savingId === t.id}>
+											{savingId === t.id ? 'Saving…' : 'Save'}
+										</button>
+										<button type="button" class="btn-plain" onclick={cancelEdit}>Cancel</button>
+									</div>
 								</td>
 							{/if}
 						</tr>
@@ -295,11 +297,13 @@
 							<td>{t.type === 'discount' || t.type === 'refund' ? '-' : ''}{t.total_cost != null ? formatCurrency(t.total_cost) : ''}</td>
 							<td>{memberName(t.member_id, t.profiles)}</td>
 							{#if canEdit}
-								<td class="row-actions">
-									<button type="button" class="btn-plain" onclick={() => startEdit(t)}>Edit</button>
-									<button type="button" class="btn-danger" onclick={() => handleDelete(t.id)} disabled={deletingId === t.id}>
-										{deletingId === t.id ? 'Deleting…' : 'Delete'}
-									</button>
+								<td class="actions-cell">
+									<div class="row-actions">
+										<button type="button" class="btn-plain" onclick={() => startEdit(t)}>Edit</button>
+										<button type="button" class="btn-danger" onclick={() => handleDelete(t.id)} disabled={deletingId === t.id}>
+											{deletingId === t.id ? 'Deleting…' : 'Delete'}
+										</button>
+									</div>
 								</td>
 							{/if}
 						</tr>
@@ -360,12 +364,14 @@
 	.date-header {
 		font-weight: 700;
 		padding-top: var(--space-3);
-		border-top: 1px solid var(--color-border);
 	}
 
 	.date-row:first-child .date-header {
-		border-top: none;
 		padding-top: var(--space-2);
+	}
+
+	.table-scroll tbody tr:last-child td {
+		border-bottom: none;
 	}
 
 	.total-row td {
@@ -379,7 +385,7 @@
 		text-overflow: ellipsis;
 	}
 
-	.table-scroll td {
+	tr.editing-row td {
 		position: relative;
 	}
 
@@ -393,7 +399,7 @@
 		text-overflow: ellipsis;
 	}
 
-	tr.display-row td.row-actions {
+	tr.display-row td.actions-cell {
 		overflow: visible;
 		cursor: default;
 	}
@@ -415,6 +421,7 @@
 		width: 100%;
 		min-width: 0;
 		box-sizing: border-box;
+		padding: 2px var(--space-2);
 	}
 
 	.table-scroll td input:focus {
@@ -438,6 +445,8 @@
 	.row-actions button {
 		white-space: nowrap;
 		flex-shrink: 0;
+		padding: 2px var(--space-2);
+		font-size: 0.8rem;
 	}
 
 	.hidden-form {
