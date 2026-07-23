@@ -133,7 +133,7 @@
 		ondragleave={handleDragLeave}
 		ondrop={handleDrop}
 	>
-		{selectedFile ? selectedFile.name : 'Drag a file here, or click to browse'}
+		{selectedFile ? selectedFile.name : 'Drag or Choose File'}
 	</div>
 	<button type="submit" disabled={uploading || !selectedFile}>Upload</button>
 </form>

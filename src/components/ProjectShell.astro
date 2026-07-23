@@ -1,0 +1,54 @@
+---
+import ProjectSidebar from './ProjectSidebar.astro';
+
+interface Member {
+	role: string;
+	user_id: string;
+	profiles: { display_name: string; email: string };
+}
+
+interface Props {
+	project: { id: string; name: string; description: string | null };
+	members: Member[];
+	userRole: string | undefined;
+	activePage: 'overview' | 'files' | 'money';
+}
+
+const { project, members, userRole, activePage } = Astro.props;
+---
+
+<p><a href="/projects">← Back to projects</a></p>
+
+<div class="project-shell">
+	<ProjectSidebar project={project} members={members} userRole={userRole} activePage={activePage} />
+
+	<div class="project-main">
+		<slot />
+	</div>
+</div>
+
+<style>
+	.project-shell {
+		display: flex;
+		gap: var(--space-6);
+		align-items: flex-start;
+	}
+
+	.project-main {
+		flex: 1;
+		min-width: 0;
+	}
+
+	.project-main > h2:first-child {
+		margin-top: 0;
+		padding-top: 0;
+		border-top: none;
+	}
+
+	@media (max-width: 768px) {
+		.project-shell {
+			flex-direction: column;
+			align-items: stretch;
+		}
+	}
+</style>

@@ -8,6 +8,8 @@ if (!Astro.locals.user) {
 }
 ---
 <BaseLayout title="New Project">
+	<p><a href="/projects">← Back to projects</a></p>
+
 	<h1>Create a project</h1>
 	<form method="POST" action="/api/projects/create" onsubmit="this.querySelector('button').disabled = true" class="new-project-form">
 		<input type="text" name="name" placeholder="Project name" required />

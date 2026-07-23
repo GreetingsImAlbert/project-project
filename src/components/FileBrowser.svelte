@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { slide } from 'svelte/transition';
 	import FileList from './FileList.svelte';
 	import UploadForm from './UploadForm.svelte';
 
@@ -41,6 +42,11 @@
 	let createFolderError = $state<string | null>(null);
 	let deletingFolderId = $state<string | null>(null);
 	let folderError = $state<{ id: string; message: string } | null>(null);
+	let openFolderActionsId = $state<string | null>(null);
+
+	function toggleFolderActions(folderId: string) {
+		openFolderActionsId = openFolderActionsId === folderId ? null : folderId;
+	}
 
 	let folderById = $derived(new Map(allFolders.map((f) => [f.id, f])));
 
@@ -68,7 +74,7 @@
 	}
 
 	function hrefFor(folderId: string | null) {
-		return folderId ? `/projects/${projectId}?folder=${folderId}` : `/projects/${projectId}`;
+		return folderId ? `/projects/${projectId}/files?folder=${folderId}` : `/projects/${projectId}/files`;
 	}
 
 	async function navigate(folderId: string | null, pushState = true) {
@@ -160,6 +166,7 @@
 
 		allFolders = allFolders.filter((f) => f.id !== folderId);
 		deletingFolderId = null;
+		openFolderActionsId = null;
 	}
 
 	onMount(() => {
@@ -189,39 +196,70 @@
 	</div>
 
 	{#if canEdit}
-		<form class="create-folder-form" onsubmit={handleCreateFolder} action={`/api/projects/${projectId}/folders/create`}>
-			<input type="hidden" name="parentFolderId" value={currentFolderId ?? ''} />
-			<input type="text" name="name" placeholder="New folder name" required />
-			<button type="submit" disabled={creatingFolder}>{creatingFolder ? 'Creating…' : 'Create folder'}</button>
-		</form>
+		<div class="header-actions">
+			<form class="create-folder-form" onsubmit={handleCreateFolder} action={`/api/projects/${projectId}/folders/create`}>
+				<input type="hidden" name="parentFolderId" value={currentFolderId ?? ''} />
+				<input type="text" name="name" placeholder="New folder name" required />
+				<button type="submit" disabled={creatingFolder}>{creatingFolder ? 'Creating…' : 'Create folder'}</button>
+			</form>
+
+			<UploadForm projectId={projectId} currentFolderId={currentFolderId} onUploaded={handleUploaded} />
+		</div>
 	{/if}
 </div>
 {#if createFolderError}<p class="row-error">{createFolderError}</p>{/if}
 
+<div class="view-toggle">
+	<button type="button" class="btn-plain" class:active={viewMode === 'list'} onclick={() => setViewMode('list')}>List</button>
+	<button type="button" class="btn-plain" class:active={viewMode === 'grid'} onclick={() => setViewMode('grid')}>Grid</button>
+</div>
+
 {#if subfolders.length > 0}
-	<ul class="list-plain folder-list">
+	<ul class={viewMode === 'grid' ? 'grid-view' : 'list-plain folder-list'}>
 		{#each subfolders as folder (folder.id)}
-			<li class="folder-row">
-				<a href={hrefFor(folder.id)} onclick={(e) => handleLinkClick(e, folder.id)}>📁 {folder.name}</a>
-				{#if canEdit}
-					<button type="button" class="btn-danger" onclick={() => handleDeleteFolder(folder.id)} disabled={deletingFolderId === folder.id}>
-						{deletingFolderId === folder.id ? 'Deleting…' : 'Delete'}
-					</button>
+			{#if viewMode === 'grid'}
+				<li class="grid-item">
+					<a href={hrefFor(folder.id)} onclick={(e) => handleLinkClick(e, folder.id)} class="grid-download">
+						<span class="grid-icon">📁</span>
+						<span class="grid-name">{folder.name}</span>
+					</a>
+
+					{#if canEdit}
+						<button type="button" class="grid-actions-toggle" aria-label="Actions" onclick={() => toggleFolderActions(folder.id)}>
+							{openFolderActionsId === folder.id ? '▴' : '▾'}
+						</button>
+					{/if}
+
+					{#if canEdit && openFolderActionsId === folder.id}
+						<div class="actions-panel" transition:slide={{ duration: 150 }}>
+							<button type="button" class="btn-danger" onclick={() => handleDeleteFolder(folder.id)} disabled={deletingFolderId === folder.id}>
+								{deletingFolderId === folder.id ? 'Deleting…' : 'Delete'}
+							</button>
+						</div>
+					{/if}
+
+					{#if folderError?.id === folder.id}
+						<p class="row-error">{folderError.message}</p>
+					{/if}
+				</li>
+			{:else}
+				<li class="folder-row">
+					<a href={hrefFor(folder.id)} onclick={(e) => handleLinkClick(e, folder.id)}>📁 {folder.name}</a>
+					{#if canEdit}
+						<button type="button" class="btn-danger" onclick={() => handleDeleteFolder(folder.id)} disabled={deletingFolderId === folder.id}>
+							{deletingFolderId === folder.id ? 'Deleting…' : 'Delete'}
+						</button>
+					{/if}
+				</li>
+				{#if folderError?.id === folder.id}
+					<li class="row-error-item">{folderError.message}</li>
 				{/if}
-			</li>
-			{#if folderError?.id === folder.id}
-				<li class="row-error-item">{folderError.message}</li>
 			{/if}
 		{/each}
 	</ul>
 {/if}
 
 {#if error}<p class="row-error">{error}</p>{/if}
-
-<div class="view-toggle">
-	<button type="button" class="btn-plain" class:active={viewMode === 'list'} onclick={() => setViewMode('list')}>List</button>
-	<button type="button" class="btn-plain" class:active={viewMode === 'grid'} onclick={() => setViewMode('grid')}>Grid</button>
-</div>
 
 <FileList
 	canEdit={canEdit}
@@ -235,10 +273,6 @@
 />
 {#if loading}<p class="muted">Loading…</p>{/if}
 
-{#if canEdit}
-	<UploadForm projectId={projectId} currentFolderId={currentFolderId} onUploaded={handleUploaded} />
-{/if}
-
 <style>
 	.browser-header {
 		display: flex;
@@ -250,22 +284,49 @@
 
 	.breadcrumb-group {
 		display: flex;
-		flex-wrap: wrap;
 		align-items: center;
 		gap: var(--space-2);
+		flex: 1 1 200px;
+		min-width: 0;
 	}
 
 	.breadcrumb-group .breadcrumbs {
 		margin: 0;
+		flex: 1 1 auto;
+		min-width: 0;
+		overflow: hidden;
+		white-space: nowrap;
+		-webkit-mask-image: linear-gradient(to right, black calc(100% - 32px), transparent 100%);
+		mask-image: linear-gradient(to right, black calc(100% - 32px), transparent 100%);
 	}
 
 	.nav-btn {
+		flex: 0 0 auto;
 		font-size: 0.8rem;
 		padding: var(--space-1) var(--space-2);
 	}
 
+	.header-actions {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: flex-start;
+		gap: var(--space-3);
+		flex: 0 0 auto;
+	}
+
 	.create-folder-form {
 		margin: 0;
+	}
+
+	@media (max-width: 640px) {
+		.browser-header {
+			flex-direction: column;
+			align-items: stretch;
+		}
+
+		.breadcrumb-group {
+			flex-basis: auto;
+		}
 	}
 
 	.view-toggle {
@@ -289,6 +350,85 @@
 		align-items: center;
 		justify-content: space-between;
 		gap: var(--space-3);
+	}
+
+	.grid-view {
+		list-style: none;
+		margin: 0 0 var(--space-4);
+		padding: 0;
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+		gap: var(--space-3);
+	}
+
+	.grid-item {
+		position: relative;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: var(--space-1);
+		border: 1px solid var(--color-border);
+		padding: var(--space-3) var(--space-2);
+		text-align: center;
+	}
+
+	.grid-download {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: var(--space-1);
+		width: 100%;
+		color: var(--color-fg);
+		border-bottom: none;
+	}
+
+	.grid-download:hover {
+		border-bottom: none;
+	}
+
+	.grid-icon {
+		font-size: 1.5rem;
+		line-height: 1;
+	}
+
+	.grid-name {
+		max-width: 100%;
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+		font-size: 0.8rem;
+	}
+
+	.grid-actions-toggle {
+		background: none;
+		border: none;
+		padding: 0 var(--space-2);
+		color: var(--color-muted);
+		font-size: 0.9rem;
+		line-height: 1.4;
+		cursor: pointer;
+	}
+
+	.grid-actions-toggle:hover {
+		color: var(--color-fg);
+	}
+
+	.actions-panel {
+		position: absolute;
+		top: calc(100% + var(--space-1));
+		left: 0;
+		right: 0;
+		z-index: 10;
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-2);
+		background: var(--color-bg);
+		border: 1px solid var(--color-border-strong);
+		padding: var(--space-2);
+	}
+
+	.actions-panel button {
+		width: 100%;
 	}
 
 	.row-error-item {

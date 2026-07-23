@@ -1,6 +1,7 @@
 ---
-import BaseLayout from '../../layouts/BaseLayout.astro';
-import ProjectShell from '../../components/ProjectShell.astro';
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import ProjectShell from '../../../components/ProjectShell.astro';
+import BomTable from '../../../components/BomTable.svelte';
 
 export const prerender = false;
 
@@ -28,10 +29,16 @@ const { data: members } = await Astro.locals.supabase
 	.overrideTypes<{ role: string; user_id: string, profiles: { display_name: string; email: string } }[]>();
 
 const userRole = members?.find(member => member.user_id === user.id)?.role;
+const canEdit = userRole === 'owner' || userRole === 'editor';
+
+const { data: bomItems } = await Astro.locals.supabase
+	.from('bom_items')
+	.select('id, part_name, category, description, quantity, unit, unit_cost, supplier, item_url, total_cost')
+	.eq('project_id', id)
+	.order('created_at', { ascending: true });
 ---
-<BaseLayout title={project.name}>
-	<ProjectShell project={project} members={members ?? []} userRole={userRole} activePage="overview">
-		<h2>Overview</h2>
-		<p class="muted">Nothing here yet.</p>
+<BaseLayout title={`${project.name} — Money`}>
+	<ProjectShell project={project} members={members ?? []} userRole={userRole} activePage="money">
+		<BomTable client:load projectId={project.id} initialItems={bomItems ?? []} canEdit={canEdit} />
 	</ProjectShell>
 </BaseLayout>

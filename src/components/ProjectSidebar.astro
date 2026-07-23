@@ -9,9 +9,10 @@ interface Props {
 	project: { id: string; name: string; description: string | null };
 	members: Member[];
 	userRole: string | undefined;
+	activePage: 'overview' | 'files' | 'money';
 }
 
-const { project, members, userRole } = Astro.props;
+const { project, members, userRole, activePage } = Astro.props;
 ---
 
 <aside class="project-sidebar">
@@ -37,8 +38,9 @@ const { project, members, userRole } = Astro.props;
 	)}
 
 	<nav class="sidebar-nav">
-		<a href="#files">Files</a>
-		<a href="#bom">Bill of Materials</a>
+		<a href={`/projects/${project.id}`} class={activePage === 'overview' ? 'active' : ''}>Overview</a>
+		<a href={`/projects/${project.id}/files`} class={activePage === 'files' ? 'active' : ''}>Files</a>
+		<a href={`/projects/${project.id}/money`} class={activePage === 'money' ? 'active' : ''}>Money</a>
 	</nav>
 </aside>
 
@@ -103,6 +105,14 @@ const { project, members, userRole } = Astro.props;
 		flex-direction: column;
 		gap: var(--space-2);
 		margin-top: var(--space-7);
+	}
+
+	.sidebar-nav a {
+		border-bottom: 1px solid transparent;
+	}
+
+	.sidebar-nav a.active {
+		border-bottom-color: currentColor;
 	}
 
 	@media (max-width: 768px) {

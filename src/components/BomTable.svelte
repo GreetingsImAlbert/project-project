@@ -127,7 +127,7 @@
 	}
 </script>
 
-<h2 id="bom">Bill of Materials</h2>
+<h2>Bill of Materials</h2>
 
 {#if items.length === 0}
 	<p class="muted">No BOM items yet.</p>
