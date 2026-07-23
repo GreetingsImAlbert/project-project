@@ -1,4 +1,6 @@
 ---
+import ThemeToggle from './ThemeToggle.svelte';
+
 interface Props {
 	user: { id: string; email: string | undefined } | null;
 }
@@ -23,16 +25,19 @@ function isActive(href: string) {
 			<span class="lockup-subtitle muted">Engineering workspace</span>
 		</a>
 
-		{user && (
-			<nav class="site-nav">
-				{navLinks.map((link) => (
-					<a href={link.href} class={isActive(link.href) ? 'active' : ''}>{link.label}</a>
-				))}
-				<form method="POST" action="/api/auth/logout">
-					<button type="submit" class="btn-plain">Log out</button>
-				</form>
-			</nav>
-		)}
+		<div class="header-right">
+			{user && (
+				<nav class="site-nav">
+					{navLinks.map((link) => (
+						<a href={link.href} class={isActive(link.href) ? 'active' : ''}>{link.label}</a>
+					))}
+					<form method="POST" action="/api/auth/logout">
+						<button type="submit" class="btn-plain">Log out</button>
+					</form>
+				</nav>
+			)}
+			<ThemeToggle client:load />
+		</div>
 	</div>
 </header>
 
@@ -70,6 +75,13 @@ function isActive(href: string) {
 
 	.lockup-subtitle {
 		font-size: 0.8rem;
+	}
+
+	.header-right {
+		display: flex;
+		align-items: center;
+		gap: var(--space-5);
+		flex-wrap: wrap;
 	}
 
 	.site-nav {

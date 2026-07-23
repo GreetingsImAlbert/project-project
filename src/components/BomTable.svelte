@@ -305,7 +305,7 @@
 	}
 
 	tr.display-row.expanded {
-		background: rgba(17, 17, 17, 0.035);
+		background: var(--color-highlight);
 	}
 
 	tr.display-row.expanded td {
