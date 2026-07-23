@@ -259,6 +259,63 @@ export type Database = {
           },
         ]
       }
+      transactions: {
+        Row: {
+          created_at: string | null
+          id: string
+          item_name: string | null
+          member_id: string
+          project_id: string
+          quantity: number | null
+          total_cost: number | null
+          transaction_date: string
+          type: string
+          unit: string | null
+          unit_cost: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          item_name?: string | null
+          member_id: string
+          project_id: string
+          quantity?: number | null
+          total_cost?: number | null
+          transaction_date: string
+          type: string
+          unit?: string | null
+          unit_cost?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          item_name?: string | null
+          member_id?: string
+          project_id?: string
+          quantity?: number | null
+          total_cost?: number | null
+          transaction_date?: string
+          type?: string
+          unit?: string | null
+          unit_cost?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "transactions_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

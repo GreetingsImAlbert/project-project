@@ -2,6 +2,7 @@
 import BaseLayout from '../../../layouts/BaseLayout.astro';
 import ProjectShell from '../../../components/ProjectShell.astro';
 import BomTable from '../../../components/BomTable.svelte';
+import TransactionsTable from '../../../components/TransactionsTable.svelte';
 
 export const prerender = false;
 
@@ -36,9 +37,41 @@ const { data: bomItems } = await Astro.locals.supabase
 	.select('id, part_name, category, description, quantity, unit, unit_cost, supplier, item_url, total_cost')
 	.eq('project_id', id)
 	.order('created_at', { ascending: true });
+
+const { data: transactions } = await Astro.locals.supabase
+	.from('transactions')
+	.select('id, transaction_date, type, item_name, quantity, unit, unit_cost, total_cost, member_id, profiles(display_name)')
+	.eq('project_id', id)
+	.order('transaction_date', { ascending: true })
+	.overrideTypes<
+		{
+			id: string;
+			transaction_date: string;
+			type: 'item' | 'shipping' | 'discount' | 'refund';
+			item_name: string | null;
+			quantity: number | null;
+			unit: string | null;
+			unit_cost: number | null;
+			total_cost: number | null;
+			member_id: string;
+			profiles: { display_name: string } | null;
+		}[]
+	>();
+
+const memberOptions = (members ?? []).map((member) => ({
+	id: member.user_id,
+	displayName: member.profiles.display_name,
+}));
 ---
 <BaseLayout title={`${project.name} — Money`}>
 	<ProjectShell project={project} members={members ?? []} userRole={userRole} activePage="money">
 		<BomTable client:load projectId={project.id} initialItems={bomItems ?? []} canEdit={canEdit} />
+		<TransactionsTable
+			client:load
+			projectId={project.id}
+			initialTransactions={transactions ?? []}
+			members={memberOptions}
+			canEdit={canEdit}
+		/>
 	</ProjectShell>
 </BaseLayout>
