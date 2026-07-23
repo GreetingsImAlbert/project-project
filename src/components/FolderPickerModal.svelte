@@ -11,6 +11,7 @@
 		allFolders,
 		initialFolderId,
 		actionLabel,
+		viewMode,
 		busy,
 		error,
 		onConfirm,
@@ -19,6 +20,7 @@
 		allFolders: Folder[];
 		initialFolderId: string | null;
 		actionLabel: string;
+		viewMode: 'list' | 'grid';
 		busy: boolean;
 		error: string | null;
 		onConfirm: (folderId: string | null) => void;
@@ -67,9 +69,20 @@
 		</p>
 
 		{#if subfolders.length > 0}
-			<ul class="list-plain modal-folder-list">
+			<ul class={viewMode === 'grid' ? 'grid-view' : 'file-list'}>
 				{#each subfolders as folder (folder.id)}
-					<li><button type="button" class="btn-plain" onclick={() => navigate(folder.id)}>📁 {folder.name}</button></li>
+					{#if viewMode === 'grid'}
+						<li class="grid-item">
+							<button type="button" class="grid-download" onclick={() => navigate(folder.id)}>
+								<span class="grid-icon">📁</span>
+								<span class="grid-name">{folder.name}</span>
+							</button>
+						</li>
+					{:else}
+						<li class="file-row">
+							<button type="button" class="btn-plain" onclick={() => navigate(folder.id)}>📁 {folder.name}</button>
+						</li>
+					{/if}
 				{/each}
 			</ul>
 		{:else}
@@ -104,8 +117,8 @@
 		border: 1px solid var(--color-border-strong);
 		padding: var(--space-5);
 		width: 100%;
-		max-width: 360px;
-		max-height: 80vh;
+		max-width: 680px;
+		max-height: 70vh;
 		overflow-y: auto;
 		display: flex;
 		flex-direction: column;
@@ -125,8 +138,65 @@
 		text-decoration: underline;
 	}
 
-	.modal-folder-list {
+	.file-list {
+		list-style: none;
 		margin: 0;
+		padding: 0;
+		font-size: 0.85rem;
+	}
+
+	.file-list > .file-row {
+		padding: var(--space-2) 0;
+		border-top: 1px solid var(--color-border);
+	}
+
+	.file-list > .file-row:first-child {
+		border-top: none;
+	}
+
+	.grid-view {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+		gap: var(--space-3);
+	}
+
+	.grid-item {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: var(--space-1);
+		border: 1px solid var(--color-border);
+		padding: var(--space-3) var(--space-2);
+		text-align: center;
+	}
+
+	.grid-download {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: var(--space-1);
+		width: 100%;
+		background: none;
+		border: none;
+		padding: 0;
+		color: var(--color-fg);
+		cursor: pointer;
+	}
+
+	.grid-icon {
+		font-size: 1.5rem;
+		line-height: 1;
+	}
+
+	.grid-name {
+		max-width: 100%;
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+		font-size: 0.8rem;
 	}
 
 	.modal-actions {

@@ -37,6 +37,7 @@
 	let loading = $state(false);
 	let error = $state<string | null>(null);
 	let viewMode = $state<'list' | 'grid'>('grid');
+	let backStack = $state<(string | null)[]>([]);
 
 	let creatingFolder = $state(false);
 	let createFolderError = $state<string | null>(null);
@@ -104,9 +105,22 @@
 		}
 	}
 
+	function navigateWithHistory(folderId: string | null) {
+		if (folderId === currentFolderId) return;
+		backStack = [...backStack, currentFolderId];
+		navigate(folderId);
+	}
+
+	function goBack() {
+		if (backStack.length === 0) return;
+		const previous = backStack[backStack.length - 1];
+		backStack = backStack.slice(0, -1);
+		navigate(previous);
+	}
+
 	function handleLinkClick(e: MouseEvent, folderId: string | null) {
 		e.preventDefault();
-		navigate(folderId);
+		navigateWithHistory(folderId);
 	}
 
 	function handleFileMoved(fileId: string, targetFolderId: string | null) {
@@ -184,8 +198,8 @@
 
 <div class="browser-header">
 	<div class="breadcrumb-group">
-		<button type="button" class="btn-plain nav-btn" onclick={() => history.back()}>← Back</button>
-		<button type="button" class="btn-plain nav-btn" onclick={() => navigate(parentFolderId)} disabled={currentFolderId === null}>↑ Up</button>
+		<button type="button" class="btn-plain nav-btn" onclick={goBack} disabled={backStack.length === 0}>← Back</button>
+		<button type="button" class="btn-plain nav-btn" onclick={() => navigateWithHistory(parentFolderId)} disabled={currentFolderId === null}>↑ Up</button>
 		<p class="breadcrumbs">
 			<a href={hrefFor(null)} onclick={(e) => handleLinkClick(e, null)}>Root</a>
 			{#each breadcrumbs as crumb (crumb.id)}

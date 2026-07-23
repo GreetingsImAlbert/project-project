@@ -213,6 +213,7 @@
 		allFolders={allFolders}
 		initialFolderId={currentFolderId}
 		actionLabel={modalFile.mode === 'move' ? 'Move here' : 'Copy here'}
+		viewMode={viewMode}
 		busy={modalBusy}
 		error={modalError}
 		onConfirm={confirmModal}
