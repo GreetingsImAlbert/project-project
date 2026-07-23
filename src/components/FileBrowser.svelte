@@ -36,7 +36,7 @@
 	let allFolders = $state(initialAllFolders);
 	let loading = $state(false);
 	let error = $state<string | null>(null);
-	let viewMode = $state<'list' | 'grid'>('list');
+	let viewMode = $state<'list' | 'grid'>('grid');
 
 	let creatingFolder = $state(false);
 	let createFolderError = $state<string | null>(null);
@@ -210,8 +210,8 @@
 {#if createFolderError}<p class="row-error">{createFolderError}</p>{/if}
 
 <div class="view-toggle">
-	<button type="button" class="btn-plain" class:active={viewMode === 'list'} onclick={() => setViewMode('list')}>List</button>
 	<button type="button" class="btn-plain" class:active={viewMode === 'grid'} onclick={() => setViewMode('grid')}>Grid</button>
+	<button type="button" class="btn-plain" class:active={viewMode === 'list'} onclick={() => setViewMode('list')}>List</button>
 </div>
 
 {#if subfolders.length > 0}
