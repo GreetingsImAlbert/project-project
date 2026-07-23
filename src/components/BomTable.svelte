@@ -2,6 +2,7 @@
 	interface BomItem {
 		id: string;
 		part_name: string;
+		category: string | null;
 		description: string | null;
 		quantity: number | null;
 		unit: string | null;
@@ -32,6 +33,25 @@
 	let addError = $state<string | null>(null);
 
 	let expandedId = $state<string | null>(null);
+
+	const UNCATEGORIZED = 'Uncategorized';
+
+	let groups = $derived.by(() => {
+		const map = new Map<string, BomItem[]>();
+		for (const item of items) {
+			const key = item.category?.trim() || UNCATEGORIZED;
+			if (!map.has(key)) map.set(key, []);
+			map.get(key)!.push(item);
+		}
+		const keys = [...map.keys()].sort((a, b) => {
+			if (a === UNCATEGORIZED) return 1;
+			if (b === UNCATEGORIZED) return -1;
+			return a.localeCompare(b);
+		});
+		return keys.map((category) => ({ category, items: map.get(category)! }));
+	});
+
+	let showGroupHeaders = $derived(groups.length > 1 || groups[0]?.category !== UNCATEGORIZED);
 
 	function handleRowClick(e: MouseEvent, id: string) {
 		if ((e.target as HTMLElement).closest('.row-actions, a')) return;
@@ -149,62 +169,74 @@
 			</tr>
 		</thead>
 		<tbody>
-			{#each items as item (item.id)}
-				{#if editingId === item.id}
-					<tr>
-						<td><input form={`bom-update-${item.id}`} type="text" name="partName" value={item.part_name} maxlength="200" required /></td>
-						<td><input form={`bom-update-${item.id}`} type="text" name="description" value={item.description ?? ''} maxlength="1000" /></td>
-						<td><input form={`bom-update-${item.id}`} type="number" step="any" min="0" name="quantity" value={item.quantity ?? ''} /></td>
-						<td><input form={`bom-update-${item.id}`} type="text" name="unit" value={item.unit ?? ''} placeholder="e.g. 5 pcs" maxlength="50" /></td>
-						<td><input form={`bom-update-${item.id}`} type="number" step="any" min="0" name="unitCost" value={item.unit_cost ?? ''} /></td>
-						<td>
-							<div class="stacked-inputs">
-								<input form={`bom-update-${item.id}`} type="text" name="supplier" value={item.supplier ?? ''} placeholder="Supplier name" maxlength="200" />
-								<input form={`bom-update-${item.id}`} type="url" name="itemUrl" value={item.item_url ?? ''} placeholder="Supplier link" />
-							</div>
-						</td>
-						<td class="muted">—</td>
-						{#if canEdit}
-							<td class="row-actions">
-								<button type="button" onclick={() => handleSave(item.id)} disabled={savingId === item.id}>
-									{savingId === item.id ? 'Saving…' : 'Save'}
-								</button>
-								<button type="button" class="btn-plain" onclick={cancelEdit}>Cancel</button>
-							</td>
-						{/if}
+			{#each groups as group (group.category)}
+				{#if showGroupHeaders}
+					<tr class="category-row">
+						<td colspan={canEdit ? 8 : 7} class="category-header">{group.category}</td>
 					</tr>
-				{:else}
-					<tr class="display-row" class:expanded={expandedId === item.id} onclick={(e) => handleRowClick(e, item.id)}>
-						<td>{item.part_name}</td>
-						<td>{item.description}</td>
-						<td>{item.quantity}</td>
-						<td>{item.unit}</td>
-						<td>{item.unit_cost}</td>
-						<td>
-							{#if item.supplier}
-								{#if item.item_url}
-									<a href={item.item_url} target="_blank" rel="noopener noreferrer">{item.supplier}</a>
-								{:else}
-									{item.supplier}
-								{/if}
+				{/if}
+				{#each group.items as item (item.id)}
+					{#if editingId === item.id}
+						<tr>
+							<td>
+								<div class="stacked-inputs">
+									<input form={`bom-update-${item.id}`} type="text" name="partName" value={item.part_name} maxlength="200" required />
+									<input form={`bom-update-${item.id}`} type="text" name="category" value={item.category ?? ''} placeholder="Category" maxlength="100" />
+								</div>
+							</td>
+							<td><input form={`bom-update-${item.id}`} type="text" name="description" value={item.description ?? ''} maxlength="1000" /></td>
+							<td><input form={`bom-update-${item.id}`} type="number" step="any" min="0" name="quantity" value={item.quantity ?? ''} /></td>
+							<td><input form={`bom-update-${item.id}`} type="text" name="unit" value={item.unit ?? ''} placeholder="e.g. 5 pcs" maxlength="50" /></td>
+							<td><input form={`bom-update-${item.id}`} type="number" step="any" min="0" name="unitCost" value={item.unit_cost ?? ''} /></td>
+							<td>
+								<div class="stacked-inputs">
+									<input form={`bom-update-${item.id}`} type="text" name="supplier" value={item.supplier ?? ''} placeholder="Supplier name" maxlength="200" />
+									<input form={`bom-update-${item.id}`} type="url" name="itemUrl" value={item.item_url ?? ''} placeholder="Supplier link" />
+								</div>
+							</td>
+							<td class="muted">—</td>
+							{#if canEdit}
+								<td class="row-actions">
+									<button type="button" onclick={() => handleSave(item.id)} disabled={savingId === item.id}>
+										{savingId === item.id ? 'Saving…' : 'Save'}
+									</button>
+									<button type="button" class="btn-plain" onclick={cancelEdit}>Cancel</button>
+								</td>
 							{/if}
-						</td>
-						<td>{item.total_cost}</td>
-						{#if canEdit}
-							<td class="row-actions">
-								<button type="button" class="btn-plain" onclick={() => startEdit(item.id)}>Edit</button>
-								<button type="button" class="btn-danger" onclick={() => handleDelete(item.id)} disabled={deletingId === item.id}>
-									{deletingId === item.id ? 'Deleting…' : 'Delete'}
-								</button>
+						</tr>
+					{:else}
+						<tr class="display-row" class:expanded={expandedId === item.id} onclick={(e) => handleRowClick(e, item.id)}>
+							<td>{item.part_name}</td>
+							<td>{item.description}</td>
+							<td>{item.quantity}</td>
+							<td>{item.unit}</td>
+							<td>{item.unit_cost}</td>
+							<td>
+								{#if item.supplier}
+									{#if item.item_url}
+										<a href={item.item_url} target="_blank" rel="noopener noreferrer">{item.supplier}</a>
+									{:else}
+										{item.supplier}
+									{/if}
+								{/if}
 							</td>
-						{/if}
-					</tr>
-				{/if}
-				{#if rowError?.id === item.id}
-					<tr>
-						<td colspan={canEdit ? 8 : 7} class="row-error">{rowError.message}</td>
-					</tr>
-				{/if}
+							<td>{item.total_cost}</td>
+							{#if canEdit}
+								<td class="row-actions">
+									<button type="button" class="btn-plain" onclick={() => startEdit(item.id)}>Edit</button>
+									<button type="button" class="btn-danger" onclick={() => handleDelete(item.id)} disabled={deletingId === item.id}>
+										{deletingId === item.id ? 'Deleting…' : 'Delete'}
+									</button>
+								</td>
+							{/if}
+						</tr>
+					{/if}
+					{#if rowError?.id === item.id}
+						<tr>
+							<td colspan={canEdit ? 8 : 7} class="row-error">{rowError.message}</td>
+						</tr>
+					{/if}
+				{/each}
 			{/each}
 		</tbody>
 	</table>
@@ -218,6 +250,7 @@
 
 	<form method="POST" action={`/api/projects/${projectId}/bom/create`} onsubmit={handleAddSubmit}>
 		<input type="text" name="partName" placeholder="Part name" maxlength="200" required />
+		<input type="text" name="category" placeholder="Category (optional)" maxlength="100" />
 		<input type="text" name="description" placeholder="Description" maxlength="1000" />
 		<input type="number" step="any" min="0" name="quantity" placeholder="Qty" />
 		<input type="text" name="unit" placeholder="Unit (e.g. 5 pcs)" maxlength="50" />
@@ -233,6 +266,17 @@
 	.table-scroll table {
 		table-layout: fixed;
 		font-size: 0.85rem;
+	}
+
+	.category-header {
+		font-weight: 700;
+		padding-top: var(--space-3);
+		border-top: 1px solid var(--color-border);
+	}
+
+	.category-row:first-child .category-header {
+		border-top: none;
+		padding-top: var(--space-2);
 	}
 
 	.table-scroll th {
@@ -288,7 +332,6 @@
 		z-index: 2;
 		background: var(--color-bg);
 		border-color: var(--color-border-strong);
-		box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
 	}
 
 	.stacked-inputs {

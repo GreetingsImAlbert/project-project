@@ -58,7 +58,7 @@ const { data: files } = await filesQuery
 
 const { data: bomItems } = await Astro.locals.supabase
 	.from('bom_items')
-	.select('id, part_name, description, quantity, unit, unit_cost, supplier, item_url, total_cost')
+	.select('id, part_name, category, description, quantity, unit, unit_cost, supplier, item_url, total_cost')
 	.eq('project_id', id)
 	.order('created_at', { ascending: true });
 ---

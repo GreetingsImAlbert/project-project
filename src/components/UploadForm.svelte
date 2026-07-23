@@ -154,7 +154,6 @@
 		max-width: 100%;
 		background: var(--color-bg);
 		border: 1px solid var(--color-border);
-		border-radius: var(--radius-sm);
 		padding: var(--space-2) var(--space-3);
 		color: var(--color-muted);
 		white-space: nowrap;

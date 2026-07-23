@@ -29,6 +29,7 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 
 	const formData = await request.formData();
 	const partName = formData.get('partName')?.toString().trim();
+	const category = formData.get('category')?.toString().trim() || null;
 	const description = formData.get('description')?.toString().trim() || null;
 	const unit = formData.get('unit')?.toString().trim() || null;
 	const supplier = formData.get('supplier')?.toString().trim() || null;
@@ -40,6 +41,9 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 
 	if (partName.length > 200) {
 		return new Response('Part name must be 200 characters or fewer', { status: 400 });
+	}
+	if (category && category.length > 100) {
+		return new Response('Category must be 100 characters or fewer', { status: 400 });
 	}
 	if (description && description.length > 1000) {
 		return new Response('Description must be 1000 characters or fewer', { status: 400 });
@@ -79,6 +83,7 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 		.insert({
 			project_id: projectId,
 			part_name: partName,
+			category,
 			description,
 			quantity,
 			unit,
@@ -86,7 +91,7 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 			supplier,
 			item_url: itemUrl,
 		})
-		.select('id, part_name, description, quantity, unit, unit_cost, supplier, item_url, total_cost')
+		.select('id, part_name, category, description, quantity, unit, unit_cost, supplier, item_url, total_cost')
 		.single();
 
 	if (error) {

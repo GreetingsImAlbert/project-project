@@ -16,6 +16,7 @@ export type Database = {
     Tables: {
       bom_items: {
         Row: {
+          category: string | null
           created_at: string | null
           description: string | null
           id: string
@@ -29,6 +30,7 @@ export type Database = {
           unit_cost: number | null
         }
         Insert: {
+          category?: string | null
           created_at?: string | null
           description?: string | null
           id?: string
@@ -42,6 +44,7 @@ export type Database = {
           unit_cost?: number | null
         }
         Update: {
+          category?: string | null
           created_at?: string | null
           description?: string | null
           id?: string

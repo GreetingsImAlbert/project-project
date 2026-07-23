@@ -46,6 +46,8 @@ npm run update-types      # supabase gen types -> src/lib/supabase/database.type
 npx wrangler dev          # deploy locally to 127.0.0.1:8787 using the result of npm run build
 ```
 
+Do not make edits to a file that is meant to be automatically generated such as database.types.ts. If it is not crucial to run before you proceed, just wait until the end and tell me to run the required command (e.g. npm run update-types).
+
 ## Validation
 
 There is no lint or test script configured in this project. Run these regularly instead, especially after touching types, `locals`, or Supabase call sites:

@@ -35,6 +35,7 @@
 	let allFolders = $state(initialAllFolders);
 	let loading = $state(false);
 	let error = $state<string | null>(null);
+	let viewMode = $state<'list' | 'grid'>('list');
 
 	let creatingFolder = $state(false);
 	let createFolderError = $state<string | null>(null);
@@ -56,6 +57,15 @@
 		}
 		return crumbs;
 	});
+
+	let parentFolderId = $derived(
+		breadcrumbs.length > 0 ? breadcrumbs[breadcrumbs.length - 1].parent_folder_id : null
+	);
+
+	function setViewMode(mode: 'list' | 'grid') {
+		viewMode = mode;
+		localStorage.setItem('p2-file-view-mode', mode);
+	}
 
 	function hrefFor(folderId: string | null) {
 		return folderId ? `/projects/${projectId}?folder=${folderId}` : `/projects/${projectId}`;
@@ -109,6 +119,10 @@
 		files = [...files, file];
 	}
 
+	function handleFileDeleted(fileId: string) {
+		files = files.filter((f) => f.id !== fileId);
+	}
+
 	async function handleCreateFolder(e: SubmitEvent) {
 		e.preventDefault();
 		const form = e.currentTarget as HTMLFormElement;
@@ -149,6 +163,9 @@
 	}
 
 	onMount(() => {
+		const stored = localStorage.getItem('p2-file-view-mode');
+		if (stored === 'grid' || stored === 'list') viewMode = stored;
+
 		const onPopState = () => {
 			const folderId = new URLSearchParams(location.search).get('folder');
 			navigate(folderId, false);
@@ -159,13 +176,17 @@
 </script>
 
 <div class="browser-header">
-	<p class="breadcrumbs">
-		<a href={hrefFor(null)} onclick={(e) => handleLinkClick(e, null)}>Root</a>
-		{#each breadcrumbs as crumb (crumb.id)}
-			{' / '}
-			<a href={hrefFor(crumb.id)} onclick={(e) => handleLinkClick(e, crumb.id)}>{crumb.name}</a>
-		{/each}
-	</p>
+	<div class="breadcrumb-group">
+		<button type="button" class="btn-plain nav-btn" onclick={() => history.back()}>← Back</button>
+		<button type="button" class="btn-plain nav-btn" onclick={() => navigate(parentFolderId)} disabled={currentFolderId === null}>↑ Up</button>
+		<p class="breadcrumbs">
+			<a href={hrefFor(null)} onclick={(e) => handleLinkClick(e, null)}>Root</a>
+			{#each breadcrumbs as crumb (crumb.id)}
+				{' / '}
+				<a href={hrefFor(crumb.id)} onclick={(e) => handleLinkClick(e, crumb.id)}>{crumb.name}</a>
+			{/each}
+		</p>
+	</div>
 
 	{#if canEdit}
 		<form class="create-folder-form" onsubmit={handleCreateFolder} action={`/api/projects/${projectId}/folders/create`}>
@@ -197,13 +218,20 @@
 
 {#if error}<p class="row-error">{error}</p>{/if}
 
+<div class="view-toggle">
+	<button type="button" class="btn-plain" class:active={viewMode === 'list'} onclick={() => setViewMode('list')}>List</button>
+	<button type="button" class="btn-plain" class:active={viewMode === 'grid'} onclick={() => setViewMode('grid')}>Grid</button>
+</div>
+
 <FileList
 	canEdit={canEdit}
 	currentFolderId={currentFolderId}
 	allFolders={allFolders}
 	files={loading ? [] : files}
+	viewMode={viewMode}
 	onFileMoved={handleFileMoved}
 	onFileCopied={handleFileCopied}
+	onFileDeleted={handleFileDeleted}
 />
 {#if loading}<p class="muted">Loading…</p>{/if}
 
@@ -220,8 +248,40 @@
 		gap: var(--space-3);
 	}
 
+	.breadcrumb-group {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--space-2);
+	}
+
+	.breadcrumb-group .breadcrumbs {
+		margin: 0;
+	}
+
+	.nav-btn {
+		font-size: 0.8rem;
+		padding: var(--space-1) var(--space-2);
+	}
+
 	.create-folder-form {
 		margin: 0;
+	}
+
+	.view-toggle {
+		display: flex;
+		gap: var(--space-2);
+		margin: 0 0 var(--space-3);
+	}
+
+	.view-toggle button {
+		font-size: 0.8rem;
+		padding: var(--space-1) var(--space-2);
+	}
+
+	.view-toggle button.active {
+		background: var(--color-fg);
+		color: var(--color-bg);
 	}
 
 	.folder-row {
