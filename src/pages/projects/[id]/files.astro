@@ -50,14 +50,14 @@ if (currentFolderId && !folderById.has(currentFolderId)) {
 
 let filesQuery = Astro.locals.supabase
 	.from('files')
-	.select('id, filename, size_bytes, mime_type, created_at, profiles(display_name)')
+	.select('id, filename, size_bytes, mime_type, created_at, uploaded_by, profiles(display_name)')
 	.eq('project_id', id)
 	.order('created_at', { ascending: false });
 
 filesQuery = currentFolderId ? filesQuery.eq('folder_id', currentFolderId) : filesQuery.is('folder_id', null);
 
 const { data: files } = await filesQuery
-	.overrideTypes<{ id: string; filename: string; size_bytes: number | null; mime_type: string | null; created_at: string; profiles: { display_name: string } }[]>()
+	.overrideTypes<{ id: string; filename: string; size_bytes: number | null; mime_type: string | null; created_at: string; uploaded_by: string; profiles: { display_name: string } }[]>()
 
 const admin = getSupabaseAdmin(env);
 const { totalBytes } = await getUserStorageBytes(admin, user.id);
@@ -74,6 +74,7 @@ const projectStorageBytes = await getProjectStorageBytes(Astro.locals.supabase, 
 		<FileBrowser
 			client:load
 			projectId={project.id}
+			currentUserId={user.id}
 			canEdit={canEdit}
 			initialAllFolders={allFolders ?? []}
 			initialFolderId={currentFolderId}

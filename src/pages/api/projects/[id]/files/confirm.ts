@@ -76,7 +76,7 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 			mime_type: body.mimeType ?? null,
 			size_bytes: sizeBytes,
 		})
-		.select('id, filename, size_bytes, mime_type, created_at, profiles(display_name)')
+		.select('id, filename, size_bytes, mime_type, created_at, uploaded_by, profiles(display_name)')
 		.single();
 
 	if (error) {

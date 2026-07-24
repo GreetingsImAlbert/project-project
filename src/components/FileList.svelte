@@ -6,6 +6,7 @@
 		id: string;
 		filename: string;
 		size_bytes: number | null;
+		uploaded_by: string;
 		profiles: { display_name: string } | null;
 	}
 
@@ -21,6 +22,7 @@
 		allFolders,
 		files,
 		viewMode,
+		loading = false,
 		onFileMoved,
 		onFileCopied,
 		onFileDeleted,
@@ -30,6 +32,7 @@
 		allFolders: Folder[];
 		files: FileRow[];
 		viewMode: 'list' | 'grid';
+		loading?: boolean;
 		onFileMoved: (fileId: string, targetFolderId: string | null) => void;
 		onFileCopied: (file: FileRow, targetFolderId: string | null) => void;
 		onFileDeleted: (fileId: string) => void;
@@ -140,7 +143,7 @@
 	</div>
 {/snippet}
 
-{#if files.length === 0}
+{#if !loading && files.length === 0}
 	<p class="muted">No files here.</p>
 {/if}
 

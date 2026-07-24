@@ -15,11 +15,13 @@
 		id: string;
 		filename: string;
 		size_bytes: number | null;
+		uploaded_by: string;
 		profiles: { display_name: string } | null;
 	}
 
 	let {
 		projectId,
+		currentUserId,
 		canEdit,
 		initialAllFolders,
 		initialFolderId,
@@ -27,6 +29,7 @@
 		initialAvailableBytes,
 	}: {
 		projectId: string;
+		currentUserId: string;
 		canEdit: boolean;
 		initialAllFolders: Folder[];
 		initialFolderId: string | null;
@@ -151,6 +154,10 @@
 			files = [...files, file];
 		}
 		adjustProjectStorage(file.size_bytes ?? 0);
+		// copy.ts always attributes the copy to the current user (uploaded_by is
+		// the copier, not the source file's original uploader), so this always
+		// consumes the current viewer's own quota regardless of the destination.
+		availableBytes -= file.size_bytes ?? 0;
 	}
 
 	function handleUploaded(file: FileRow) {
@@ -163,6 +170,11 @@
 		const deletedFile = files.find((f) => f.id === fileId);
 		files = files.filter((f) => f.id !== fileId);
 		adjustProjectStorage(-(deletedFile?.size_bytes ?? 0));
+		// Only give quota back to the current viewer if it was actually their own
+		// file — deleting a project-mate's upload frees their quota, not ours.
+		if (deletedFile?.uploaded_by === currentUserId) {
+			availableBytes += deletedFile?.size_bytes ?? 0;
+		}
 	}
 
 	async function handleCreateFolder(e: SubmitEvent) {
@@ -303,6 +315,7 @@
 	allFolders={allFolders}
 	files={loading ? [] : files}
 	viewMode={viewMode}
+	loading={loading}
 	onFileMoved={handleFileMoved}
 	onFileCopied={handleFileCopied}
 	onFileDeleted={handleFileDeleted}
@@ -352,6 +365,12 @@
 
 	.create-folder-form {
 		margin: 0;
+	}
+
+	.create-folder-form input[type='text'] {
+		width: 220px;
+		max-width: 100%;
+		box-sizing: border-box;
 	}
 
 	@media (max-width: 640px) {

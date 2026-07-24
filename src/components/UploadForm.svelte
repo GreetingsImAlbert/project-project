@@ -5,6 +5,7 @@
 		id: string;
 		filename: string;
 		size_bytes: number | null;
+		uploaded_by: string;
 		profiles: { display_name: string } | null;
 	}
 
@@ -55,6 +56,12 @@
 
 	function handleFileInputChange() {
 		selectedFile = fileInput?.files?.[0] ?? null;
+	}
+
+	function clearSelectedFile(e: MouseEvent) {
+		e.stopPropagation();
+		selectedFile = null;
+		if (fileInput) fileInput.value = '';
 	}
 
 	async function handleSubmit(e: SubmitEvent) {
@@ -123,28 +130,37 @@
 	}
 </script>
 
-<form onsubmit={handleSubmit}>
-	<input type="file" bind:this={fileInput} onchange={handleFileInputChange} class="visually-hidden" tabindex="-1" />
-	<div
-		class="dropzone"
-		class:dragging
-		class:has-file={!!selectedFile}
-		role="button"
-		tabindex="0"
-		onclick={openPicker}
-		onkeydown={handleKeydown}
-		ondragover={handleDragOver}
-		ondragleave={handleDragLeave}
-		ondrop={handleDrop}
-	>
-		{selectedFile ? selectedFile.name : 'Drag or Choose File'}
-	</div>
-	<button type="submit" disabled={uploading || !selectedFile}>Upload</button>
-</form>
-<p class="muted available-space">Available: {formatBytes(Math.max(availableBytes, 0))}</p>
-{#if status}<p class="muted">{status}</p>{/if}
+<div class="upload-form">
+	<p class="muted available-space">Available: {formatBytes(Math.max(availableBytes, 0))}</p>
+	<form onsubmit={handleSubmit}>
+		<input type="file" bind:this={fileInput} onchange={handleFileInputChange} class="visually-hidden" tabindex="-1" />
+		<div
+			class="dropzone"
+			class:dragging
+			class:has-file={!!selectedFile}
+			role="button"
+			tabindex="0"
+			onclick={openPicker}
+			onkeydown={handleKeydown}
+			ondragover={handleDragOver}
+			ondragleave={handleDragLeave}
+			ondrop={handleDrop}
+		>
+			<span class="dropzone-text">{selectedFile ? selectedFile.name : 'Drag or Choose File'}</span>
+			{#if selectedFile}
+				<button type="button" class="clear-btn" aria-label="Remove selected file" onclick={clearSelectedFile}>×</button>
+			{/if}
+		</div>
+		<button type="submit" disabled={uploading || !selectedFile}>Upload</button>
+	</form>
+	{#if status}<p class="muted">{status}</p>{/if}
+</div>
 
 <style>
+	.upload-form {
+		position: relative;
+	}
+
 	.visually-hidden {
 		position: absolute;
 		width: 1px;
@@ -155,16 +171,25 @@
 	}
 
 	.dropzone {
-		width: 260px;
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+		width: 220px;
 		max-width: 100%;
+		box-sizing: border-box;
 		background: var(--color-bg);
 		border: 1px solid var(--color-border);
 		padding: var(--space-2) var(--space-3);
 		color: var(--color-muted);
+		cursor: pointer;
+	}
+
+	.dropzone-text {
+		flex: 1 1 auto;
+		min-width: 0;
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
-		cursor: pointer;
 	}
 
 	.dropzone.dragging {
@@ -175,8 +200,27 @@
 		color: var(--color-fg);
 	}
 
+	.clear-btn {
+		flex: 0 0 auto;
+		background: none;
+		border: none;
+		padding: 0 0 0 var(--space-1);
+		color: var(--color-muted);
+		font-size: 1rem;
+		line-height: 1;
+		cursor: pointer;
+	}
+
+	.clear-btn:hover {
+		color: var(--color-danger);
+	}
+
 	.available-space {
+		position: absolute;
+		bottom: 100%;
+		left: 0;
+		margin: 0 0 var(--space-1);
 		font-size: 0.8rem;
-		margin: var(--space-1) 0 0;
+		white-space: nowrap;
 	}
 </style>
