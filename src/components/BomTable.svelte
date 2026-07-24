@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { slide } from 'svelte/transition';
 	import { formatCurrency, initCurrency } from '../lib/currency.svelte';
 
 	interface BomItem {
@@ -34,6 +35,15 @@
 
 	let adding = $state(false);
 	let addError = $state<string | null>(null);
+	let showAddForm = $state(false);
+	let addPartName = $state('');
+	let addCategory = $state('');
+	let addDescription = $state('');
+	let addQuantity = $state('');
+	let addUnit = $state('');
+	let addUnitCost = $state('');
+	let addSupplier = $state('');
+	let addItemUrl = $state('');
 
 	let expandedId = $state<string | null>(null);
 
@@ -132,6 +142,15 @@
 		const created: BomItem = await res.json();
 		items = [...items, created];
 		form.reset();
+		addPartName = '';
+		addCategory = '';
+		addDescription = '';
+		addQuantity = '';
+		addUnit = '';
+		addUnitCost = '';
+		addSupplier = '';
+		addItemUrl = '';
+		showAddForm = false;
 		adding = false;
 	}
 </script>
@@ -268,17 +287,29 @@
 		<form id={`bom-update-${item.id}`} method="POST" action={`/api/bom/${item.id}/update`} class="hidden-form"></form>
 	{/each}
 
-	<form method="POST" action={`/api/projects/${projectId}/bom/create`} onsubmit={handleAddSubmit}>
-		<input type="text" name="partName" placeholder="Part name" maxlength="200" required />
-		<input type="text" name="category" placeholder="Category (optional)" maxlength="100" />
-		<input type="text" name="description" placeholder="Description" maxlength="1000" />
-		<input type="number" step="any" min="0" name="quantity" placeholder="Qty" />
-		<input type="text" name="unit" placeholder="Unit (e.g. 5 pcs)" maxlength="50" />
-		<input type="number" step="any" min="0" name="unitCost" placeholder="Unit cost" />
-		<input type="text" name="supplier" placeholder="Supplier" maxlength="200" />
-		<input type="url" name="itemUrl" placeholder="Supplier link" />
-		<button type="submit" disabled={adding}>{adding ? 'Adding…' : 'Add BOM item'}</button>
-	</form>
+	{#if showAddForm}
+		<form
+			method="POST"
+			action={`/api/projects/${projectId}/bom/create`}
+			onsubmit={handleAddSubmit}
+			transition:slide={{ duration: 150 }}
+		>
+			<input type="text" name="partName" placeholder="Part name" maxlength="200" required bind:value={addPartName} />
+			<input type="text" name="category" placeholder="Category (optional)" maxlength="100" bind:value={addCategory} />
+			<input type="text" name="description" placeholder="Description" maxlength="1000" bind:value={addDescription} />
+			<input type="number" step="any" min="0" name="quantity" placeholder="Qty" bind:value={addQuantity} />
+			<input type="text" name="unit" placeholder="Unit (e.g. 5 pcs)" maxlength="50" bind:value={addUnit} />
+			<input type="number" step="any" min="0" name="unitCost" placeholder="Unit cost" bind:value={addUnitCost} />
+			<input type="text" name="supplier" placeholder="Supplier" maxlength="200" bind:value={addSupplier} />
+			<input type="url" name="itemUrl" placeholder="Supplier link" bind:value={addItemUrl} />
+			<div class="add-form-actions">
+				<button type="submit" disabled={adding}>{adding ? 'Adding…' : 'Add BOM item'}</button>
+				<button type="button" class="btn-plain" onclick={() => (showAddForm = false)} aria-label="Cancel add BOM item">✕</button>
+			</div>
+		</form>
+	{:else}
+		<button type="button" onclick={() => (showAddForm = true)}>+ Add BOM item</button>
+	{/if}
 	{#if addError}<p class="row-error">{addError}</p>{/if}
 {/if}
 
@@ -393,6 +424,12 @@
 
 	.hidden-form {
 		display: none;
+	}
+
+	.add-form-actions {
+		display: flex;
+		gap: var(--space-2);
+		align-items: center;
 	}
 
 	.row-error {

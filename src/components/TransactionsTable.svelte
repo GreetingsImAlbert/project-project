@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { slide } from 'svelte/transition';
 	import { formatCurrency, initCurrency } from '../lib/currency.svelte';
 	import {
 		transactionsState,
@@ -37,7 +38,14 @@
 
 	let adding = $state(false);
 	let addError = $state<string | null>(null);
+	let showAddForm = $state(false);
 	let addType = $state<TransactionType>('item');
+	let addTransactionDate = $state('');
+	let addItemName = $state('');
+	let addQuantity = $state('');
+	let addUnit = $state('');
+	let addUnitCost = $state('');
+	let addMemberId = $state('');
 
 	let expandedId = $state<string | null>(null);
 	let editingType = $state<TransactionType>('item');
@@ -150,6 +158,13 @@
 		addTransaction(created);
 		form.reset();
 		addType = 'item';
+		addTransactionDate = '';
+		addItemName = '';
+		addQuantity = '';
+		addUnit = '';
+		addUnitCost = '';
+		addMemberId = '';
+		showAddForm = false;
 		adding = false;
 	}
 </script>
@@ -327,25 +342,37 @@
 		<form id={`transaction-update-${t.id}`} method="POST" action={`/api/transactions/${t.id}/update`} class="hidden-form"></form>
 	{/each}
 
-	<form method="POST" action={`/api/projects/${projectId}/transactions/create`} onsubmit={handleAddSubmit}>
-		<input type="date" name="transactionDate" required />
-		<select name="type" bind:value={addType}>
-			{#each Object.entries(TYPE_LABELS) as [value, label]}
-				<option {value}>{label}</option>
-			{/each}
-		</select>
-		<input type="text" name="itemName" placeholder="Item name" maxlength="200" disabled={addType !== 'item'} />
-		<input type="number" step="any" min="0" name="quantity" placeholder="Qty" disabled={addType !== 'item'} />
-		<input type="text" name="unit" placeholder="Unit (e.g. pcs)" maxlength="50" disabled={addType !== 'item'} />
-		<input type="number" step="any" min="0" name="unitCost" placeholder={unitCostPlaceholder(addType)} required />
-		<select name="memberId" required>
-			<option value="" disabled selected>Made by…</option>
-			{#each members as member (member.id)}
-				<option value={member.id}>{member.displayName}</option>
-			{/each}
-		</select>
-		<button type="submit" disabled={adding}>{adding ? 'Adding…' : 'Add transaction'}</button>
-	</form>
+	{#if showAddForm}
+		<form
+			method="POST"
+			action={`/api/projects/${projectId}/transactions/create`}
+			onsubmit={handleAddSubmit}
+			transition:slide={{ duration: 150 }}
+		>
+			<input type="date" name="transactionDate" required bind:value={addTransactionDate} />
+			<select name="type" bind:value={addType}>
+				{#each Object.entries(TYPE_LABELS) as [value, label]}
+					<option {value}>{label}</option>
+				{/each}
+			</select>
+			<input type="text" name="itemName" placeholder="Item name" maxlength="200" disabled={addType !== 'item'} bind:value={addItemName} />
+			<input type="number" step="any" min="0" name="quantity" placeholder="Qty" disabled={addType !== 'item'} bind:value={addQuantity} />
+			<input type="text" name="unit" placeholder="Unit (e.g. pcs)" maxlength="50" disabled={addType !== 'item'} bind:value={addUnit} />
+			<input type="number" step="any" min="0" name="unitCost" placeholder={unitCostPlaceholder(addType)} required bind:value={addUnitCost} />
+			<select name="memberId" required bind:value={addMemberId}>
+				<option value="" disabled selected>Made by…</option>
+				{#each members as member (member.id)}
+					<option value={member.id}>{member.displayName}</option>
+				{/each}
+			</select>
+			<div class="add-form-actions">
+				<button type="submit" disabled={adding}>{adding ? 'Adding…' : 'Add transaction'}</button>
+				<button type="button" class="btn-plain" onclick={() => (showAddForm = false)} aria-label="Cancel add transaction">✕</button>
+			</div>
+		</form>
+	{:else}
+		<button type="button" onclick={() => (showAddForm = true)}>+ Add transaction</button>
+	{/if}
 	{#if addError}<p class="row-error">{addError}</p>{/if}
 {/if}
 
@@ -445,6 +472,12 @@
 
 	.hidden-form {
 		display: none;
+	}
+
+	.add-form-actions {
+		display: flex;
+		gap: var(--space-2);
+		align-items: center;
 	}
 
 	.row-error {
