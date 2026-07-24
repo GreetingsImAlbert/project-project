@@ -1,7 +1,7 @@
-export const CURRENCIES = ['USD', 'EUR', 'GBP', 'JPY', 'PHP'] as const;
+export const CURRENCIES = ['PHP', 'USD'] as const;
 export type CurrencyCode = (typeof CURRENCIES)[number];
 
-export const currencyState = $state<{ code: CurrencyCode }>({ code: 'USD' });
+export const currencyState = $state<{ code: CurrencyCode }>({ code: 'PHP' });
 
 const STORAGE_KEY = 'p2-currency';
 
