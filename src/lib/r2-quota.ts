@@ -4,8 +4,10 @@ import type { Database } from './supabase/database.types';
 // Each user gets a fixed slice of R2's 10GB/month free tier — R2 has no
 // built-in per-user quota, so this is enforced at the app level before any
 // write that grows a user's storage. Paired with MAX_USERS in user-limit.ts
-// (10 users * 950MB = 9.5GB, a buffer under the free tier).
-export const MAX_USER_STORAGE_BYTES = 950 * 1024 * 1024;
+// (10 users * 950MB = 9.5GB, a buffer under the free tier). Decimal (SI)
+// units throughout, matching how R2 reports/bills storage — 1 MB = 1,000,000
+// bytes, not 1024*1024 (see format-bytes.ts).
+export const MAX_USER_STORAGE_BYTES = 950 * 1_000_000;
 
 const PAGE_SIZE = 1000;
 
