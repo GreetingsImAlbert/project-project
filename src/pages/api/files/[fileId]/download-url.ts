@@ -32,9 +32,10 @@ export const GET: APIRoute = async ({ params, locals }) => {
 	`https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${env.R2_BUCKET_NAME}/${file.r2_key}`
 	);
 	url.searchParams.set('X-Amz-Expires', '3600');
+	const safeFilename = file.filename.replace(/[\\"]/g, '_');
 	url.searchParams.set(
 		'response-content-disposition',
-		`attachment; filename="${file.filename}"`
+		`attachment; filename="${safeFilename}"`
 	);
 
 	const signed = await r2.sign(new Request(url, { method: 'GET' }), {
