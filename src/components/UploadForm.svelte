@@ -84,7 +84,7 @@
 		});
 
 		if (!urlRes.ok) {
-			status = 'Failed to get upload URL: ' + (await urlRes.text());
+			status = await urlRes.text();
 			uploading = false;
 			return;
 		}
@@ -125,10 +125,15 @@
 			selectedFile = null;
 			if (fileInput) fileInput.value = '';
 		} else {
-			const result: { cleanedUp: boolean; error: string } = await confirmRes.json();
-			status = result.cleanedUp
-				? `Upload failed (cleaned up): ${result.error}`
-				: `Upload failed AND cleanup failed: ${result.error}`;
+			const bodyText = await confirmRes.text();
+			try {
+				const result: { cleanedUp: boolean; error: string } = JSON.parse(bodyText);
+				status = result.cleanedUp
+					? `Upload failed (cleaned up): ${result.error}`
+					: `Upload failed AND cleanup failed: ${result.error}`;
+			} catch {
+				status = bodyText;
+			}
 		}
 
 		uploading = false;
