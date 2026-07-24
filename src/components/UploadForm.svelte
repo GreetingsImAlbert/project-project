@@ -28,6 +28,7 @@
 	let fileInput: HTMLInputElement | undefined = $state();
 
 	function openPicker() {
+		if (uploading) return;
 		fileInput?.click();
 	}
 
@@ -40,6 +41,7 @@
 
 	function handleDragOver(e: DragEvent) {
 		e.preventDefault();
+		if (uploading) return;
 		dragging = true;
 	}
 
@@ -50,16 +52,19 @@
 	function handleDrop(e: DragEvent) {
 		e.preventDefault();
 		dragging = false;
+		if (uploading) return;
 		const file = e.dataTransfer?.files?.[0];
 		if (file) selectedFile = file;
 	}
 
 	function handleFileInputChange() {
+		if (uploading) return;
 		selectedFile = fileInput?.files?.[0] ?? null;
 	}
 
 	function clearSelectedFile(e: MouseEvent) {
 		e.stopPropagation();
+		if (uploading) return;
 		selectedFile = null;
 		if (fileInput) fileInput.value = '';
 	}
@@ -133,13 +138,15 @@
 <div class="upload-form">
 	<p class="muted available-space">Available: {formatBytes(Math.max(availableBytes, 0))}</p>
 	<form onsubmit={handleSubmit}>
-		<input type="file" bind:this={fileInput} onchange={handleFileInputChange} class="visually-hidden" tabindex="-1" />
+		<input type="file" bind:this={fileInput} onchange={handleFileInputChange} class="visually-hidden" tabindex="-1" disabled={uploading} />
 		<div
 			class="dropzone"
 			class:dragging
 			class:has-file={!!selectedFile}
+			class:disabled={uploading}
 			role="button"
-			tabindex="0"
+			aria-disabled={uploading}
+			tabindex={uploading ? -1 : 0}
 			onclick={openPicker}
 			onkeydown={handleKeydown}
 			ondragover={handleDragOver}
@@ -148,7 +155,7 @@
 		>
 			<span class="dropzone-text">{selectedFile ? selectedFile.name : 'Drag or Choose File'}</span>
 			{#if selectedFile}
-				<button type="button" class="clear-btn" aria-label="Remove selected file" onclick={clearSelectedFile}>×</button>
+				<button type="button" class="clear-btn" aria-label="Remove selected file" onclick={clearSelectedFile} disabled={uploading}>×</button>
 			{/if}
 		</div>
 		<button type="submit" disabled={uploading || !selectedFile}>Upload</button>
@@ -198,6 +205,11 @@
 
 	.dropzone.has-file {
 		color: var(--color-fg);
+	}
+
+	.dropzone.disabled {
+		cursor: default;
+		opacity: 0.6;
 	}
 
 	.clear-btn {

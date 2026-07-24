@@ -27,6 +27,7 @@
 		initialFolderId,
 		initialFiles,
 		initialAvailableBytes,
+		initialViewMode,
 	}: {
 		projectId: string;
 		currentUserId: string;
@@ -35,6 +36,7 @@
 		initialFolderId: string | null;
 		initialFiles: FileRow[];
 		initialAvailableBytes: number;
+		initialViewMode?: 'list' | 'grid';
 	} = $props();
 
 	let currentFolderId = $state(initialFolderId);
@@ -43,7 +45,13 @@
 	let availableBytes = $state(initialAvailableBytes);
 	let loading = $state(false);
 	let error = $state<string | null>(null);
-	let viewMode = $state<'list' | 'grid'>('grid');
+	function getInitialViewMode(): 'list' | 'grid' {
+		if (initialViewMode) return initialViewMode;
+		if (typeof localStorage === 'undefined') return 'grid';
+		return localStorage.getItem('p2-file-view-mode') === 'list' ? 'list' : 'grid';
+	}
+
+	let viewMode = $state<'list' | 'grid'>(getInitialViewMode());
 	let backStack = $state<(string | null)[]>([]);
 
 	let creatingFolder = $state(false);
@@ -79,6 +87,7 @@
 	function setViewMode(mode: 'list' | 'grid') {
 		viewMode = mode;
 		localStorage.setItem('p2-file-view-mode', mode);
+		document.cookie = `p2-file-view-mode=${mode}; path=/; max-age=31536000; samesite=lax`;
 	}
 
 	function hrefFor(folderId: string | null) {
@@ -218,9 +227,6 @@
 	}
 
 	onMount(() => {
-		const stored = localStorage.getItem('p2-file-view-mode');
-		if (stored === 'grid' || stored === 'list') viewMode = stored;
-
 		const onPopState = () => {
 			const folderId = new URLSearchParams(location.search).get('folder');
 			navigate(folderId, 'none');

@@ -64,6 +64,9 @@ const { totalBytes } = await getUserStorageBytes(admin, user.id);
 const availableBytes = MAX_USER_STORAGE_BYTES - totalBytes;
 
 const projectStorageBytes = await getProjectStorageBytes(Astro.locals.supabase, id!);
+
+const storedViewMode = Astro.cookies.get('p2-file-view-mode')?.value;
+const initialViewMode = storedViewMode === 'list' ? 'list' : 'grid';
 ---
 <BaseLayout title={`${project.name} — Files`}>
 	<ProjectShell project={project} members={members ?? []} userRole={userRole} activePage="files">
@@ -80,6 +83,7 @@ const projectStorageBytes = await getProjectStorageBytes(Astro.locals.supabase, 
 			initialFolderId={currentFolderId}
 			initialFiles={files ?? []}
 			initialAvailableBytes={availableBytes}
+			initialViewMode={initialViewMode}
 		/>
 	</ProjectShell>
 </BaseLayout>
