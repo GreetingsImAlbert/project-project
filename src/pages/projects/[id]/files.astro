@@ -60,10 +60,10 @@ const { data: files } = await filesQuery
 	.overrideTypes<{ id: string; filename: string; size_bytes: number | null; mime_type: string | null; created_at: string; uploaded_by: string; profiles: { display_name: string } }[]>()
 
 const admin = getSupabaseAdmin(env);
-const { totalBytes } = await getUserStorageBytes(admin, user.id);
-const availableBytes = MAX_USER_STORAGE_BYTES - totalBytes;
+const { totalBytes, truncated: userStorageFailed } = await getUserStorageBytes(admin, user.id);
+const availableBytes = userStorageFailed ? null : MAX_USER_STORAGE_BYTES - totalBytes;
 
-const projectStorageBytes = await getProjectStorageBytes(Astro.locals.supabase, id!);
+const { totalBytes: projectStorageBytes, failed: projectStorageFailed } = await getProjectStorageBytes(Astro.locals.supabase, id!);
 
 const storedViewMode = Astro.cookies.get('p2-file-view-mode')?.value;
 const initialViewMode = storedViewMode === 'list' ? 'list' : 'grid';
@@ -72,7 +72,7 @@ const initialViewMode = storedViewMode === 'list' ? 'list' : 'grid';
 	<ProjectShell project={project} members={members ?? []} userRole={userRole} activePage="files">
 		<h2>Files</h2>
 
-		<ProjectStorageUsed client:load initialUsedBytes={projectStorageBytes} />
+		<ProjectStorageUsed client:load initialUsedBytes={projectStorageBytes} initialFailed={projectStorageFailed} />
 
 		<FileBrowser
 			client:load

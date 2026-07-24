@@ -22,11 +22,11 @@ const { data: profile } = await Astro.locals.supabase
 const displayName = profile?.display_name;
 
 const admin = getSupabaseAdmin(env);
-const { totalBytes } = await getUserStorageBytes(admin, user.id);
+const { totalBytes, truncated } = await getUserStorageBytes(admin, user.id);
 ---
 <BaseLayout title="Dashboard">
 	<h1>Dashboard</h1>
 	<p class="muted">Welcome, {displayName ?? user.email}</p>
 	<p><a href="/projects">Go to Projects →</a></p>
-	<StorageUsageBar usedBytes={totalBytes} capBytes={MAX_USER_STORAGE_BYTES} />
+	<StorageUsageBar usedBytes={totalBytes} capBytes={MAX_USER_STORAGE_BYTES} failed={truncated} />
 </BaseLayout>

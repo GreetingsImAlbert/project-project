@@ -46,9 +46,14 @@ export async function getUserStorageBytes(admin: SupabaseClient<Database>, userI
 // can see this via RLS, so it takes whichever client the caller already has
 // (locals.supabase from a page load, not necessarily the admin client).
 export async function getProjectStorageBytes(supabase: SupabaseClient<Database>, projectId: string) {
-	const { data } = await supabase.from('files').select('size_bytes').eq('project_id', projectId);
+	const { data, error } = await supabase.from('files').select('size_bytes').eq('project_id', projectId);
 
-	return (data ?? []).reduce((sum, row) => sum + (row.size_bytes ?? 0), 0);
+	if (error) {
+		console.log(`[storage-quota] failed to read project usage for project ${projectId}: ${error.message}`);
+		return { totalBytes: 0, failed: true };
+	}
+
+	return { totalBytes: data.reduce((sum, row) => sum + (row.size_bytes ?? 0), 0), failed: false };
 }
 
 // Admin-only: one paginated pass over every file in the bucket, bypassing RLS
@@ -91,10 +96,21 @@ export async function getGlobalStorageBreakdown(admin: SupabaseClient<Database>)
 
 export async function wouldExceedUserStorageQuota(admin: SupabaseClient<Database>, userId: string, additionalBytes: number) {
 	const { totalBytes, rowCount, truncated } = await getUserStorageBytes(admin, userId);
+
+	// A truncated read only ever under-counts (it stops summing partway through),
+	// so trusting the partial total could let a write through that actually blows
+	// the cap. Fail closed instead — block the write and require a clean re-read.
+	if (truncated) {
+		console.log(
+			`[storage-quota] user=${userId} rows=${rowCount} current=${totalBytes}B (TRUNCATED, lower bound only) — failing closed, blocking write`
+		);
+		return true;
+	}
+
 	const wouldExceed = totalBytes + additionalBytes > MAX_USER_STORAGE_BYTES;
 
 	console.log(
-		`[storage-quota] user=${userId} rows=${rowCount} current=${totalBytes}B additional=${additionalBytes}B cap=${MAX_USER_STORAGE_BYTES}B wouldExceed=${wouldExceed}${truncated ? ' TRUNCATED (summation incomplete, current is a lower bound)' : ''}`
+		`[storage-quota] user=${userId} rows=${rowCount} current=${totalBytes}B additional=${additionalBytes}B cap=${MAX_USER_STORAGE_BYTES}B wouldExceed=${wouldExceed}`
 	);
 
 	return wouldExceed;

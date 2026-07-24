@@ -41,7 +41,7 @@ const { data: bomItems } = await Astro.locals.supabase
 
 const totalCost = (bomItems ?? []).reduce((sum, item) => sum + (item.total_cost ?? 0), 0);
 
-const projectStorageBytes = await getProjectStorageBytes(Astro.locals.supabase, id!);
+const { totalBytes: projectStorageBytes, failed: projectStorageFailed } = await getProjectStorageBytes(Astro.locals.supabase, id!);
 ---
 <BaseLayout title={project.name}>
 	<ProjectShell project={project} members={members ?? []} userRole={userRole} activePage="overview">
@@ -56,7 +56,7 @@ const projectStorageBytes = await getProjectStorageBytes(Astro.locals.supabase, 
 			</div>
 			<div class="overview-stats">
 				<TotalCostDisplay client:load totalCost={totalCost} />
-				<ProjectStorageUsed client:load initialUsedBytes={projectStorageBytes} />
+				<ProjectStorageUsed client:load initialUsedBytes={projectStorageBytes} initialFailed={projectStorageFailed} />
 			</div>
 		</div>
 	</ProjectShell>

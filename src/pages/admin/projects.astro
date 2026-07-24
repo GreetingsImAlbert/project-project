@@ -39,7 +39,12 @@ const { byProject, truncated } = await getGlobalStorageBreakdown(admin);
 	<h1>All Projects</h1>
 	<p><a href="/admin">← Admin Dashboard</a></p>
 
-	{truncated && <p class="muted">Warning: storage totals below may be incomplete (a usage page failed to load).</p>}
+	{truncated && (
+		<p class="storage-error">
+			Storage totals below are unavailable (a usage page failed to load).
+			<a class="reload-link" href={Astro.url.pathname}>⟳ Reload</a>
+		</p>
+	)}
 
 	{projects && projects.length === 0 && <p class="muted">No projects yet.</p>}
 
@@ -60,7 +65,7 @@ const { byProject, truncated } = await getGlobalStorageBreakdown(admin);
 						<td>{project.name}</td>
 						<td>{project.profiles.display_name} <span class="muted">({project.profiles.email})</span></td>
 						<td>{memberCounts[project.id] ?? 0}</td>
-						<td>{formatBytes(byProject[project.id] ?? 0)}</td>
+						<td>{truncated ? '—' : formatBytes(byProject[project.id] ?? 0)}</td>
 						<td>{new Date(project.created_at).toLocaleDateString()}</td>
 					</tr>
 				))}
@@ -68,3 +73,13 @@ const { byProject, truncated } = await getGlobalStorageBreakdown(admin);
 		</table>
 	</div>
 </BaseLayout>
+
+<style>
+	.storage-error {
+		color: var(--color-danger);
+	}
+
+	.reload-link {
+		margin-left: var(--space-1);
+	}
+</style>

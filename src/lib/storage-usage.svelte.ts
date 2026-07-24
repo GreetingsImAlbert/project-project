@@ -1,7 +1,8 @@
-export const storageUsageState = $state<{ usedBytes: number }>({ usedBytes: 0 });
+export const storageUsageState = $state<{ usedBytes: number; failed: boolean }>({ usedBytes: 0, failed: false });
 
-export function initStorageUsage(usedBytes: number) {
+export function initStorageUsage(usedBytes: number, failed = false) {
 	storageUsageState.usedBytes = usedBytes;
+	storageUsageState.failed = failed;
 }
 
 export function adjustStorageUsage(deltaBytes: number) {

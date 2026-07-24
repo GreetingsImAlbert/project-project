@@ -51,7 +51,12 @@ const globalCapBytes = MAX_USERS * MAX_USER_STORAGE_BYTES;
 	<h1>Admin Dashboard</h1>
 	<p><a href="/admin/projects">View all projects →</a></p>
 
-	{truncated && <p class="muted">Warning: storage totals below may be incomplete (a usage page failed to load).</p>}
+	{truncated && (
+		<p class="storage-error">
+			Storage totals below are unavailable (a usage page failed to load).
+			<a class="reload-link" href={Astro.url.pathname}>⟳ Reload</a>
+		</p>
+	)}
 
 	<div class="admin-stats">
 		<div class="stat">
@@ -71,7 +76,7 @@ const globalCapBytes = MAX_USERS * MAX_USER_STORAGE_BYTES;
 			<span class="stat-label">Folders</span>
 		</div>
 		<div class="stat">
-			<span class="stat-value">{formatBytes(totalBytes)}</span>
+			<span class="stat-value">{truncated ? '—' : formatBytes(totalBytes)}</span>
 			<span class="stat-label">Storage used (of {formatBytes(globalCapBytes)})</span>
 		</div>
 	</div>
@@ -89,11 +94,11 @@ const globalCapBytes = MAX_USERS * MAX_USER_STORAGE_BYTES;
 			</thead>
 			<tbody>
 				{userRows.map((row) => (
-					<tr class={row.percent >= 90 ? 'over-quota' : ''}>
+					<tr class={!truncated && row.percent >= 90 ? 'over-quota' : ''}>
 						<td>{row.displayName}</td>
 						<td>{row.email}</td>
-						<td>{formatBytes(row.bytes)}</td>
-						<td>{row.percent.toFixed(1)}%</td>
+						<td>{truncated ? '—' : formatBytes(row.bytes)}</td>
+						<td>{truncated ? '—' : `${row.percent.toFixed(1)}%`}</td>
 					</tr>
 				))}
 			</tbody>
@@ -127,5 +132,13 @@ const globalCapBytes = MAX_USERS * MAX_USER_STORAGE_BYTES;
 
 	.over-quota {
 		color: var(--color-danger);
+	}
+
+	.storage-error {
+		color: var(--color-danger);
+	}
+
+	.reload-link {
+		margin-left: var(--space-1);
 	}
 </style>

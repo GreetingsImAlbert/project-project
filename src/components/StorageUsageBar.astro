@@ -5,16 +5,17 @@ import StorageUsageFill from './StorageUsageFill.svelte';
 interface Props {
 	usedBytes: number;
 	capBytes: number;
+	failed?: boolean;
 }
 
-const { usedBytes, capBytes } = Astro.props;
+const { usedBytes, capBytes, failed = false } = Astro.props;
 ---
 
 <div class="storage-usage">
 	<div class="storage-usage-label">
 		<span class="storage-usage-title">Your storage used <MyFilesModal client:load /></span>
 	</div>
-	<StorageUsageFill client:load initialUsedBytes={usedBytes} capBytes={capBytes} />
+	<StorageUsageFill client:load initialUsedBytes={usedBytes} capBytes={capBytes} initialFailed={failed} />
 </div>
 
 <style>

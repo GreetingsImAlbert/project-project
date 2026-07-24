@@ -35,7 +35,7 @@
 		initialAllFolders: Folder[];
 		initialFolderId: string | null;
 		initialFiles: FileRow[];
-		initialAvailableBytes: number;
+		initialAvailableBytes: number | null;
 		initialViewMode?: 'list' | 'grid';
 	} = $props();
 
@@ -166,12 +166,13 @@
 		// copy.ts always attributes the copy to the current user (uploaded_by is
 		// the copier, not the source file's original uploader), so this always
 		// consumes the current viewer's own quota regardless of the destination.
-		availableBytes -= file.size_bytes ?? 0;
+		// availableBytes stays null (unknown) if the initial read already failed.
+		if (availableBytes !== null) availableBytes -= file.size_bytes ?? 0;
 	}
 
 	function handleUploaded(file: FileRow) {
 		files = [...files, file];
-		availableBytes -= file.size_bytes ?? 0;
+		if (availableBytes !== null) availableBytes -= file.size_bytes ?? 0;
 		adjustProjectStorage(file.size_bytes ?? 0);
 	}
 
@@ -181,7 +182,7 @@
 		adjustProjectStorage(-(deletedFile?.size_bytes ?? 0));
 		// Only give quota back to the current viewer if it was actually their own
 		// file — deleting a project-mate's upload frees their quota, not ours.
-		if (deletedFile?.uploaded_by === currentUserId) {
+		if (deletedFile?.uploaded_by === currentUserId && availableBytes !== null) {
 			availableBytes += deletedFile?.size_bytes ?? 0;
 		}
 	}
