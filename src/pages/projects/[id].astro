@@ -3,8 +3,8 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 import ProjectShell from '../../components/ProjectShell.astro';
 import TotalCostDisplay from '../../components/TotalCostDisplay.svelte';
 import ProjectDescriptionEditor from '../../components/ProjectDescriptionEditor.svelte';
+import ProjectStorageUsed from '../../components/ProjectStorageUsed.svelte';
 import { getProjectStorageBytes } from '../../lib/r2-quota';
-import { formatBytes } from '../../lib/format-bytes';
 
 export const prerender = false;
 
@@ -56,7 +56,7 @@ const projectStorageBytes = await getProjectStorageBytes(Astro.locals.supabase, 
 			</div>
 			<div class="overview-stats">
 				<TotalCostDisplay client:load totalCost={totalCost} />
-				<p class="project-storage-total">Project storage used: {formatBytes(projectStorageBytes)}</p>
+				<ProjectStorageUsed client:load initialUsedBytes={projectStorageBytes} />
 			</div>
 		</div>
 	</ProjectShell>
@@ -76,11 +76,6 @@ const projectStorageBytes = await getProjectStorageBytes(Astro.locals.supabase, 
 	.overview-stats {
 		flex: 0 0 240px;
 		min-width: 0;
-	}
-
-	.project-storage-total {
-		font-size: 0.85rem;
-		color: var(--color-muted);
 	}
 
 	@media (max-width: 768px) {

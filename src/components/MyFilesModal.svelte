@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { adjustStorageUsage } from '../lib/storage-usage.svelte';
 
 	interface MyFile {
 		id: string;
@@ -74,7 +75,9 @@
 			return;
 		}
 
+		const deletedFile = files.find((f) => f.id === fileId);
 		files = files.filter((f) => f.id !== fileId);
+		if (deletedFile?.size_bytes) adjustStorageUsage(-deletedFile.size_bytes);
 		deletingId = null;
 	}
 

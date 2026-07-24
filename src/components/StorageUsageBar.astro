@@ -1,6 +1,6 @@
 ---
 import MyFilesModal from './MyFilesModal.svelte';
-import { formatBytes } from '../lib/format-bytes';
+import StorageUsageFill from './StorageUsageFill.svelte';
 
 interface Props {
 	usedBytes: number;
@@ -8,19 +8,13 @@ interface Props {
 }
 
 const { usedBytes, capBytes } = Astro.props;
-
-const percentUsed = capBytes > 0 ? Math.min(100, (usedBytes / capBytes) * 100) : 0;
-const nearLimit = percentUsed >= 90;
 ---
 
 <div class="storage-usage">
 	<div class="storage-usage-label">
 		<span class="storage-usage-title">Your storage used <MyFilesModal client:load /></span>
-		<span>{formatBytes(usedBytes)} of {formatBytes(capBytes)} ({percentUsed.toFixed(1)}%)</span>
 	</div>
-	<div class="storage-usage-track">
-		<div class="storage-usage-fill" class:near-limit={nearLimit} style={`width: ${percentUsed}%`}></div>
-	</div>
+	<StorageUsageFill client:load initialUsedBytes={usedBytes} capBytes={capBytes} />
 </div>
 
 <style>
@@ -30,9 +24,6 @@ const nearLimit = percentUsed >= 90;
 	}
 
 	.storage-usage-label {
-		display: flex;
-		justify-content: space-between;
-		gap: var(--space-3);
 		font-size: 0.85rem;
 		color: var(--color-muted);
 		margin-bottom: var(--space-1);
@@ -42,20 +33,5 @@ const nearLimit = percentUsed >= 90;
 		display: inline-flex;
 		align-items: center;
 		gap: var(--space-1);
-	}
-
-	.storage-usage-track {
-		height: 8px;
-		background: var(--color-border);
-		overflow: hidden;
-	}
-
-	.storage-usage-fill {
-		height: 100%;
-		background: var(--color-fg);
-	}
-
-	.storage-usage-fill.near-limit {
-		background: var(--color-danger);
 	}
 </style>

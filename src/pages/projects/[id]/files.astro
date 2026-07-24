@@ -3,9 +3,9 @@ import { env } from 'cloudflare:workers';
 import BaseLayout from '../../../layouts/BaseLayout.astro';
 import ProjectShell from '../../../components/ProjectShell.astro';
 import FileBrowser from '../../../components/FileBrowser.svelte';
+import ProjectStorageUsed from '../../../components/ProjectStorageUsed.svelte';
 import { getSupabaseAdmin } from '../../../lib/supabase/admin';
 import { getUserStorageBytes, getProjectStorageBytes, MAX_USER_STORAGE_BYTES } from '../../../lib/r2-quota';
-import { formatBytes } from '../../../lib/format-bytes';
 
 export const prerender = false;
 
@@ -69,7 +69,7 @@ const projectStorageBytes = await getProjectStorageBytes(Astro.locals.supabase, 
 	<ProjectShell project={project} members={members ?? []} userRole={userRole} activePage="files">
 		<h2>Files</h2>
 
-		<p class="project-storage-total">Project storage used: {formatBytes(projectStorageBytes)}</p>
+		<ProjectStorageUsed client:load initialUsedBytes={projectStorageBytes} />
 
 		<FileBrowser
 			client:load
@@ -82,10 +82,3 @@ const projectStorageBytes = await getProjectStorageBytes(Astro.locals.supabase, 
 		/>
 	</ProjectShell>
 </BaseLayout>
-
-<style>
-	.project-storage-total {
-		font-size: 0.85rem;
-		color: var(--color-muted);
-	}
-</style>

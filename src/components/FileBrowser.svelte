@@ -3,6 +3,7 @@
 	import { slide } from 'svelte/transition';
 	import FileList from './FileList.svelte';
 	import UploadForm from './UploadForm.svelte';
+	import { adjustProjectStorage } from '../lib/project-storage.svelte';
 
 	interface Folder {
 		id: string;
@@ -149,15 +150,19 @@
 		if (targetFolderId === currentFolderId) {
 			files = [...files, file];
 		}
+		adjustProjectStorage(file.size_bytes ?? 0);
 	}
 
 	function handleUploaded(file: FileRow) {
 		files = [...files, file];
 		availableBytes -= file.size_bytes ?? 0;
+		adjustProjectStorage(file.size_bytes ?? 0);
 	}
 
 	function handleFileDeleted(fileId: string) {
+		const deletedFile = files.find((f) => f.id === fileId);
 		files = files.filter((f) => f.id !== fileId);
+		adjustProjectStorage(-(deletedFile?.size_bytes ?? 0));
 	}
 
 	async function handleCreateFolder(e: SubmitEvent) {
