@@ -38,7 +38,8 @@
 	let showAddForm = $state(false);
 	let addButtonVisible = $state(true);
 	let addPartName = $state('');
-	let addCategory = $state('');
+	let addCategorySelect = $state('');
+	let addCategoryNew = $state('');
 	let addDescription = $state('');
 	let addQuantity = $state('');
 	let addUnit = $state('');
@@ -48,7 +49,11 @@
 
 	let expandedId = $state<string | null>(null);
 
+	let editCategorySelect = $state('');
+	let editCategoryNew = $state('');
+
 	const UNCATEGORIZED = 'Uncategorized';
+	const NEW_CATEGORY_VALUE = '__new__';
 
 	let groups = $derived.by(() => {
 		const map = new Map<string, BomItem[]>();
@@ -65,6 +70,15 @@
 		return keys.map((category) => ({ category, items: map.get(category)! }));
 	});
 
+	let existingCategories = $derived(
+		[...new Set(items.map((item) => item.category?.trim()).filter((c): c is string => !!c))].sort((a, b) =>
+			a.localeCompare(b),
+		),
+	);
+
+	let addCategoryEffective = $derived(addCategorySelect === NEW_CATEGORY_VALUE ? addCategoryNew : addCategorySelect);
+	let editCategoryEffective = $derived(editCategorySelect === NEW_CATEGORY_VALUE ? editCategoryNew : editCategorySelect);
+
 	let showGroupHeaders = $derived(groups.length > 1 || groups[0]?.category !== UNCATEGORIZED);
 
 	let grandTotal = $derived(items.reduce((sum, item) => sum + (item.total_cost ?? 0), 0));
@@ -80,6 +94,9 @@
 
 	function startEdit(id: string) {
 		editingId = id;
+		const item = items.find((i) => i.id === id);
+		editCategorySelect = item?.category?.trim() || '';
+		editCategoryNew = '';
 		rowError = null;
 	}
 
@@ -153,7 +170,8 @@
 		items = [...items, created];
 		form.reset();
 		addPartName = '';
-		addCategory = '';
+		addCategorySelect = '';
+		addCategoryNew = '';
 		addDescription = '';
 		addQuantity = '';
 		addUnit = '';
@@ -219,7 +237,17 @@
 							<td>
 								<div class="stacked-inputs">
 									<input form={`bom-update-${item.id}`} type="text" name="partName" value={item.part_name} maxlength="200" required />
-									<input form={`bom-update-${item.id}`} type="text" name="category" value={item.category ?? ''} placeholder="Category" maxlength="100" />
+									<select bind:value={editCategorySelect}>
+										<option value="">None</option>
+										{#each existingCategories as cat (cat)}
+											<option value={cat}>{cat}</option>
+										{/each}
+										<option value={NEW_CATEGORY_VALUE}>+ Add category</option>
+									</select>
+									{#if editCategorySelect === NEW_CATEGORY_VALUE}
+										<input type="text" placeholder="New category name" maxlength="100" bind:value={editCategoryNew} />
+									{/if}
+									<input form={`bom-update-${item.id}`} type="hidden" name="category" value={editCategoryEffective} />
 								</div>
 							</td>
 							<td><input form={`bom-update-${item.id}`} type="text" name="description" value={item.description ?? ''} maxlength="1000" /></td>
@@ -302,7 +330,19 @@
 			<div class="add-fields-wrap" transition:slide={{ duration: 150 }} onoutroend={() => (addButtonVisible = true)}>
 				<div class="add-fields">
 					<input type="text" name="partName" placeholder="Part name" maxlength="200" required bind:value={addPartName} />
-					<input type="text" name="category" placeholder="Category (optional)" maxlength="100" bind:value={addCategory} />
+					<div class="category-field">
+						<select bind:value={addCategorySelect}>
+							<option value="">None</option>
+							{#each existingCategories as cat (cat)}
+								<option value={cat}>{cat}</option>
+							{/each}
+							<option value={NEW_CATEGORY_VALUE}>+ Add category</option>
+						</select>
+						{#if addCategorySelect === NEW_CATEGORY_VALUE}
+							<input type="text" placeholder="New category name" maxlength="100" bind:value={addCategoryNew} />
+						{/if}
+					</div>
+					<input type="hidden" name="category" value={addCategoryEffective} />
 					<input type="text" name="description" placeholder="Description" maxlength="1000" bind:value={addDescription} />
 					<input type="number" step="any" min="0" name="quantity" placeholder="Qty" bind:value={addQuantity} />
 					<input type="text" name="unit" placeholder="Unit (e.g. 5 pcs)" maxlength="50" bind:value={addUnit} />
@@ -442,6 +482,12 @@
 		flex-wrap: wrap;
 		gap: var(--space-3);
 		align-items: flex-start;
+	}
+
+	.category-field {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-1);
 	}
 
 	.add-form-actions {
