@@ -1,21 +1,15 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { formatCurrency, initCurrency } from '../lib/currency.svelte';
-
-	type TransactionType = 'item' | 'shipping' | 'discount' | 'refund';
-
-	interface Transaction {
-		id: string;
-		transaction_date: string;
-		type: TransactionType;
-		item_name: string | null;
-		quantity: number | null;
-		unit: string | null;
-		unit_cost: number | null;
-		total_cost: number | null;
-		member_id: string;
-		profiles: { display_name: string } | null;
-	}
+	import {
+		transactionsState,
+		initTransactions,
+		addTransaction,
+		updateTransaction,
+		removeTransaction,
+		type Transaction,
+		type TransactionType,
+	} from '../lib/transactions-store.svelte';
 
 	interface Member {
 		id: string;
@@ -34,7 +28,7 @@
 		canEdit: boolean;
 	} = $props();
 
-	let transactions = $state(initialTransactions);
+	initTransactions(initialTransactions);
 
 	let editingId = $state<string | null>(null);
 	let savingId = $state<string | null>(null);
@@ -65,7 +59,7 @@
 
 	let groups = $derived.by(() => {
 		const map = new Map<string, Transaction[]>();
-		for (const t of transactions) {
+		for (const t of transactionsState.items) {
 			if (!map.has(t.transaction_date)) map.set(t.transaction_date, []);
 			map.get(t.transaction_date)!.push(t);
 		}
@@ -78,7 +72,7 @@
 		return t.type === 'discount' || t.type === 'refund' ? -total : total;
 	}
 
-	let netTotal = $derived(transactions.reduce((sum, t) => sum + signedAmount(t), 0));
+	let netTotal = $derived(transactionsState.items.reduce((sum, t) => sum + signedAmount(t), 0));
 
 	onMount(() => {
 		initCurrency();
@@ -114,7 +108,7 @@
 		}
 
 		const updated: Transaction = await res.json();
-		transactions = transactions.map((t) => (t.id === id ? updated : t));
+		updateTransaction(updated);
 		editingId = null;
 		savingId = null;
 	}
@@ -133,7 +127,7 @@
 			return;
 		}
 
-		transactions = transactions.filter((t) => t.id !== id);
+		removeTransaction(id);
 		deletingId = null;
 	}
 
@@ -153,7 +147,7 @@
 		}
 
 		const created: Transaction = await res.json();
-		transactions = [...transactions, created];
+		addTransaction(created);
 		form.reset();
 		addType = 'item';
 		adding = false;
@@ -162,7 +156,7 @@
 
 <h2>Transactions</h2>
 
-{#if transactions.length === 0}
+{#if transactionsState.items.length === 0}
 	<p class="muted">No transactions yet.</p>
 {:else}
 	<div class="table-scroll">
@@ -329,7 +323,7 @@
 {/if}
 
 {#if canEdit}
-	{#each transactions as t (t.id)}
+	{#each transactionsState.items as t (t.id)}
 		<form id={`transaction-update-${t.id}`} method="POST" action={`/api/transactions/${t.id}/update`} class="hidden-form"></form>
 	{/each}
 

@@ -81,9 +81,14 @@
 		return folderId ? `/projects/${projectId}/files?folder=${folderId}` : `/projects/${projectId}/files`;
 	}
 
-	async function navigate(folderId: string | null, pushState = true) {
+	// Bumped on every navigate() call so a stale response from an earlier click (e.g. two
+	// folders clicked in quick succession) can't overwrite a newer one that already resolved.
+	let requestSeq = 0;
+
+	async function navigate(folderId: string | null, historyMode: 'push' | 'replace' | 'none' = 'push') {
 		if (folderId === currentFolderId) return;
 
+		const requestId = ++requestSeq;
 		loading = true;
 		error = null;
 
@@ -92,6 +97,8 @@
 			: `/api/projects/${projectId}/files`;
 
 		const res = await fetch(url);
+
+		if (requestId !== requestSeq) return;
 
 		if (!res.ok) {
 			error = await res.text();
@@ -103,22 +110,28 @@
 		currentFolderId = folderId;
 		loading = false;
 
-		if (pushState) {
+		if (historyMode === 'push') {
 			history.pushState({ folderId }, '', hrefFor(folderId));
+		} else if (historyMode === 'replace') {
+			history.replaceState({ folderId }, '', hrefFor(folderId));
 		}
 	}
 
 	function navigateWithHistory(folderId: string | null) {
-		if (folderId === currentFolderId) return;
+		if (folderId === currentFolderId || loading) return;
 		backStack = [...backStack, currentFolderId];
-		navigate(folderId);
+		navigate(folderId, 'push');
 	}
 
 	function goBack() {
-		if (backStack.length === 0) return;
+		if (backStack.length === 0 || loading) return;
 		const previous = backStack[backStack.length - 1];
 		backStack = backStack.slice(0, -1);
-		navigate(previous);
+		// 'replace', not 'push' — this is going back, not forward, so the URL should reflect
+		// the folder we land on without growing the real browser history stack (that stack
+		// is what the native Back/Forward buttons use, and shouldn't gain a duplicate entry
+		// every time the in-app Back button is clicked).
+		navigate(previous, 'replace');
 	}
 
 	function handleLinkClick(e: MouseEvent, folderId: string | null) {
@@ -193,7 +206,7 @@
 
 		const onPopState = () => {
 			const folderId = new URLSearchParams(location.search).get('folder');
-			navigate(folderId, false);
+			navigate(folderId, 'none');
 		};
 		window.addEventListener('popstate', onPopState);
 		return () => window.removeEventListener('popstate', onPopState);

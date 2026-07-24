@@ -2,21 +2,7 @@
 	import { slide } from 'svelte/transition';
 	import { onMount } from 'svelte';
 	import { formatCurrency, initCurrency } from '../lib/currency.svelte';
-
-	type TransactionType = 'item' | 'shipping' | 'discount' | 'refund';
-
-	interface Transaction {
-		id: string;
-		transaction_date: string;
-		type: TransactionType;
-		item_name: string | null;
-		quantity: number | null;
-		unit: string | null;
-		unit_cost: number | null;
-		total_cost: number | null;
-		member_id: string;
-		profiles: { display_name: string } | null;
-	}
+	import { transactionsState, initTransactions, type Transaction, type TransactionType } from '../lib/transactions-store.svelte';
 
 	interface Member {
 		id: string;
@@ -27,7 +13,7 @@
 	let {
 		projectId,
 		members,
-		transactions,
+		transactions: initialTransactions,
 		canEdit,
 	}: {
 		projectId: string;
@@ -35,6 +21,8 @@
 		transactions: Transaction[];
 		canEdit: boolean;
 	} = $props();
+
+	initTransactions(initialTransactions);
 
 	let percents = $state<Record<string, number>>(
 		Object.fromEntries(members.map((m) => [m.id, m.contributionPercent ?? 100 / members.length])),
@@ -67,14 +55,14 @@
 		return t.type === 'discount' || t.type === 'refund' ? -total : total;
 	}
 
-	let netTotal = $derived(transactions.reduce((sum, t) => sum + signedAmount(t), 0));
+	let netTotal = $derived(transactionsState.items.reduce((sum, t) => sum + signedAmount(t), 0));
 
 	function contributionAmount(memberId: string): number {
 		return (netTotal * (percents[memberId] ?? 0)) / 100;
 	}
 
 	function spentByMember(memberId: string): number {
-		return transactions.filter((t) => t.member_id === memberId).reduce((sum, t) => sum + signedAmount(t), 0);
+		return transactionsState.items.filter((t) => t.member_id === memberId).reduce((sum, t) => sum + signedAmount(t), 0);
 	}
 
 	function dues(memberId: string): number {
@@ -82,7 +70,7 @@
 	}
 
 	function transactionsFor(memberId: string): Transaction[] {
-		return transactions
+		return transactionsState.items
 			.filter((t) => t.member_id === memberId)
 			.slice()
 			.sort((a, b) => a.transaction_date.localeCompare(b.transaction_date));
