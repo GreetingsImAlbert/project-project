@@ -9,8 +9,6 @@
 		projects: { name: string } | null;
 	}
 
-	let { projectId }: { projectId?: string } = $props();
-
 	let open = $state(false);
 	let viewMode = $state<'list' | 'grid'>('grid');
 	let files = $state<MyFile[]>([]);
@@ -42,14 +40,7 @@
 			return;
 		}
 
-		const fetched: MyFile[] = await res.json();
-		// Array.prototype.sort is stable, so ties (both current-project or both
-		// not) keep the API's created_at desc order.
-		files = fetched.sort((a, b) => {
-			const aCurrent = a.project_id === projectId ? 0 : 1;
-			const bCurrent = b.project_id === projectId ? 0 : 1;
-			return aCurrent - bCurrent;
-		});
+		files = await res.json();
 		loading = false;
 	}
 
@@ -123,7 +114,7 @@
 									<span class="grid-name">{parts.base}</span>
 									{#if parts.ext}<span class="grid-ext muted">{parts.ext}</span>{/if}
 								</button>
-								<span class="grid-project muted" class:current-project={file.project_id === projectId}>{file.projects?.name}</span>
+								<span class="grid-project muted">{file.projects?.name}</span>
 								<button
 									type="button"
 									class="trash-btn"
@@ -143,7 +134,7 @@
 								</button>
 								<span class="muted file-meta">
 									{file.size_bytes != null ? `${Math.round(file.size_bytes).toLocaleString()} B` : ''}
-									— <span class:current-project={file.project_id === projectId}>{file.projects?.name}</span>
+									— {file.projects?.name}
 								</span>
 								<button
 									type="button"
@@ -215,11 +206,6 @@
 	.row-error {
 		color: var(--color-danger);
 		margin: 0;
-	}
-
-	.current-project {
-		font-weight: 700;
-		color: var(--color-fg);
 	}
 
 	.trash-btn {

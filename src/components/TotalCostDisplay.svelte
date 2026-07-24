@@ -9,4 +9,4 @@
 	});
 </script>
 
-<p>Total cost: <strong>{formatCurrency(totalCost)}</strong></p>
+<p>Total projected cost: <strong>{formatCurrency(totalCost)}</strong></p>

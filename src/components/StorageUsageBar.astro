@@ -5,10 +5,9 @@ import { formatBytes } from '../lib/format-bytes';
 interface Props {
 	usedBytes: number;
 	capBytes: number;
-	projectId?: string;
 }
 
-const { usedBytes, capBytes, projectId } = Astro.props;
+const { usedBytes, capBytes } = Astro.props;
 
 const percentUsed = capBytes > 0 ? Math.min(100, (usedBytes / capBytes) * 100) : 0;
 const nearLimit = percentUsed >= 90;
@@ -16,7 +15,7 @@ const nearLimit = percentUsed >= 90;
 
 <div class="storage-usage">
 	<div class="storage-usage-label">
-		<span class="storage-usage-title">Your storage used <MyFilesModal client:load projectId={projectId} /></span>
+		<span class="storage-usage-title">Your storage used <MyFilesModal client:load /></span>
 		<span>{formatBytes(usedBytes)} of {formatBytes(capBytes)} ({percentUsed.toFixed(1)}%)</span>
 	</div>
 	<div class="storage-usage-track">

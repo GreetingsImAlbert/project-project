@@ -44,14 +44,44 @@ const projectStorageBytes = await getProjectStorageBytes(Astro.locals.supabase, 
 <BaseLayout title={project.name}>
 	<ProjectShell project={project} members={members ?? []} userRole={userRole} activePage="overview">
 		<h2>Overview</h2>
-		<TotalCostDisplay client:load totalCost={totalCost} />
-		<p class="project-storage-total">Project storage used: {formatBytes(projectStorageBytes)}</p>
+		<div class="overview-layout">
+			<div class="overview-main">
+				{project.description
+					? <p class="muted">{project.description}</p>
+					: <p class="muted">No description yet.</p>}
+			</div>
+			<div class="overview-stats">
+				<TotalCostDisplay client:load totalCost={totalCost} />
+				<p class="project-storage-total">Project storage used: {formatBytes(projectStorageBytes)}</p>
+			</div>
+		</div>
 	</ProjectShell>
 </BaseLayout>
 
 <style>
+	.overview-layout {
+		display: flex;
+		gap: var(--space-5);
+	}
+
+	.overview-main {
+		flex: 1 1 auto;
+		min-width: 0;
+	}
+
+	.overview-stats {
+		flex: 0 0 240px;
+		min-width: 0;
+	}
+
 	.project-storage-total {
 		font-size: 0.85rem;
 		color: var(--color-muted);
+	}
+
+	@media (max-width: 768px) {
+		.overview-layout {
+			flex-direction: column;
+		}
 	}
 </style>
