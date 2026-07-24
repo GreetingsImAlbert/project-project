@@ -1,4 +1,4 @@
-export type TransactionType = 'item' | 'shipping' | 'discount' | 'refund';
+export type TransactionType = 'item' | 'shipping' | 'discount' | 'refund' | 'payment';
 
 export interface Transaction {
 	id: string;
@@ -10,6 +10,7 @@ export interface Transaction {
 	unit_cost: number | null;
 	total_cost: number | null;
 	member_id: string;
+	related_member_id: string | null;
 	profiles: { display_name: string } | null;
 }
 

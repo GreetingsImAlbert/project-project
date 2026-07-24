@@ -48,6 +48,7 @@
 		shipping: 'Shipping',
 		discount: 'Discount',
 		refund: 'Refund',
+		payment: 'Payment',
 	};
 
 	function signedAmount(t: Transaction): number {
@@ -55,14 +56,29 @@
 		return t.type === 'discount' || t.type === 'refund' ? -total : total;
 	}
 
-	let netTotal = $derived(transactionsState.items.reduce((sum, t) => sum + signedAmount(t), 0));
+	// Payments are transfers between members settling dues, not project costs — they
+	// shouldn't inflate or deflate the project's actual net spend.
+	let netTotal = $derived(
+		transactionsState.items.filter((t) => t.type !== 'payment').reduce((sum, t) => sum + signedAmount(t), 0),
+	);
 
 	function contributionAmount(memberId: string): number {
 		return (netTotal * (percents[memberId] ?? 0)) / 100;
 	}
 
+	// A payment isn't the payer's own project spend — it's money handed directly to
+	// another member, so it counts toward the payer's "spent" (reduces what they owe)
+	// and *against* the payee's "spent" (reduces what they're owed back), rather than
+	// being attributed to just one member_id like every other transaction type.
 	function spentByMember(memberId: string): number {
-		return transactionsState.items.filter((t) => t.member_id === memberId).reduce((sum, t) => sum + signedAmount(t), 0);
+		return transactionsState.items.reduce((sum, t) => {
+			if (t.type === 'payment') {
+				if (t.member_id === memberId) return sum + (t.total_cost ?? 0);
+				if (t.related_member_id === memberId) return sum - (t.total_cost ?? 0);
+				return sum;
+			}
+			return t.member_id === memberId ? sum + signedAmount(t) : sum;
+		}, 0);
 	}
 
 	function dues(memberId: string): number {
@@ -71,9 +87,18 @@
 
 	function transactionsFor(memberId: string): Transaction[] {
 		return transactionsState.items
-			.filter((t) => t.member_id === memberId)
+			.filter((t) => t.member_id === memberId || t.related_member_id === memberId)
 			.slice()
 			.sort((a, b) => a.transaction_date.localeCompare(b.transaction_date));
+	}
+
+	// Same member_id/related_member_id split as spentByMember — from the payee's side a
+	// payment is negative (it's money they received, not money they spent).
+	function entryAmount(t: Transaction, viewingMemberId: string): number {
+		if (t.type === 'payment') {
+			return t.member_id === viewingMemberId ? (t.total_cost ?? 0) : -(t.total_cost ?? 0);
+		}
+		return signedAmount(t);
 	}
 
 	function startEditPercents() {
@@ -254,10 +279,10 @@
 								{#each transactionsFor(member.id) as t (t.id)}
 									<div class="txn-entry">
 										<span class="txn-date">{t.transaction_date}</span>
-										<span class="txn-label">{t.type === 'item' ? (t.item_name ?? TYPE_LABELS[t.type]) : TYPE_LABELS[t.type]}</span>
-										<span class="txn-amount">
-											{t.type === 'discount' || t.type === 'refund' ? '-' : ''}{t.total_cost != null ? formatCurrency(t.total_cost) : ''}
+										<span class="txn-label">
+											{(t.type === 'item' || t.type === 'payment') && t.item_name ? t.item_name : TYPE_LABELS[t.type]}
 										</span>
+										<span class="txn-amount">{formatCurrency(entryAmount(t, member.id))}</span>
 									</div>
 								{:else}
 									<p class="muted">No transactions.</p>

@@ -2,7 +2,7 @@ import type { APIRoute } from 'astro';
 
 export const prerender = false;
 
-const TYPES = ['item', 'shipping', 'discount', 'refund'];
+const TYPES = ['item', 'shipping', 'discount', 'refund', 'payment'];
 
 function parseNumeric(value: FormDataEntryValue | null): number | null {
 	const str = value?.toString().trim();
@@ -45,6 +45,7 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 	const memberId = formData.get('memberId')?.toString().trim();
 	const itemName = formData.get('itemName')?.toString().trim() || null;
 	const unit = formData.get('unit')?.toString().trim() || null;
+	const relatedMemberId = formData.get('relatedMemberId')?.toString().trim() || null;
 
 	if (!transactionDate) {
 		return new Response('Date is required', { status: 400 });
@@ -74,6 +75,29 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 		return new Response('Unit: max 50 characters', { status: 400 });
 	}
 
+	let payeeDisplayName: string | null = null;
+	if (type === 'payment') {
+		if (!relatedMemberId) {
+			return new Response('Payee is required', { status: 400 });
+		}
+		if (relatedMemberId === memberId) {
+			return new Response('Cannot pay yourself', { status: 400 });
+		}
+
+		const { data: payeeCheck } = await locals.supabase
+			.from('project_members')
+			.select('user_id, profiles(display_name)')
+			.eq('project_id', transaction.project_id)
+			.eq('user_id', relatedMemberId)
+			.single()
+			.overrideTypes<{ user_id: string; profiles: { display_name: string } | null }>();
+
+		if (!payeeCheck) {
+			return new Response('Invalid payee', { status: 400 });
+		}
+		payeeDisplayName = payeeCheck.profiles?.display_name ?? null;
+	}
+
 	const quantity = type === 'item' ? parseNumeric(formData.get('quantity')) : 1;
 	const unitCost = parseNumeric(formData.get('unitCost'));
 
@@ -91,15 +115,18 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 		.from('transactions')
 		.update({
 			member_id: memberId,
+			related_member_id: type === 'payment' ? relatedMemberId : null,
 			transaction_date: transactionDate,
 			type,
-			item_name: type === 'item' ? itemName : null,
+			item_name: type === 'item' ? itemName : type === 'payment' ? `Pay ${payeeDisplayName ?? 'member'}` : null,
 			quantity,
 			unit: type === 'item' ? unit : null,
 			unit_cost: unitCost,
 		})
 		.eq('id', transactionId)
-		.select('id, transaction_date, type, item_name, quantity, unit, unit_cost, total_cost, member_id, profiles(display_name)')
+		.select(
+			'id, transaction_date, type, item_name, quantity, unit, unit_cost, total_cost, member_id, related_member_id, profiles!transactions_member_id_fkey(display_name)',
+		)
 		.single();
 
 	if (error) {

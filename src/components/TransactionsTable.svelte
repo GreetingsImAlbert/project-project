@@ -47,15 +47,19 @@
 	let addUnit = $state('');
 	let addUnitCost = $state('');
 	let addMemberId = $state('');
+	let addRelatedMemberId = $state('');
 
 	let expandedId = $state<string | null>(null);
 	let editingType = $state<TransactionType>('item');
+	let editingMemberId = $state('');
+	let editingRelatedMemberId = $state('');
 
 	const TYPE_LABELS: Record<TransactionType, string> = {
 		item: 'Item',
 		shipping: 'Shipping',
 		discount: 'Discount',
 		refund: 'Refund',
+		payment: 'Payment',
 	};
 
 	function unitCostPlaceholder(type: TransactionType): string {
@@ -81,7 +85,11 @@
 		return t.type === 'discount' || t.type === 'refund' ? -total : total;
 	}
 
-	let netTotal = $derived(transactionsState.items.reduce((sum, t) => sum + signedAmount(t), 0));
+	// Payments are transfers between members settling dues, not project costs — they
+	// shouldn't inflate or deflate the project's actual net spend.
+	let netTotal = $derived(
+		transactionsState.items.filter((t) => t.type !== 'payment').reduce((sum, t) => sum + signedAmount(t), 0),
+	);
 
 	onMount(() => {
 		initCurrency();
@@ -95,6 +103,8 @@
 	function startEdit(t: Transaction) {
 		editingId = t.id;
 		editingType = t.type;
+		editingMemberId = t.member_id;
+		editingRelatedMemberId = t.related_member_id ?? '';
 		rowError = null;
 	}
 
@@ -174,6 +184,7 @@
 		addUnit = '';
 		addUnitCost = '';
 		addMemberId = '';
+		addRelatedMemberId = '';
 		showAddForm = false;
 		adding = false;
 	}
@@ -242,15 +253,24 @@
 								</select>
 							</td>
 							<td>
-								<input
-									form={`transaction-update-${t.id}`}
-									type="text"
-									name="itemName"
-									value={t.item_name ?? ''}
-									placeholder="Item name"
-									maxlength="200"
-									disabled={editingType !== 'item'}
-								/>
+								{#if editingType === 'payment'}
+									<select form={`transaction-update-${t.id}`} name="relatedMemberId" bind:value={editingRelatedMemberId} required>
+										<option value="" disabled selected>Pay…</option>
+										{#each members.filter((m) => m.id !== editingMemberId) as member (member.id)}
+											<option value={member.id}>{member.displayName}</option>
+										{/each}
+									</select>
+								{:else}
+									<input
+										form={`transaction-update-${t.id}`}
+										type="text"
+										name="itemName"
+										value={t.item_name ?? ''}
+										placeholder="Item name"
+										maxlength="200"
+										disabled={editingType !== 'item'}
+									/>
+								{/if}
 							</td>
 							<td>
 								<input
@@ -288,7 +308,7 @@
 							</td>
 							<td class="muted">—</td>
 							<td>
-								<select form={`transaction-update-${t.id}`} name="memberId" value={t.member_id}>
+								<select form={`transaction-update-${t.id}`} name="memberId" bind:value={editingMemberId}>
 									{#each members as member (member.id)}
 										<option value={member.id}>{member.displayName}</option>
 									{/each}
@@ -362,7 +382,16 @@
 							<option {value}>{label}</option>
 						{/each}
 					</select>
-					<input type="text" name="itemName" placeholder="Item name" maxlength="200" disabled={addType !== 'item'} bind:value={addItemName} />
+					{#if addType === 'payment'}
+						<select name="relatedMemberId" required bind:value={addRelatedMemberId}>
+							<option value="" disabled selected>Pay…</option>
+							{#each members.filter((m) => m.id !== addMemberId) as member (member.id)}
+								<option value={member.id}>{member.displayName}</option>
+							{/each}
+						</select>
+					{:else}
+						<input type="text" name="itemName" placeholder="Item name" maxlength="200" disabled={addType !== 'item'} bind:value={addItemName} />
+					{/if}
 					<input type="number" step="any" min="0" name="quantity" placeholder="Qty" disabled={addType !== 'item'} bind:value={addQuantity} />
 					<input type="text" name="unit" placeholder="Unit (e.g. pcs)" maxlength="50" disabled={addType !== 'item'} bind:value={addUnit} />
 					<input type="number" step="any" min="0" name="unitCost" placeholder={unitCostPlaceholder(addType)} required bind:value={addUnitCost} />

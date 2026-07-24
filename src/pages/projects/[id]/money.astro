@@ -41,25 +41,32 @@ const { data: bomItems } = await Astro.locals.supabase
 	.eq('project_id', id)
 	.order('created_at', { ascending: true });
 
-const { data: transactions } = await Astro.locals.supabase
+interface TransactionRow {
+	id: string;
+	transaction_date: string;
+	type: 'item' | 'shipping' | 'discount' | 'refund' | 'payment';
+	item_name: string | null;
+	quantity: number | null;
+	unit: string | null;
+	unit_cost: number | null;
+	total_cost: number | null;
+	member_id: string;
+	related_member_id: string | null;
+	profiles: { display_name: string } | null;
+}
+
+const { data: rawTransactions } = await Astro.locals.supabase
 	.from('transactions')
-	.select('id, transaction_date, type, item_name, quantity, unit, unit_cost, total_cost, member_id, profiles(display_name)')
+	.select(
+		'id, transaction_date, type, item_name, quantity, unit, unit_cost, total_cost, member_id, related_member_id, profiles!transactions_member_id_fkey(display_name)',
+	)
 	.eq('project_id', id)
-	.order('transaction_date', { ascending: true })
-	.overrideTypes<
-		{
-			id: string;
-			transaction_date: string;
-			type: 'item' | 'shipping' | 'discount' | 'refund';
-			item_name: string | null;
-			quantity: number | null;
-			unit: string | null;
-			unit_cost: number | null;
-			total_cost: number | null;
-			member_id: string;
-			profiles: { display_name: string } | null;
-		}[]
-	>();
+	.order('transaction_date', { ascending: true });
+
+// related_member_id isn't in the generated Database types until `npm run update-types`
+// is run against the live schema — overrideTypes()'s merge check rejects a field it
+// can't see on the base row type, so cast directly instead.
+const transactions = rawTransactions as unknown as TransactionRow[] | null;
 
 const memberOptions = (members ?? []).map((member) => ({
 	id: member.user_id,

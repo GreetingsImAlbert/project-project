@@ -273,6 +273,7 @@ export type Database = {
           member_id: string
           project_id: string
           quantity: number | null
+          related_member_id: string | null
           total_cost: number | null
           transaction_date: string
           type: string
@@ -286,6 +287,7 @@ export type Database = {
           member_id: string
           project_id: string
           quantity?: number | null
+          related_member_id?: string | null
           total_cost?: number | null
           transaction_date: string
           type: string
@@ -299,6 +301,7 @@ export type Database = {
           member_id?: string
           project_id?: string
           quantity?: number | null
+          related_member_id?: string | null
           total_cost?: number | null
           transaction_date?: string
           type?: string
@@ -318,6 +321,13 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_related_member_id_fkey"
+            columns: ["related_member_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
