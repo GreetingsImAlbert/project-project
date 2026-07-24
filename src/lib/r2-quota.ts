@@ -7,9 +7,9 @@ export const MAX_TOTAL_STORAGE_BYTES = 9.5 * 1024 * 1024 * 1024;
 
 const PAGE_SIZE = 1000;
 
-export async function wouldExceedStorageQuota(admin: SupabaseClient<Database>, additionalBytes: number) {
+export async function getTotalStorageBytes(admin: SupabaseClient<Database>) {
 	let currentTotal = 0;
-	const rows: { id: string; filename: string; size_bytes: number | null }[] = [];
+	let rowCount = 0;
 	let from = 0;
 	let truncated = false;
 
@@ -27,17 +27,22 @@ export async function wouldExceedStorageQuota(admin: SupabaseClient<Database>, a
 
 		for (const row of data ?? []) {
 			currentTotal += row.size_bytes ?? 0;
-			rows.push(row);
 		}
+		rowCount += data?.length ?? 0;
 
 		if (!data || data.length < PAGE_SIZE) break;
 		from += PAGE_SIZE;
 	}
 
-	const wouldExceed = currentTotal + additionalBytes > MAX_TOTAL_STORAGE_BYTES;
+	return { totalBytes: currentTotal, rowCount, truncated };
+}
+
+export async function wouldExceedStorageQuota(admin: SupabaseClient<Database>, additionalBytes: number) {
+	const { totalBytes, rowCount, truncated } = await getTotalStorageBytes(admin);
+	const wouldExceed = totalBytes + additionalBytes > MAX_TOTAL_STORAGE_BYTES;
 
 	console.log(
-		`[storage-quota] rows=${rows.length} current=${currentTotal}B additional=${additionalBytes}B cap=${MAX_TOTAL_STORAGE_BYTES}B wouldExceed=${wouldExceed}${truncated ? ' TRUNCATED (summation incomplete, current is a lower bound)' : ''}`
+		`[storage-quota] rows=${rowCount} current=${totalBytes}B additional=${additionalBytes}B cap=${MAX_TOTAL_STORAGE_BYTES}B wouldExceed=${wouldExceed}${truncated ? ' TRUNCATED (summation incomplete, current is a lower bound)' : ''}`
 	);
 
 	return wouldExceed;

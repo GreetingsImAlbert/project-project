@@ -1,0 +1,59 @@
+---
+interface Props {
+	usedBytes: number;
+	capBytes: number;
+}
+
+const { usedBytes, capBytes } = Astro.props;
+
+function formatBytes(bytes: number): string {
+	const gb = bytes / (1024 * 1024 * 1024);
+	if (gb >= 1) return `${gb.toFixed(2)} GB`;
+	const mb = bytes / (1024 * 1024);
+	return `${mb.toFixed(1)} MB`;
+}
+
+const percentUsed = capBytes > 0 ? Math.min(100, (usedBytes / capBytes) * 100) : 0;
+const nearLimit = percentUsed >= 90;
+---
+
+<div class="storage-usage">
+	<div class="storage-usage-label">
+		<span>Storage used</span>
+		<span>{formatBytes(usedBytes)} of {formatBytes(capBytes)} ({percentUsed.toFixed(1)}%)</span>
+	</div>
+	<div class="storage-usage-track">
+		<div class="storage-usage-fill" class:near-limit={nearLimit} style={`width: ${percentUsed}%`}></div>
+	</div>
+</div>
+
+<style>
+	.storage-usage {
+		margin: 0 0 var(--space-4);
+		max-width: 480px;
+	}
+
+	.storage-usage-label {
+		display: flex;
+		justify-content: space-between;
+		gap: var(--space-3);
+		font-size: 0.85rem;
+		color: var(--color-muted);
+		margin-bottom: var(--space-1);
+	}
+
+	.storage-usage-track {
+		height: 8px;
+		background: var(--color-border);
+		overflow: hidden;
+	}
+
+	.storage-usage-fill {
+		height: 100%;
+		background: var(--color-fg);
+	}
+
+	.storage-usage-fill.near-limit {
+		background: var(--color-danger);
+	}
+</style>

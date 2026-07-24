@@ -1,7 +1,11 @@
 ---
+import { env } from 'cloudflare:workers';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import ProjectShell from '../../components/ProjectShell.astro';
 import TotalCostDisplay from '../../components/TotalCostDisplay.svelte';
+import StorageUsageBar from '../../components/StorageUsageBar.astro';
+import { getSupabaseAdmin } from '../../lib/supabase/admin';
+import { getTotalStorageBytes, MAX_TOTAL_STORAGE_BYTES } from '../../lib/r2-quota';
 
 export const prerender = false;
 
@@ -36,10 +40,14 @@ const { data: bomItems } = await Astro.locals.supabase
 	.eq('project_id', id);
 
 const totalCost = (bomItems ?? []).reduce((sum, item) => sum + (item.total_cost ?? 0), 0);
+
+const admin = getSupabaseAdmin(env);
+const { totalBytes } = await getTotalStorageBytes(admin);
 ---
 <BaseLayout title={project.name}>
 	<ProjectShell project={project} members={members ?? []} userRole={userRole} activePage="overview">
 		<h2>Overview</h2>
 		<TotalCostDisplay client:load totalCost={totalCost} />
+		<StorageUsageBar usedBytes={totalBytes} capBytes={MAX_TOTAL_STORAGE_BYTES} />
 	</ProjectShell>
 </BaseLayout>
