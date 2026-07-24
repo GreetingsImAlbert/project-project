@@ -283,6 +283,15 @@
 {/if}
 
 <style>
+	/* This is the first heading in the Money page's main column — zeroed
+	   locally since ProjectShell.astro's equivalent rule can't reach an h2
+	   rendered by a Svelte island (see ProjectDescriptionEditor.svelte). */
+	h2 {
+		margin-top: 0;
+		padding-top: 0;
+		border-top: none;
+	}
+
 	.table-scroll table {
 		table-layout: fixed;
 		font-size: 0.85rem;

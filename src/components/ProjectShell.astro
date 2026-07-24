@@ -39,7 +39,10 @@ const { project, members, userRole, activePage } = Astro.props;
 		min-width: 0;
 	}
 
-	.project-main > h2:first-child {
+	/* :global — slotted page content (Files/Money's own <h2>) is authored in a
+	   different .astro file, so it doesn't carry this component's scoping
+	   attribute and a scoped selector here would silently never match it. */
+	:global(.project-main > h2:first-child) {
 		margin-top: 0;
 		padding-top: 0;
 		border-top: none;
