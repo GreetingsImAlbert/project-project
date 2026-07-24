@@ -1,17 +1,14 @@
 ---
+import MyFilesModal from './MyFilesModal.svelte';
+import { formatBytes } from '../lib/format-bytes';
+
 interface Props {
 	usedBytes: number;
 	capBytes: number;
+	projectId?: string;
 }
 
-const { usedBytes, capBytes } = Astro.props;
-
-function formatBytes(bytes: number): string {
-	const gb = bytes / (1024 * 1024 * 1024);
-	if (gb >= 1) return `${gb.toFixed(2)} GB`;
-	const mb = bytes / (1024 * 1024);
-	return `${mb.toFixed(1)} MB`;
-}
+const { usedBytes, capBytes, projectId } = Astro.props;
 
 const percentUsed = capBytes > 0 ? Math.min(100, (usedBytes / capBytes) * 100) : 0;
 const nearLimit = percentUsed >= 90;
@@ -19,7 +16,7 @@ const nearLimit = percentUsed >= 90;
 
 <div class="storage-usage">
 	<div class="storage-usage-label">
-		<span>Your storage used</span>
+		<span class="storage-usage-title">Your storage used <MyFilesModal client:load projectId={projectId} /></span>
 		<span>{formatBytes(usedBytes)} of {formatBytes(capBytes)} ({percentUsed.toFixed(1)}%)</span>
 	</div>
 	<div class="storage-usage-track">
@@ -40,6 +37,12 @@ const nearLimit = percentUsed >= 90;
 		font-size: 0.85rem;
 		color: var(--color-muted);
 		margin-bottom: var(--space-1);
+	}
+
+	.storage-usage-title {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-1);
 	}
 
 	.storage-usage-track {

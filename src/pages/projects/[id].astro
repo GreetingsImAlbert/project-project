@@ -1,11 +1,9 @@
 ---
-import { env } from 'cloudflare:workers';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import ProjectShell from '../../components/ProjectShell.astro';
 import TotalCostDisplay from '../../components/TotalCostDisplay.svelte';
-import StorageUsageBar from '../../components/StorageUsageBar.astro';
-import { getSupabaseAdmin } from '../../lib/supabase/admin';
-import { getUserStorageBytes, MAX_USER_STORAGE_BYTES } from '../../lib/r2-quota';
+import { getProjectStorageBytes } from '../../lib/r2-quota';
+import { formatBytes } from '../../lib/format-bytes';
 
 export const prerender = false;
 
@@ -41,13 +39,19 @@ const { data: bomItems } = await Astro.locals.supabase
 
 const totalCost = (bomItems ?? []).reduce((sum, item) => sum + (item.total_cost ?? 0), 0);
 
-const admin = getSupabaseAdmin(env);
-const { totalBytes } = await getUserStorageBytes(admin, user.id);
+const projectStorageBytes = await getProjectStorageBytes(Astro.locals.supabase, id!);
 ---
 <BaseLayout title={project.name}>
 	<ProjectShell project={project} members={members ?? []} userRole={userRole} activePage="overview">
 		<h2>Overview</h2>
 		<TotalCostDisplay client:load totalCost={totalCost} />
-		<StorageUsageBar usedBytes={totalBytes} capBytes={MAX_USER_STORAGE_BYTES} />
+		<p class="project-storage-total">Project storage used: {formatBytes(projectStorageBytes)}</p>
 	</ProjectShell>
 </BaseLayout>
+
+<style>
+	.project-storage-total {
+		font-size: 0.85rem;
+		color: var(--color-muted);
+	}
+</style>

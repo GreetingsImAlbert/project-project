@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { formatBytes } from '../lib/format-bytes';
+
 	interface FileRow {
 		id: string;
 		filename: string;
@@ -9,10 +11,12 @@
 	let {
 		projectId,
 		currentFolderId,
+		availableBytes,
 		onUploaded,
 	}: {
 		projectId: string;
 		currentFolderId: string | null;
+		availableBytes: number;
 		onUploaded: (file: FileRow) => void;
 	} = $props();
 
@@ -137,6 +141,7 @@
 	</div>
 	<button type="submit" disabled={uploading || !selectedFile}>Upload</button>
 </form>
+<p class="muted available-space">Available: {formatBytes(Math.max(availableBytes, 0))}</p>
 {#if status}<p class="muted">{status}</p>{/if}
 
 <style>
@@ -168,5 +173,10 @@
 
 	.dropzone.has-file {
 		color: var(--color-fg);
+	}
+
+	.available-space {
+		font-size: 0.8rem;
+		margin: var(--space-1) 0 0;
 	}
 </style>

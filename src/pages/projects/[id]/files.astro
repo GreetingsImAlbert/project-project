@@ -3,9 +3,9 @@ import { env } from 'cloudflare:workers';
 import BaseLayout from '../../../layouts/BaseLayout.astro';
 import ProjectShell from '../../../components/ProjectShell.astro';
 import FileBrowser from '../../../components/FileBrowser.svelte';
-import StorageUsageBar from '../../../components/StorageUsageBar.astro';
 import { getSupabaseAdmin } from '../../../lib/supabase/admin';
-import { getUserStorageBytes, MAX_USER_STORAGE_BYTES } from '../../../lib/r2-quota';
+import { getUserStorageBytes, getProjectStorageBytes, MAX_USER_STORAGE_BYTES } from '../../../lib/r2-quota';
+import { formatBytes } from '../../../lib/format-bytes';
 
 export const prerender = false;
 
@@ -61,12 +61,15 @@ const { data: files } = await filesQuery
 
 const admin = getSupabaseAdmin(env);
 const { totalBytes } = await getUserStorageBytes(admin, user.id);
+const availableBytes = MAX_USER_STORAGE_BYTES - totalBytes;
+
+const projectStorageBytes = await getProjectStorageBytes(Astro.locals.supabase, id!);
 ---
 <BaseLayout title={`${project.name} — Files`}>
 	<ProjectShell project={project} members={members ?? []} userRole={userRole} activePage="files">
 		<h2>Files</h2>
 
-		<StorageUsageBar usedBytes={totalBytes} capBytes={MAX_USER_STORAGE_BYTES} />
+		<p class="project-storage-total">Project storage used: {formatBytes(projectStorageBytes)}</p>
 
 		<FileBrowser
 			client:load
@@ -75,6 +78,14 @@ const { totalBytes } = await getUserStorageBytes(admin, user.id);
 			initialAllFolders={allFolders ?? []}
 			initialFolderId={currentFolderId}
 			initialFiles={files ?? []}
+			initialAvailableBytes={availableBytes}
 		/>
 	</ProjectShell>
 </BaseLayout>
+
+<style>
+	.project-storage-total {
+		font-size: 0.85rem;
+		color: var(--color-muted);
+	}
+</style>

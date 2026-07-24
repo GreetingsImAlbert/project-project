@@ -23,17 +23,20 @@
 		initialAllFolders,
 		initialFolderId,
 		initialFiles,
+		initialAvailableBytes,
 	}: {
 		projectId: string;
 		canEdit: boolean;
 		initialAllFolders: Folder[];
 		initialFolderId: string | null;
 		initialFiles: FileRow[];
+		initialAvailableBytes: number;
 	} = $props();
 
 	let currentFolderId = $state(initialFolderId);
 	let files = $state(initialFiles);
 	let allFolders = $state(initialAllFolders);
+	let availableBytes = $state(initialAvailableBytes);
 	let loading = $state(false);
 	let error = $state<string | null>(null);
 	let viewMode = $state<'list' | 'grid'>('grid');
@@ -137,6 +140,7 @@
 
 	function handleUploaded(file: FileRow) {
 		files = [...files, file];
+		availableBytes -= file.size_bytes ?? 0;
 	}
 
 	function handleFileDeleted(fileId: string) {
@@ -217,7 +221,7 @@
 				<button type="submit" disabled={creatingFolder}>{creatingFolder ? 'Creating…' : 'Create folder'}</button>
 			</form>
 
-			<UploadForm projectId={projectId} currentFolderId={currentFolderId} onUploaded={handleUploaded} />
+			<UploadForm projectId={projectId} currentFolderId={currentFolderId} availableBytes={availableBytes} onUploaded={handleUploaded} />
 		</div>
 	{/if}
 </div>

@@ -40,6 +40,15 @@ export async function getUserStorageBytes(admin: SupabaseClient<Database>, userI
 	return { totalBytes: currentTotal, rowCount, truncated };
 }
 
+// Unlike getUserStorageBytes, this isn't a quota check — any project member
+// can see this via RLS, so it takes whichever client the caller already has
+// (locals.supabase from a page load, not necessarily the admin client).
+export async function getProjectStorageBytes(supabase: SupabaseClient<Database>, projectId: string) {
+	const { data } = await supabase.from('files').select('size_bytes').eq('project_id', projectId);
+
+	return (data ?? []).reduce((sum, row) => sum + (row.size_bytes ?? 0), 0);
+}
+
 export async function wouldExceedUserStorageQuota(admin: SupabaseClient<Database>, userId: string, additionalBytes: number) {
 	const { totalBytes, rowCount, truncated } = await getUserStorageBytes(admin, userId);
 	const wouldExceed = totalBytes + additionalBytes > MAX_USER_STORAGE_BYTES;
