@@ -1,0 +1,70 @@
+---
+import { env } from 'cloudflare:workers';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getSupabaseAdmin } from '../../lib/supabase/admin';
+import { isAdminUser } from '../../lib/admin-guard';
+import { getGlobalStorageBreakdown } from '../../lib/r2-quota';
+import { formatBytes } from '../../lib/format-bytes';
+
+export const prerender = false;
+
+const user = Astro.locals.user;
+
+if (!user) {
+	return Astro.redirect('/login');
+}
+
+if (!(await isAdminUser(Astro.locals.supabase, user.id))) {
+	return Astro.redirect('/');
+}
+
+const admin = getSupabaseAdmin(env);
+
+const { data: projects } = await admin
+	.from('projects')
+	.select('id, name, created_at, owner_id, profiles(display_name, email)')
+	.order('created_at', { ascending: false })
+	.overrideTypes<{ id: string; name: string; created_at: string; owner_id: string; profiles: { display_name: string; email: string } }[]>();
+
+const { data: members } = await admin.from('project_members').select('project_id');
+const memberCounts: Record<string, number> = {};
+for (const row of members ?? []) {
+	memberCounts[row.project_id] = (memberCounts[row.project_id] ?? 0) + 1;
+}
+
+const { byProject, truncated } = await getGlobalStorageBreakdown(admin);
+---
+
+<BaseLayout title="Admin · Projects">
+	<h1>All Projects</h1>
+	<p><a href="/admin">← Admin Dashboard</a></p>
+
+	{truncated && <p class="muted">Warning: storage totals below may be incomplete (a usage page failed to load).</p>}
+
+	{projects && projects.length === 0 && <p class="muted">No projects yet.</p>}
+
+	<div class="table-scroll">
+		<table>
+			<thead>
+				<tr>
+					<th>Project</th>
+					<th>Owner</th>
+					<th>Members</th>
+					<th>Storage used</th>
+					<th>Created</th>
+				</tr>
+			</thead>
+			<tbody>
+				{projects?.map((project) => (
+					<tr>
+						<td>{project.name}</td>
+						<td>{project.profiles.display_name} <span class="muted">({project.profiles.email})</span></td>
+						<td>{memberCounts[project.id] ?? 0}</td>
+						<td>{formatBytes(byProject[project.id] ?? 0)}</td>
+						<td>{new Date(project.created_at).toLocaleDateString()}</td>
+					</tr>
+				))}
+			</tbody>
+		</table>
+	</div>
+</BaseLayout>

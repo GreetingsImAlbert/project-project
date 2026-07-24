@@ -1,0 +1,131 @@
+---
+import { env } from 'cloudflare:workers';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getSupabaseAdmin } from '../../lib/supabase/admin';
+import { isAdminUser } from '../../lib/admin-guard';
+import { getGlobalStorageBreakdown, MAX_USER_STORAGE_BYTES } from '../../lib/r2-quota';
+import { MAX_USERS } from '../../lib/user-limit';
+import { formatBytes } from '../../lib/format-bytes';
+
+export const prerender = false;
+
+const user = Astro.locals.user;
+
+if (!user) {
+	return Astro.redirect('/login');
+}
+
+if (!(await isAdminUser(Astro.locals.supabase, user.id))) {
+	return Astro.redirect('/');
+}
+
+const admin = getSupabaseAdmin(env);
+
+const [{ count: userCount }, { count: projectCount }, { count: fileCount }, { count: folderCount }] = await Promise.all([
+	admin.from('profiles').select('id', { count: 'exact', head: true }),
+	admin.from('projects').select('id', { count: 'exact', head: true }),
+	admin.from('files').select('id', { count: 'exact', head: true }),
+	admin.from('folders').select('id', { count: 'exact', head: true }),
+]);
+
+const { data: profiles } = await admin.from('profiles').select('id, display_name, email');
+const { totalBytes, byUser, truncated } = await getGlobalStorageBreakdown(admin);
+
+const userRows = (profiles ?? [])
+	.map((profile) => {
+		const bytes = byUser[profile.id] ?? 0;
+		return {
+			id: profile.id,
+			displayName: profile.display_name,
+			email: profile.email,
+			bytes,
+			percent: (bytes / MAX_USER_STORAGE_BYTES) * 100,
+		};
+	})
+	.sort((a, b) => b.bytes - a.bytes);
+
+const globalCapBytes = MAX_USERS * MAX_USER_STORAGE_BYTES;
+---
+
+<BaseLayout title="Admin · Dashboard">
+	<h1>Admin Dashboard</h1>
+	<p><a href="/admin/projects">View all projects →</a></p>
+
+	{truncated && <p class="muted">Warning: storage totals below may be incomplete (a usage page failed to load).</p>}
+
+	<div class="admin-stats">
+		<div class="stat">
+			<span class="stat-value">{userCount ?? 0}</span>
+			<span class="stat-label">Users (of {MAX_USERS})</span>
+		</div>
+		<div class="stat">
+			<span class="stat-value">{projectCount ?? 0}</span>
+			<span class="stat-label">Projects</span>
+		</div>
+		<div class="stat">
+			<span class="stat-value">{fileCount ?? 0}</span>
+			<span class="stat-label">Files</span>
+		</div>
+		<div class="stat">
+			<span class="stat-value">{folderCount ?? 0}</span>
+			<span class="stat-label">Folders</span>
+		</div>
+		<div class="stat">
+			<span class="stat-value">{formatBytes(totalBytes)}</span>
+			<span class="stat-label">Storage used (of {formatBytes(globalCapBytes)})</span>
+		</div>
+	</div>
+
+	<h2>Storage per user</h2>
+	<div class="table-scroll">
+		<table>
+			<thead>
+				<tr>
+					<th>User</th>
+					<th>Email</th>
+					<th>Storage used</th>
+					<th>% of quota</th>
+				</tr>
+			</thead>
+			<tbody>
+				{userRows.map((row) => (
+					<tr class={row.percent >= 90 ? 'over-quota' : ''}>
+						<td>{row.displayName}</td>
+						<td>{row.email}</td>
+						<td>{formatBytes(row.bytes)}</td>
+						<td>{row.percent.toFixed(1)}%</td>
+					</tr>
+				))}
+			</tbody>
+		</table>
+	</div>
+</BaseLayout>
+
+<style>
+	.admin-stats {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-6);
+		margin: var(--space-5) 0 var(--space-6);
+	}
+
+	.stat {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-1);
+	}
+
+	.stat-value {
+		font-size: 1.4rem;
+		font-weight: 700;
+	}
+
+	.stat-label {
+		font-size: 0.8rem;
+		color: var(--color-muted);
+	}
+
+	.over-quota {
+		color: var(--color-danger);
+	}
+</style>

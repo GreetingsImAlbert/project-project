@@ -49,6 +49,44 @@ export async function getProjectStorageBytes(supabase: SupabaseClient<Database>,
 	return (data ?? []).reduce((sum, row) => sum + (row.size_bytes ?? 0), 0);
 }
 
+// Admin-only: one paginated pass over every file in the bucket, bypassing RLS
+// via the caller's service-role client, broken down by both uploader and
+// project so the admin dashboard/projects pages don't each re-scan `files`.
+export async function getGlobalStorageBreakdown(admin: SupabaseClient<Database>) {
+	const byUser: Record<string, number> = {};
+	const byProject: Record<string, number> = {};
+	let totalBytes = 0;
+	let rowCount = 0;
+	let from = 0;
+	let truncated = false;
+
+	while (true) {
+		const { data, error } = await admin
+			.from('files')
+			.select('id, size_bytes, uploaded_by, project_id')
+			.range(from, from + PAGE_SIZE - 1);
+
+		if (error) {
+			console.log(`[storage-quota] failed to read global usage page at offset ${from}: ${error.message}`);
+			truncated = true;
+			break;
+		}
+
+		for (const row of data ?? []) {
+			const bytes = row.size_bytes ?? 0;
+			totalBytes += bytes;
+			byUser[row.uploaded_by] = (byUser[row.uploaded_by] ?? 0) + bytes;
+			byProject[row.project_id] = (byProject[row.project_id] ?? 0) + bytes;
+		}
+		rowCount += data?.length ?? 0;
+
+		if (!data || data.length < PAGE_SIZE) break;
+		from += PAGE_SIZE;
+	}
+
+	return { totalBytes, byUser, byProject, rowCount, truncated };
+}
+
 export async function wouldExceedUserStorageQuota(admin: SupabaseClient<Database>, userId: string, additionalBytes: number) {
 	const { totalBytes, rowCount, truncated } = await getUserStorageBytes(admin, userId);
 	const wouldExceed = totalBytes + additionalBytes > MAX_USER_STORAGE_BYTES;

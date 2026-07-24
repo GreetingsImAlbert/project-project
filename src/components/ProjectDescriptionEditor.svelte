@@ -68,7 +68,7 @@
 		</div>
 	</div>
 {:else}
-	<p class="muted">{description || 'No description yet.'}</p>
+	<p class="muted description-text">{description || 'No description yet.'}</p>
 {/if}
 
 <style>
@@ -97,6 +97,10 @@
 
 	.edit-icon:hover {
 		opacity: 0.6;
+	}
+
+	.description-text {
+		white-space: pre-wrap;
 	}
 
 	.description-editor textarea {
