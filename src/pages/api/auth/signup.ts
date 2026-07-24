@@ -1,4 +1,7 @@
 import type { APIRoute } from 'astro';
+import { env } from 'cloudflare:workers';
+import { getSupabaseAdmin } from '../../../lib/supabase/admin';
+import { wouldExceedUserLimit } from '../../../lib/user-limit';
 
 export const prerender = false;
 
@@ -10,6 +13,11 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
 
 	if (!email || !password || !displayName) {
 		return new Response('Missing required fields', { status: 400 });
+	}
+
+	const admin = getSupabaseAdmin(env);
+	if (await wouldExceedUserLimit(admin)) {
+		return new Response('Signups are full — this instance has reached its user limit', { status: 403 });
 	}
 
 	const { data, error: signUpError } = await locals.supabase.auth.signUp({

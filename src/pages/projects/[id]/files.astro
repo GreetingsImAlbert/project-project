@@ -5,7 +5,7 @@ import ProjectShell from '../../../components/ProjectShell.astro';
 import FileBrowser from '../../../components/FileBrowser.svelte';
 import StorageUsageBar from '../../../components/StorageUsageBar.astro';
 import { getSupabaseAdmin } from '../../../lib/supabase/admin';
-import { getTotalStorageBytes, MAX_TOTAL_STORAGE_BYTES } from '../../../lib/r2-quota';
+import { getUserStorageBytes, MAX_USER_STORAGE_BYTES } from '../../../lib/r2-quota';
 
 export const prerender = false;
 
@@ -60,13 +60,13 @@ const { data: files } = await filesQuery
 	.overrideTypes<{ id: string; filename: string; size_bytes: number | null; mime_type: string | null; created_at: string; profiles: { display_name: string } }[]>()
 
 const admin = getSupabaseAdmin(env);
-const { totalBytes } = await getTotalStorageBytes(admin);
+const { totalBytes } = await getUserStorageBytes(admin, user.id);
 ---
 <BaseLayout title={`${project.name} — Files`}>
 	<ProjectShell project={project} members={members ?? []} userRole={userRole} activePage="files">
 		<h2>Files</h2>
 
-		<StorageUsageBar usedBytes={totalBytes} capBytes={MAX_TOTAL_STORAGE_BYTES} />
+		<StorageUsageBar usedBytes={totalBytes} capBytes={MAX_USER_STORAGE_BYTES} />
 
 		<FileBrowser
 			client:load

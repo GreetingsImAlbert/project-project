@@ -2,7 +2,7 @@ import type { APIRoute } from 'astro';
 import { AwsClient } from 'aws4fetch';
 import { env } from 'cloudflare:workers';
 import { getSupabaseAdmin } from '../../../../../lib/supabase/admin';
-import { wouldExceedStorageQuota } from '../../../../../lib/r2-quota';
+import { wouldExceedUserStorageQuota } from '../../../../../lib/r2-quota';
 
 export const prerender = false;
 
@@ -60,7 +60,7 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 	}
 
 	const admin = getSupabaseAdmin(env);
-	if (await wouldExceedStorageQuota(admin, sizeBytes)) {
+	if (await wouldExceedUserStorageQuota(admin, locals.user.id, sizeBytes)) {
 		await r2.fetch(objectUrl, { method: 'DELETE' }).catch(() => {});
 		return new Response('Storage quota exceeded', { status: 507 });
 	}
