@@ -31,7 +31,7 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 	const contributionPercent = Number(raw);
 
 	if (!Number.isFinite(contributionPercent) || contributionPercent < 0 || contributionPercent > 100) {
-		return new Response('Contribution percent must be a number between 0 and 100', { status: 400 });
+		return new Response('Must be between 0 and 100', { status: 400 });
 	}
 
 	const { data: updated, error } = await locals.supabase

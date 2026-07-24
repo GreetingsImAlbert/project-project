@@ -29,7 +29,7 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 			.single();
 
 		if (!folder) {
-			return new Response('Folder not found in this project', { status: 400 });
+			return new Response('Folder not found', { status: 400 });
 		}
 	}
 
@@ -50,13 +50,13 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 	// regardless of what it claims in this request body.
 	const headRes = await r2.fetch(objectUrl, { method: 'HEAD' });
 	if (!headRes.ok) {
-		return new Response('Uploaded object not found in storage', { status: 400 });
+		return new Response('Upload not found', { status: 400 });
 	}
 	const sizeBytes = Number(headRes.headers.get('content-length') ?? 0);
 
 	if (sizeBytes > MAX_FILE_SIZE) {
 		await r2.fetch(objectUrl, { method: 'DELETE' }).catch(() => {});
-		return new Response('File too large', { status: 400 });
+		return new Response('Max 100MB per file', { status: 400 });
 	}
 
 	const admin = getSupabaseAdmin(env);

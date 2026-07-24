@@ -17,7 +17,7 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
 
 	const admin = getSupabaseAdmin(env);
 	if (await wouldExceedUserLimit(admin)) {
-		return new Response('Signups are full — this instance has reached its user limit', { status: 403 });
+		return new Response('Signups are full', { status: 403 });
 	}
 
 	const { data, error: signUpError } = await locals.supabase.auth.signUp({

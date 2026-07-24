@@ -27,7 +27,7 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 	const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB, adjust to what CAD files realistically need
 	const body = await request.json() as { filename?: string; size?: number };
 	if (body.size && body.size > MAX_FILE_SIZE) {
-		return new Response('File too large', { status: 400 });
+		return new Response('Max 100MB per file', { status: 400 });
 	}
 
 	if (body.size) {

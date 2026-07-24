@@ -40,7 +40,7 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 		return new Response('Date is required', { status: 400 });
 	}
 	if (!type || !TYPES.includes(type)) {
-		return new Response('Type must be one of item, shipping, discount, refund', { status: 400 });
+		return new Response('Invalid transaction type', { status: 400 });
 	}
 	if (!memberId) {
 		return new Response('Member is required', { status: 400 });
@@ -54,14 +54,14 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 		.single();
 
 	if (!memberCheck) {
-		return new Response('Member must belong to this project', { status: 400 });
+		return new Response('Invalid member', { status: 400 });
 	}
 
 	if (type === 'item' && itemName && itemName.length > 200) {
-		return new Response('Item name must be 200 characters or fewer', { status: 400 });
+		return new Response('Item name: max 200 characters', { status: 400 });
 	}
 	if (type === 'item' && unit && unit.length > 50) {
-		return new Response('Unit must be 50 characters or fewer', { status: 400 });
+		return new Response('Unit: max 50 characters', { status: 400 });
 	}
 
 	const quantity = type === 'item' ? parseNumeric(formData.get('quantity')) : 1;
@@ -74,7 +74,7 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 		return new Response('Unit cost is required', { status: 400 });
 	}
 	if ((quantity ?? 0) < 0 || unitCost < 0) {
-		return new Response('Quantity and unit cost cannot be negative', { status: 400 });
+		return new Response('Cannot be negative', { status: 400 });
 	}
 
 	const { data: created, error } = await locals.supabase

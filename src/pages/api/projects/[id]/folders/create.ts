@@ -37,7 +37,7 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 			.single();
 
 		if (!parentFolder) {
-			return new Response('Parent folder not found in this project', { status: 400 });
+			return new Response('Parent folder not found', { status: 400 });
 		}
 	}
 

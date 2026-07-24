@@ -24,7 +24,7 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 	const description = formData.get('description')?.toString().trim() || null;
 
 	if (description && description.length > 2000) {
-		return new Response('Description must be 2000 characters or fewer', { status: 400 });
+		return new Response('Max 2000 characters', { status: 400 });
 	}
 
 	const { data: updated, error } = await locals.supabase

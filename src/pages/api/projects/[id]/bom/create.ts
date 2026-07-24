@@ -40,19 +40,19 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 	}
 
 	if (partName.length > 200) {
-		return new Response('Part name must be 200 characters or fewer', { status: 400 });
+		return new Response('Part name: max 200 characters', { status: 400 });
 	}
 	if (category && category.length > 100) {
-		return new Response('Category must be 100 characters or fewer', { status: 400 });
+		return new Response('Category: max 100 characters', { status: 400 });
 	}
 	if (description && description.length > 1000) {
-		return new Response('Description must be 1000 characters or fewer', { status: 400 });
+		return new Response('Description: max 1000 characters', { status: 400 });
 	}
 	if (unit && unit.length > 50) {
-		return new Response('Unit must be 50 characters or fewer', { status: 400 });
+		return new Response('Unit: max 50 characters', { status: 400 });
 	}
 	if (supplier && supplier.length > 200) {
-		return new Response('Supplier must be 200 characters or fewer', { status: 400 });
+		return new Response('Supplier: max 200 characters', { status: 400 });
 	}
 
 	const quantity = parseNumeric(formData.get('quantity'));
@@ -63,7 +63,7 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 	}
 
 	if ((quantity ?? 0) < 0 || (unitCost ?? 0) < 0) {
-		return new Response('Quantity and unit cost cannot be negative', { status: 400 });
+		return new Response('Cannot be negative', { status: 400 });
 	}
 
 	if (itemUrl) {
@@ -71,10 +71,10 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 		try {
 			parsedUrl = new URL(itemUrl);
 		} catch {
-			return new Response('Item URL must be a valid URL', { status: 400 });
+			return new Response('Invalid item URL', { status: 400 });
 		}
 		if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
-			return new Response('Item URL must use http or https', { status: 400 });
+			return new Response('URL must be http or https', { status: 400 });
 		}
 	}
 
