@@ -39,6 +39,7 @@
 	let adding = $state(false);
 	let addError = $state<string | null>(null);
 	let showAddForm = $state(false);
+	let addButtonVisible = $state(true);
 	let addType = $state<TransactionType>('item');
 	let addTransactionDate = $state('');
 	let addItemName = $state('');
@@ -137,6 +138,15 @@
 
 		removeTransaction(id);
 		deletingId = null;
+	}
+
+	function openAddForm() {
+		showAddForm = true;
+		addButtonVisible = false;
+	}
+
+	function closeAddForm() {
+		showAddForm = false;
 	}
 
 	async function handleAddSubmit(e: SubmitEvent) {
@@ -342,37 +352,38 @@
 		<form id={`transaction-update-${t.id}`} method="POST" action={`/api/transactions/${t.id}/update`} class="hidden-form"></form>
 	{/each}
 
-	{#if showAddForm}
-		<form
-			method="POST"
-			action={`/api/projects/${projectId}/transactions/create`}
-			onsubmit={handleAddSubmit}
-			transition:slide={{ duration: 150 }}
-		>
-			<input type="date" name="transactionDate" required bind:value={addTransactionDate} />
-			<select name="type" bind:value={addType}>
-				{#each Object.entries(TYPE_LABELS) as [value, label]}
-					<option {value}>{label}</option>
-				{/each}
-			</select>
-			<input type="text" name="itemName" placeholder="Item name" maxlength="200" disabled={addType !== 'item'} bind:value={addItemName} />
-			<input type="number" step="any" min="0" name="quantity" placeholder="Qty" disabled={addType !== 'item'} bind:value={addQuantity} />
-			<input type="text" name="unit" placeholder="Unit (e.g. pcs)" maxlength="50" disabled={addType !== 'item'} bind:value={addUnit} />
-			<input type="number" step="any" min="0" name="unitCost" placeholder={unitCostPlaceholder(addType)} required bind:value={addUnitCost} />
-			<select name="memberId" required bind:value={addMemberId}>
-				<option value="" disabled selected>Made by…</option>
-				{#each members as member (member.id)}
-					<option value={member.id}>{member.displayName}</option>
-				{/each}
-			</select>
-			<div class="add-form-actions">
-				<button type="submit" disabled={adding}>{adding ? 'Adding…' : 'Add transaction'}</button>
-				<button type="button" class="btn-plain" onclick={() => (showAddForm = false)} aria-label="Cancel add transaction">✕</button>
+	<form method="POST" action={`/api/projects/${projectId}/transactions/create`} onsubmit={handleAddSubmit}>
+		{#if showAddForm}
+			<div class="add-fields-wrap" transition:slide={{ duration: 150 }} onoutroend={() => (addButtonVisible = true)}>
+				<div class="add-fields">
+					<input type="date" name="transactionDate" required bind:value={addTransactionDate} />
+					<select name="type" bind:value={addType}>
+						{#each Object.entries(TYPE_LABELS) as [value, label]}
+							<option {value}>{label}</option>
+						{/each}
+					</select>
+					<input type="text" name="itemName" placeholder="Item name" maxlength="200" disabled={addType !== 'item'} bind:value={addItemName} />
+					<input type="number" step="any" min="0" name="quantity" placeholder="Qty" disabled={addType !== 'item'} bind:value={addQuantity} />
+					<input type="text" name="unit" placeholder="Unit (e.g. pcs)" maxlength="50" disabled={addType !== 'item'} bind:value={addUnit} />
+					<input type="number" step="any" min="0" name="unitCost" placeholder={unitCostPlaceholder(addType)} required bind:value={addUnitCost} />
+					<select name="memberId" required bind:value={addMemberId}>
+						<option value="" disabled selected>Made by…</option>
+						{#each members as member (member.id)}
+							<option value={member.id}>{member.displayName}</option>
+						{/each}
+					</select>
+				</div>
 			</div>
-		</form>
-	{:else}
-		<button type="button" onclick={() => (showAddForm = true)}>+ Add transaction</button>
-	{/if}
+		{/if}
+		<div class="add-form-actions">
+			{#if addButtonVisible}
+				<button type="button" onclick={openAddForm}>Add transaction</button>
+			{:else}
+				<button type="submit" disabled={adding}>{adding ? 'Adding…' : 'Add transaction'}</button>
+				<button type="button" class="btn-plain" onclick={closeAddForm} aria-label="Cancel add transaction">✕</button>
+			{/if}
+		</div>
+	</form>
 	{#if addError}<p class="row-error">{addError}</p>{/if}
 {/if}
 
@@ -474,10 +485,18 @@
 		display: none;
 	}
 
+	.add-fields {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-3);
+		align-items: flex-start;
+	}
+
 	.add-form-actions {
 		display: flex;
 		gap: var(--space-2);
 		align-items: center;
+		margin-top: var(--space-3);
 	}
 
 	.row-error {
