@@ -74,19 +74,69 @@ const returnTo = Astro.url.pathname;
 	)}
 
 	{isOwner && (
-		<form method="POST" action={`/api/projects/${project.id}/members`} class="add-member" onsubmit="this.querySelector('button').disabled = true">
+		<form
+			method="POST"
+			action={`/api/projects/${project.id}/members`}
+			class="add-member"
+			data-add-member
+			onsubmit="this.querySelector('button[type=submit]').disabled = true"
+		>
 			<input type="hidden" name="returnTo" value={returnTo} />
-			<input type="email" name="email" placeholder="User's email" required />
-			<select name="role">
-				<option value="editor">Editor</option>
-				<option value="viewer">Viewer</option>
-			</select>
-			<label class="auditor-toggle">
-				<input type="checkbox" name="isAuditor" />
-				Auditor (can edit Money)
-			</label>
-			<button type="submit">Add member</button>
+
+			<div class="add-panel">
+				<div class="add-fields">
+					<input type="email" name="email" placeholder="User's email" required />
+					<select name="role">
+						<option value="editor">Editor</option>
+						<option value="viewer">Viewer</option>
+					</select>
+					<label class="auditor-toggle">
+						<input type="checkbox" name="isAuditor" />
+						Auditor (can edit Money)
+					</label>
+				</div>
+			</div>
+
+			<div class="add-actions">
+				<button type="submit" data-add-submit>Add member</button>
+				<button type="button" class="btn-plain" data-add-cancel hidden>Cancel</button>
+			</div>
 		</form>
+	)}
+
+	{isOwner && (
+		/* Runs inline, right after the form is parsed, so the panel is folded before the
+		   first paint (no flash) — and if the script never runs the form still works,
+		   just permanently open. */
+		<script is:inline>
+			(() => {
+				const form = document.currentScript.parentElement.querySelector('[data-add-member]');
+				if (!form) return;
+
+				const panel = form.querySelector('.add-panel');
+				const cancel = form.querySelector('[data-add-cancel]');
+				const fields = panel.querySelectorAll('input, select');
+
+				function setOpen(open) {
+					form.classList.toggle('open', open);
+					cancel.hidden = !open;
+					// Disabled while folded so the hidden `required` email can't block
+					// submission or get tabbed into.
+					fields.forEach((f) => (f.disabled = !open));
+				}
+
+				setOpen(false);
+
+				form.querySelector('[data-add-submit]').addEventListener('click', (e) => {
+					if (form.classList.contains('open')) return;
+					e.preventDefault();
+					setOpen(true);
+					panel.querySelector('input[name=email]').focus();
+				});
+
+				cancel.addEventListener('click', () => setOpen(false));
+			})();
+		</script>
 	)}
 
 	<nav class="sidebar-nav">
@@ -163,11 +213,43 @@ const returnTo = Astro.url.pathname;
 		flex: 0 0 auto;
 	}
 
+	/* Folded away by default so the member list, not the form, owns the sidebar's
+	   vertical space — same 'Add …' toggle shape as the Money page panels: the
+	   fields slide open above an actions row whose Add button never moves or
+	   changes size, with Cancel appearing beside it only while open. */
 	.add-member {
-		flex-direction: column;
-		align-items: stretch;
-		gap: var(--space-2);
+		display: block;
 		margin: var(--space-3) 0 var(--space-4);
+	}
+
+	/* 0fr -> 1fr on a grid row is the CSS-only equivalent of Svelte's slide
+	   transition; the inner wrapper does the clipping. */
+	.add-panel {
+		display: grid;
+		grid-template-rows: 0fr;
+		transition: grid-template-rows 150ms ease;
+	}
+
+	.add-member.open .add-panel {
+		grid-template-rows: 1fr;
+	}
+
+	.add-fields {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-2);
+		min-height: 0;
+		overflow: hidden;
+	}
+
+	.add-member.open .add-fields {
+		padding-bottom: var(--space-2);
+	}
+
+	.add-actions {
+		display: flex;
+		gap: var(--space-2);
+		align-items: center;
 	}
 
 	.sidebar-nav {
