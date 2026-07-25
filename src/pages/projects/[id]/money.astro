@@ -55,6 +55,7 @@ interface TransactionRow {
 	quantity: number | null;
 	unit: string | null;
 	unit_cost: number | null;
+	supplier: string | null;
 	total_cost: number | null;
 	member_id: string;
 	related_member_id: string | null;
@@ -64,12 +65,12 @@ interface TransactionRow {
 const { data: rawTransactions } = await Astro.locals.supabase
 	.from('transactions')
 	.select(
-		'id, transaction_date, type, item_name, quantity, unit, unit_cost, total_cost, member_id, related_member_id, profiles!transactions_member_id_fkey(display_name)',
+		'id, transaction_date, type, item_name, quantity, unit, unit_cost, supplier, total_cost, member_id, related_member_id, profiles!transactions_member_id_fkey(display_name)',
 	)
 	.eq('project_id', id)
 	.order('transaction_date', { ascending: true });
 
-// related_member_id isn't in the generated Database types until `npm run update-types`
+// related_member_id/supplier aren't in the generated Database types until `npm run update-types`
 // is run against the live schema — overrideTypes()'s merge check rejects a field it
 // can't see on the base row type, so cast directly instead.
 const transactions = rawTransactions as unknown as TransactionRow[] | null;

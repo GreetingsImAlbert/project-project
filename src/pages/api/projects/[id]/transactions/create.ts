@@ -29,6 +29,7 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 	const memberId = formData.get('memberId')?.toString().trim();
 	const itemName = formData.get('itemName')?.toString().trim() || null;
 	const unit = formData.get('unit')?.toString().trim() || null;
+	const supplier = formData.get('supplier')?.toString().trim() || null;
 	const relatedMemberId = formData.get('relatedMemberId')?.toString().trim() || null;
 
 	if (!transactionDate) {
@@ -57,6 +58,9 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 	}
 	if (type === 'item' && unit && unit.length > 50) {
 		return new Response('Unit: max 50 characters', { status: 400 });
+	}
+	if (supplier && supplier.length > 200) {
+		return new Response('Supplier: max 200 characters', { status: 400 });
 	}
 
 	let payeeDisplayName: string | null = null;
@@ -107,9 +111,11 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 			quantity,
 			unit: type === 'item' ? unit : null,
 			unit_cost: unitCost,
+			// A member-to-member payment has no supplier; every other type can.
+			supplier: type === 'payment' ? null : supplier,
 		})
 		.select(
-			'id, transaction_date, type, item_name, quantity, unit, unit_cost, total_cost, member_id, related_member_id, profiles!transactions_member_id_fkey(display_name)',
+			'id, transaction_date, type, item_name, quantity, unit, unit_cost, supplier, total_cost, member_id, related_member_id, profiles!transactions_member_id_fkey(display_name)',
 		)
 		.single();
 

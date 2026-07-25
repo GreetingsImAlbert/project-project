@@ -50,6 +50,7 @@
 	let addQuantity = $state('');
 	let addUnit = $state('');
 	let addUnitCost = $state('');
+	let addSupplier = $state('');
 	let addMemberId = $state('');
 	let addRelatedMemberId = $state('');
 
@@ -65,7 +66,7 @@
 		payment: 'Payment',
 	};
 
-	let colCount = $derived(canEdit ? 9 : 8);
+	let colCount = $derived(canEdit ? 10 : 9);
 
 	function unitCostPlaceholder(type: TransactionType): string {
 		return type === 'item' ? 'Unit cost' : 'Amount';
@@ -192,6 +193,7 @@
 		addQuantity = '';
 		addUnit = '';
 		addUnitCost = '';
+		addSupplier = '';
 		addMemberId = '';
 		addRelatedMemberId = '';
 		showAddForm = false;
@@ -215,13 +217,14 @@
 			<table>
 				<colgroup>
 					<col style="width:92px" />
-					<col style="width:78px" />
-					<col style="width:170px" />
-					<col style="width:50px" />
-					<col style="width:66px" />
-					<col style="width:92px" />
-					<col style="width:96px" />
+					<col style="width:72px" />
+					<col style="width:150px" />
+					<col style="width:46px" />
+					<col style="width:60px" />
+					<col style="width:88px" />
 					<col style="width:120px" />
+					<col style="width:92px" />
+					<col style="width:104px" />
 					{#if canEdit}<col style="width:130px" />{/if}
 				</colgroup>
 				<thead>
@@ -232,6 +235,7 @@
 						<th class="num">Qty</th>
 						<th>Unit</th>
 						<th class="num">Unit cost</th>
+						<th>Supplier</th>
 						<th class="num">Total</th>
 						<th>By</th>
 						{#if canEdit}<th><span class="sr-only">Actions</span></th>{/if}
@@ -252,6 +256,7 @@
 							<td class="num">{t.type === 'item' ? (t.quantity ?? '') : ''}</td>
 							<td>{t.unit ?? ''}</td>
 							<td class="num">{t.type === 'item' && t.unit_cost != null ? formatCurrency(t.unit_cost) : ''}</td>
+							<td>{t.supplier ?? ''}</td>
 							<td class="num" class:negative={t.type === 'discount' || t.type === 'refund'}>
 								{t.type === 'discount' || t.type === 'refund' ? '-' : ''}{t.total_cost != null ? formatCurrency(t.total_cost) : ''}
 							</td>
@@ -295,6 +300,12 @@
 												<div class="field">
 													<span class="field-label">Unit cost</span>
 													<span class="field-value">{t.unit_cost != null ? formatCurrency(t.unit_cost) : '—'}</span>
+												</div>
+											{/if}
+											{#if t.type !== 'payment'}
+												<div class="field">
+													<span class="field-label">Supplier</span>
+													<span class="field-value">{t.supplier || '—'}</span>
 												</div>
 											{/if}
 											<div class="field">
@@ -389,6 +400,19 @@
 														required
 													/>
 												</label>
+
+												{#if editingType !== 'payment'}
+													<label class="field">
+														<span class="field-label">Supplier</span>
+														<input
+															type="text"
+															name="supplier"
+															value={t.supplier ?? ''}
+															placeholder="Supplier name"
+															maxlength="200"
+														/>
+													</label>
+												{/if}
 											</div>
 
 											{#if rowError?.id === t.id}<p class="panel-error">{rowError.message}</p>{/if}
@@ -412,7 +436,7 @@
 				</tbody>
 				<tfoot>
 					<tr class="total-row">
-						<td colspan="6">Net total</td>
+						<td colspan="7">Net total</td>
 						<td class="num">{formatCurrency(netTotal)}</td>
 						<td></td>
 						{#if canEdit}<td></td>{/if}
@@ -496,6 +520,13 @@
 								bind:value={addUnitCost}
 							/>
 						</label>
+
+						{#if addType !== 'payment'}
+							<label class="field">
+								<span class="field-label">Supplier</span>
+								<input type="text" name="supplier" placeholder="Supplier name" maxlength="200" bind:value={addSupplier} />
+							</label>
+						{/if}
 					</div>
 
 					{#if addError}<p class="panel-error">{addError}</p>{/if}

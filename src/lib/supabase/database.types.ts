@@ -277,6 +277,7 @@ export type Database = {
           project_id: string
           quantity: number | null
           related_member_id: string | null
+          supplier: string | null
           total_cost: number | null
           transaction_date: string
           type: string
@@ -291,6 +292,7 @@ export type Database = {
           project_id: string
           quantity?: number | null
           related_member_id?: string | null
+          supplier?: string | null
           total_cost?: number | null
           transaction_date: string
           type: string
@@ -305,6 +307,7 @@ export type Database = {
           project_id?: string
           quantity?: number | null
           related_member_id?: string | null
+          supplier?: string | null
           total_cost?: number | null
           transaction_date?: string
           type?: string

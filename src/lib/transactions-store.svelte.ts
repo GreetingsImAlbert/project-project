@@ -8,6 +8,7 @@ export interface Transaction {
 	quantity: number | null;
 	unit: string | null;
 	unit_cost: number | null;
+	supplier: string | null;
 	total_cost: number | null;
 	member_id: string;
 	related_member_id: string | null;
