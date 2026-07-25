@@ -8,6 +8,10 @@
 	--color-border-strong: #111111;
 	--color-danger: #b3261e;
 	--color-highlight: rgba(17, 17, 17, 0.035);
+	/* Conventional link blue. Reserved for links that have to advertise themselves in
+	   a dense grid of text (supplier links in the money tables) — the site's default
+	   link style is the understated one in global.css. */
+	--color-link: #1a5fb4;
 
 	--color-role-owner: #b3261e;
 	--color-role-editor: #2f6690;
@@ -33,6 +37,7 @@
 	--color-border-strong: #d7dbdc;
 	--color-danger: #ff6259;
 	--color-highlight: rgba(255, 255, 255, 0.05);
+	--color-link: #6ab0f3;
 
 	--color-role-owner: #ff8a80;
 	--color-role-editor: #6ab0f3;
@@ -48,6 +53,7 @@
 	--color-border-strong: #e7e9ea;
 	--color-danger: #ff6259;
 	--color-highlight: rgba(255, 255, 255, 0.06);
+	--color-link: #6ab0f3;
 
 	--color-role-owner: #ff8a80;
 	--color-role-editor: #6ab0f3;

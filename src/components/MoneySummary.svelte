@@ -4,7 +4,7 @@
 	import { bomState, initBom, type BomItem } from '../lib/bom-store.svelte';
 	import { transactionsState, initTransactions, type Transaction } from '../lib/transactions-store.svelte';
 	import { contributionsState, initContributions } from '../lib/contributions-store.svelte';
-	import { netSpend, paidByMember } from '../lib/money-math';
+	import { netSpend, paidByMember, topLevel } from '../lib/money-math';
 
 	let {
 		currentUserId,
@@ -26,6 +26,8 @@
 
 	let bomTotal = $derived(bomState.items.reduce((sum, item) => sum + (item.total_cost ?? 0), 0));
 	let netTotal = $derived(netSpend(transactionsState.items));
+	// A bulk purchase is one transaction, not one per line it holds.
+	let transactionCount = $derived(topLevel(transactionsState.items).length);
 
 	let sharePercent = $derived(contributionsState.percents[currentUserId] ?? 0);
 	let shareAmount = $derived((netTotal * sharePercent) / 100);
@@ -46,7 +48,7 @@
 	<div class="tile">
 		<span class="tile-label">Net spent</span>
 		<span class="tile-value">{formatCurrency(netTotal)}</span>
-		<span class="tile-note">across {transactionsState.items.length} transaction{transactionsState.items.length === 1 ? '' : 's'}</span>
+		<span class="tile-note">across {transactionCount} transaction{transactionCount === 1 ? '' : 's'}</span>
 	</div>
 
 	<div class="tile">

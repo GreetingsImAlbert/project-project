@@ -37,10 +37,12 @@ Never use `"` (double quotes) anywhere in a commit message — use single quotes
 
 Do not start the dev server yourself. When a change is ready to test, tell the user and let them start/run it manually — they will test it themselves.
 
+Never run `npm run build` (or `astro build`) either — say when a build is worth running and let the user run it. `npx tsc --noEmit -p .` and `npx astro check` are fine to run yourself, as often as needed.
+
 ## Commands
 
 ```
-npm run build             # astro build -> ./dist
+npm run build             # astro build -> ./dist (user runs this, never Claude)
 npm run generate-types    # wrangler types -> worker-configuration.d.ts (Cloudflare bindings/env)
 npm run update-types      # supabase gen types -> src/lib/supabase/database.types.ts (Supabase schema)
 npx wrangler dev          # deploy locally to 127.0.0.1:8787 using the result of npm run build
@@ -56,6 +58,10 @@ There is no lint or test script configured in this project. Run these regularly 
 npx tsc --noEmit -p .     # TypeScript type-check, whole project
 npx astro check           # Astro-aware type-check (.astro files + TS)
 ```
+
+These two are the whole validation story — run both after any non-trivial change, and treat them as the gate before telling the user a change is ready to test.
+
+Neither one type-checks inside `.svelte` files: `astro check` only diagnoses `.astro`, and `tsc` skips Svelte templates entirely. `svelte-check` would cover that gap but is not installed, and running it through `npx` fails in this environment (it can't resolve `typescript` from the npx cache). So don't try to check Svelte components by running a build, a one-off compiler script, or `npx svelte-check` — re-read the component instead, and tell the user if a change is risky enough to want a real build.
 
 ## Architecture
 

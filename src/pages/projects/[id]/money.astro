@@ -5,6 +5,7 @@ import MoneySummary from '../../../components/MoneySummary.svelte';
 import BomTable from '../../../components/BomTable.svelte';
 import TransactionsTable from '../../../components/TransactionsTable.svelte';
 import MemberContributionsTable from '../../../components/MemberContributionsTable.svelte';
+import { TRANSACTION_COLUMNS } from '../../../lib/transaction-columns';
 
 export const prerender = false;
 
@@ -50,23 +51,23 @@ const { data: bomItems } = await Astro.locals.supabase
 interface TransactionRow {
 	id: string;
 	transaction_date: string;
-	type: 'item' | 'shipping' | 'discount' | 'refund' | 'payment';
+	type: 'item' | 'shipping' | 'discount' | 'refund' | 'payment' | 'bulk';
 	item_name: string | null;
 	quantity: number | null;
 	unit: string | null;
 	unit_cost: number | null;
 	supplier: string | null;
+	item_url: string | null;
 	total_cost: number | null;
 	member_id: string;
 	related_member_id: string | null;
+	group_id: string | null;
 	profiles: { display_name: string } | null;
 }
 
 const { data: rawTransactions } = await Astro.locals.supabase
 	.from('transactions')
-	.select(
-		'id, transaction_date, type, item_name, quantity, unit, unit_cost, supplier, total_cost, member_id, related_member_id, profiles!transactions_member_id_fkey(display_name)',
-	)
+	.select(TRANSACTION_COLUMNS)
 	.eq('project_id', id)
 	.order('transaction_date', { ascending: true });
 
@@ -106,6 +107,7 @@ const initialPercents = Object.fromEntries(
 			client:load
 			projectId={project.id}
 			initialTransactions={transactions ?? []}
+			initialBomItems={bomItems ?? []}
 			members={memberOptions}
 			canEdit={canEdit}
 		/>

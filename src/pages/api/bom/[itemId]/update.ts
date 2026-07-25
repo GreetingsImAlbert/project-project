@@ -1,5 +1,6 @@
 import type { APIRoute } from 'astro';
 import { canEditMoney } from '../../../../lib/money-access';
+import { itemUrlError } from '../../../../lib/item-url';
 
 export const prerender = false;
 
@@ -70,16 +71,9 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 		return new Response('Cannot be negative', { status: 400 });
 	}
 
-	if (itemUrl) {
-		let parsedUrl: URL;
-		try {
-			parsedUrl = new URL(itemUrl);
-		} catch {
-			return new Response('Invalid item URL', { status: 400 });
-		}
-		if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
-			return new Response('URL must be http or https', { status: 400 });
-		}
+	const urlError = itemUrlError(itemUrl);
+	if (urlError) {
+		return new Response(urlError, { status: 400 });
 	}
 
 	const { data: updated, error } = await locals.supabase

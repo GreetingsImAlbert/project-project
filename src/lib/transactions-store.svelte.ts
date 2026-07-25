@@ -1,4 +1,6 @@
-export type TransactionType = 'item' | 'shipping' | 'discount' | 'refund' | 'payment';
+// 'bulk' is the parent row of a multi-item purchase — it carries the money and the
+// label, its lines carry the breakdown. Lines themselves are never 'bulk'.
+export type TransactionType = 'item' | 'shipping' | 'discount' | 'refund' | 'payment' | 'bulk';
 
 export interface Transaction {
 	id: string;
@@ -9,9 +11,12 @@ export interface Transaction {
 	unit: string | null;
 	unit_cost: number | null;
 	supplier: string | null;
+	item_url: string | null;
 	total_cost: number | null;
 	member_id: string;
 	related_member_id: string | null;
+	// null on a standalone transaction and on a bulk parent; the parent's id on a line.
+	group_id: string | null;
 	profiles: { display_name: string } | null;
 }
 
@@ -41,6 +46,24 @@ export function updateTransaction(t: Transaction) {
 	transactionsState.items = transactionsState.items.map((x) => (x.id === t.id ? t : x));
 }
 
+// Mirrors the `on delete cascade` on transactions.group_id — deleting a bulk parent
+// drops its lines in the database, so they have to go from the store too.
 export function removeTransaction(id: string) {
-	transactionsState.items = transactionsState.items.filter((x) => x.id !== id);
+	transactionsState.items = transactionsState.items.filter((x) => x.id !== id && x.group_id !== id);
+}
+
+// A bulk transaction arrives as one parent row plus its lines.
+export function addTransactionGroup(rows: Transaction[]) {
+	transactionsState.items = [...transactionsState.items, ...rows];
+}
+
+// Editing a bulk transaction rewrites its lines wholesale (the endpoint deletes and
+// reinserts them), so swap the whole group rather than patching row by row.
+export function replaceTransactionGroup(parentId: string, rows: Transaction[]) {
+	const rest = transactionsState.items.filter((x) => x.id !== parentId && x.group_id !== parentId);
+	transactionsState.items = [...rest, ...rows];
+}
+
+export function linesOf(parentId: string): Transaction[] {
+	return transactionsState.items.filter((x) => x.group_id === parentId);
 }

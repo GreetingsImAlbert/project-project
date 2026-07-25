@@ -271,8 +271,10 @@ export type Database = {
       transactions: {
         Row: {
           created_at: string | null
+          group_id: string | null
           id: string
           item_name: string | null
+          item_url: string | null
           member_id: string
           project_id: string
           quantity: number | null
@@ -286,8 +288,10 @@ export type Database = {
         }
         Insert: {
           created_at?: string | null
+          group_id?: string | null
           id?: string
           item_name?: string | null
+          item_url?: string | null
           member_id: string
           project_id: string
           quantity?: number | null
@@ -301,8 +305,10 @@ export type Database = {
         }
         Update: {
           created_at?: string | null
+          group_id?: string | null
           id?: string
           item_name?: string | null
+          item_url?: string | null
           member_id?: string
           project_id?: string
           quantity?: number | null
@@ -315,6 +321,13 @@ export type Database = {
           unit_cost?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "transactions_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "transactions"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "transactions_member_id_fkey"
             columns: ["member_id"]

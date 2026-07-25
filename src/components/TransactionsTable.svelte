@@ -1,14 +1,19 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { slide } from 'svelte/transition';
+	import BulkTransactionForm from './BulkTransactionForm.svelte';
 	import { formatCurrency, initCurrency } from '../lib/currency.svelte';
-	import { netSpend } from '../lib/money-math';
+	import { netSpend, topLevel } from '../lib/money-math';
+	import { bomState, initBom, type BomItem } from '../lib/bom-store.svelte';
 	import {
 		transactionsState,
 		initTransactions,
 		addTransaction,
+		addTransactionGroup,
 		updateTransaction,
+		replaceTransactionGroup,
 		removeTransaction,
+		linesOf,
 		type Transaction,
 		type TransactionType,
 	} from '../lib/transactions-store.svelte';
@@ -21,16 +26,21 @@
 	let {
 		projectId,
 		initialTransactions,
+		initialBomItems,
 		members,
 		canEdit,
 	}: {
 		projectId: string;
 		initialTransactions: Transaction[];
+		initialBomItems: BomItem[];
 		members: Member[];
 		canEdit: boolean;
 	} = $props();
 
 	initTransactions(initialTransactions);
+	// Seeded here as well as in BomTable/MoneySummary so an item form can offer the BOM
+	// list no matter which island hydrates first — see initTransactions for the guard.
+	initBom(initialBomItems);
 
 	// One row panel at a time — read-only detail or the edit form, never both.
 	let openId = $state<string | null>(null);
@@ -43,6 +53,7 @@
 	let adding = $state(false);
 	let addError = $state<string | null>(null);
 	let showAddForm = $state(false);
+	let showBulkForm = $state(false);
 	let addButtonVisible = $state(true);
 	let addType = $state<TransactionType>('item');
 	let addTransactionDate = $state('');
@@ -51,12 +62,22 @@
 	let addUnit = $state('');
 	let addUnitCost = $state('');
 	let addSupplier = $state('');
+	let addItemUrl = $state('');
 	let addMemberId = $state('');
 	let addRelatedMemberId = $state('');
+	let addBomId = $state('');
 
 	let editingType = $state<TransactionType>('item');
 	let editingMemberId = $state('');
 	let editingRelatedMemberId = $state('');
+	let editingDate = $state('');
+	let editingItemName = $state('');
+	let editingQuantity = $state('');
+	let editingUnit = $state('');
+	let editingUnitCost = $state('');
+	let editingSupplier = $state('');
+	let editingItemUrl = $state('');
+	let editingBomId = $state('');
 
 	const TYPE_LABELS: Record<TransactionType, string> = {
 		item: 'Item',
@@ -64,7 +85,14 @@
 		discount: 'Discount',
 		refund: 'Refund',
 		payment: 'Payment',
+		bulk: 'Bulk',
 	};
+
+	// 'bulk' is only ever created through the bulk form — it can't be picked as the
+	// type of a plain one-line transaction.
+	const SINGLE_TYPES = (Object.keys(TYPE_LABELS) as TransactionType[]).filter((t) => t !== 'bulk');
+
+	type BomField = 'itemName' | 'quantity' | 'unit' | 'unitCost' | 'supplier' | 'itemUrl';
 
 	let colCount = $derived(canEdit ? 10 : 9);
 
@@ -77,11 +105,80 @@
 		return profile?.display_name ?? members.find((m) => m.id === id)?.displayName ?? 'Unknown';
 	}
 
+	function bomValue(bomId: string, field: BomField): string | null {
+		const item = bomState.items.find((i) => i.id === bomId);
+		if (!item) return null;
+
+		switch (field) {
+			case 'itemName':
+				return item.part_name;
+			case 'quantity':
+				return item.quantity != null ? String(item.quantity) : '';
+			case 'unit':
+				return item.unit ?? '';
+			case 'unitCost':
+				return item.unit_cost != null ? String(item.unit_cost) : '';
+			case 'supplier':
+				return item.supplier ?? '';
+			case 'itemUrl':
+				return item.item_url ?? '';
+		}
+	}
+
+	function copyToAdd(field: BomField) {
+		const value = bomValue(addBomId, field);
+		if (value === null) return;
+
+		if (field === 'itemName') addItemName = value;
+		else if (field === 'quantity') addQuantity = value;
+		else if (field === 'unit') addUnit = value;
+		else if (field === 'unitCost') addUnitCost = value;
+		else if (field === 'supplier') addSupplier = value;
+		else addItemUrl = value;
+	}
+
+	function copyToEdit(field: BomField) {
+		const value = bomValue(editingBomId, field);
+		if (value === null) return;
+
+		if (field === 'itemName') editingItemName = value;
+		else if (field === 'quantity') editingQuantity = value;
+		else if (field === 'unit') editingUnit = value;
+		else if (field === 'unitCost') editingUnitCost = value;
+		else if (field === 'supplier') editingSupplier = value;
+		else editingItemUrl = value;
+	}
+
+	const ALL_BOM_FIELDS: BomField[] = ['itemName', 'quantity', 'unit', 'unitCost', 'supplier', 'itemUrl'];
+
+	function copyAllToAdd() {
+		ALL_BOM_FIELDS.forEach(copyToAdd);
+	}
+
+	function copyAllToEdit() {
+		ALL_BOM_FIELDS.forEach(copyToEdit);
+	}
+
+	// Picking a BOM item fills the whole row straight away — the per-field copy buttons
+	// stay for pulling one value back after it's been changed by hand.
+	function pickAddBom(bomId: string) {
+		addBomId = bomId;
+		copyAllToAdd();
+	}
+
+	function pickEditBom(bomId: string) {
+		editingBomId = bomId;
+		copyAllToEdit();
+	}
+
 	// Newest date first, and the first row of each date carries a rule above it —
 	// the Date column is still present per row, so a full-width date banner would
-	// just be the same string twice.
+	// just be the same string twice. Bulk lines never appear here: their parent row
+	// stands in for them, and clicking it reveals the breakdown.
 	let rows = $derived.by(() => {
-		const sorted = [...transactionsState.items].sort((a, b) => b.transaction_date.localeCompare(a.transaction_date));
+		const sorted = topLevel(transactionsState.items).sort((a, b) =>
+			b.transaction_date.localeCompare(a.transaction_date),
+		);
 		return sorted.map((t, i) => ({
 			t,
 			isGroupStart: i === 0 || sorted[i - 1].transaction_date !== t.transaction_date,
@@ -114,6 +211,14 @@
 		editingType = t.type;
 		editingMemberId = t.member_id;
 		editingRelatedMemberId = t.related_member_id ?? '';
+		editingDate = t.transaction_date;
+		editingItemName = t.item_name ?? '';
+		editingQuantity = t.quantity != null ? String(t.quantity) : '';
+		editingUnit = t.unit ?? '';
+		editingUnitCost = t.unit_cost != null ? String(t.unit_cost) : '';
+		editingSupplier = t.supplier ?? '';
+		editingItemUrl = t.item_url ?? '';
+		editingBomId = '';
 		rowError = null;
 	}
 
@@ -142,32 +247,45 @@
 		savingId = null;
 	}
 
-	async function handleDelete(id: string) {
-		if (!confirm('Delete this transaction?')) return;
+	async function handleDelete(t: Transaction) {
+		const prompt =
+			t.type === 'bulk' ? 'Delete this bulk transaction and all of its items?' : 'Delete this transaction?';
+		if (!confirm(prompt)) return;
 
 		rowError = null;
-		deletingId = id;
+		deletingId = t.id;
 
-		const res = await fetch(`/api/transactions/${id}/delete`, { method: 'POST' });
+		const res = await fetch(`/api/transactions/${t.id}/delete`, { method: 'POST' });
 
 		if (!res.ok) {
-			rowError = { id, message: await res.text() };
+			rowError = { id: t.id, message: await res.text() };
 			deletingId = null;
 			return;
 		}
 
-		removeTransaction(id);
-		if (openId === id) openId = null;
+		removeTransaction(t.id);
+		if (openId === t.id) openId = null;
 		deletingId = null;
 	}
 
 	function openAddForm() {
 		showAddForm = true;
+		showBulkForm = false;
+		addButtonVisible = false;
+	}
+
+	function openBulkForm() {
+		showBulkForm = true;
+		showAddForm = false;
 		addButtonVisible = false;
 	}
 
 	function closeAddForm() {
 		showAddForm = false;
+	}
+
+	function closeBulkForm() {
+		showBulkForm = false;
 	}
 
 	async function handleAddSubmit(e: SubmitEvent) {
@@ -194,10 +312,22 @@
 		addUnit = '';
 		addUnitCost = '';
 		addSupplier = '';
+		addItemUrl = '';
 		addMemberId = '';
 		addRelatedMemberId = '';
+		addBomId = '';
 		showAddForm = false;
 		adding = false;
+	}
+
+	function handleBulkAdded(result: { parent: Transaction; lines: Transaction[] }) {
+		addTransactionGroup([result.parent, ...result.lines]);
+		showBulkForm = false;
+	}
+
+	function handleBulkSaved(parentId: string, result: { parent: Transaction; lines: Transaction[] }) {
+		replaceTransactionGroup(parentId, [result.parent, ...result.lines]);
+		openId = null;
 	}
 </script>
 
@@ -205,12 +335,12 @@
 	<div class="money-section-head">
 		<h2>Transactions</h2>
 		<span class="section-meta">
-			{transactionsState.items.length} entr{transactionsState.items.length === 1 ? 'y' : 'ies'} · net
+			{rows.length} entr{rows.length === 1 ? 'y' : 'ies'} · net
 			<strong>{formatCurrency(netTotal)}</strong>
 		</span>
 	</div>
 
-	{#if transactionsState.items.length === 0}
+	{#if rows.length === 0}
 		<p class="muted empty">No transactions yet.</p>
 	{:else}
 		<div class="money-table">
@@ -244,6 +374,7 @@
 				<tbody>
 					{#each rows as row (row.t.id)}
 						{@const t = row.t}
+						{@const lines = t.type === 'bulk' ? linesOf(t.id) : []}
 						<tr
 							class="data-row clickable"
 							class:group-start={row.isGroupStart}
@@ -252,11 +383,22 @@
 						>
 							<td class="date-cell">{t.transaction_date}</td>
 							<td><span class={`type-tag type-${t.type}`}>{TYPE_LABELS[t.type]}</span></td>
-							<td>{t.item_name ?? ''}</td>
+							<td>
+								{t.item_name ?? ''}
+								{#if t.type === 'bulk'}
+									<span class="line-count">({lines.length})</span>
+								{/if}
+							</td>
 							<td class="num">{t.type === 'item' ? (t.quantity ?? '') : ''}</td>
-							<td>{t.unit ?? ''}</td>
+							<td>{t.type === 'item' ? (t.unit ?? '') : ''}</td>
 							<td class="num">{t.type === 'item' && t.unit_cost != null ? formatCurrency(t.unit_cost) : ''}</td>
-							<td>{t.supplier ?? ''}</td>
+							<td>
+								{#if t.item_url}
+									<a href={t.item_url} target="_blank" rel="noopener noreferrer">{t.supplier || t.item_url}</a>
+								{:else}
+									{t.supplier ?? ''}
+								{/if}
+							</td>
 							<td class="num" class:negative={t.type === 'discount' || t.type === 'refund'}>
 								{t.type === 'discount' || t.type === 'refund' ? '-' : ''}{t.total_cost != null ? formatCurrency(t.total_cost) : ''}
 							</td>
@@ -265,7 +407,7 @@
 								<td class="actions-cell">
 									<div class="row-actions">
 										<button type="button" class="btn-plain" onclick={() => startEdit(t)}>Edit</button>
-										<button type="button" class="btn-danger" onclick={() => handleDelete(t.id)} disabled={deletingId === t.id}>
+										<button type="button" class="btn-danger" onclick={() => handleDelete(t)} disabled={deletingId === t.id}>
 											{deletingId === t.id ? '…' : 'Delete'}
 										</button>
 									</div>
@@ -287,7 +429,9 @@
 												<span class="field-value">{TYPE_LABELS[t.type]}</span>
 											</div>
 											<div class="field">
-												<span class="field-label">{t.type === 'payment' ? 'Paid to' : 'Item'}</span>
+												<span class="field-label">
+													{t.type === 'payment' ? 'Paid to' : t.type === 'bulk' ? 'Name' : 'Item'}
+												</span>
 												<span class="field-value">
 													{t.type === 'payment' ? memberName(t.related_member_id) : t.item_name || '—'}
 												</span>
@@ -305,7 +449,13 @@
 											{#if t.type !== 'payment'}
 												<div class="field">
 													<span class="field-label">Supplier</span>
-													<span class="field-value">{t.supplier || '—'}</span>
+													<span class="field-value">
+														{#if t.item_url}
+															<a href={t.item_url} target="_blank" rel="noopener noreferrer">{t.supplier || t.item_url}</a>
+														{:else}
+															{t.supplier || '—'}
+														{/if}
+													</span>
 												</div>
 											{/if}
 											<div class="field">
@@ -321,6 +471,67 @@
 												<span class="field-value">{memberName(t.member_id, t.profiles)}</span>
 											</div>
 										</div>
+
+										{#if t.type === 'bulk'}
+											<table class="sub-table bulk-lines">
+												<colgroup>
+													<col style="width:84px" />
+													<col />
+													<col style="width:56px" />
+													<col style="width:60px" />
+													<col style="width:96px" />
+													<col style="width:130px" />
+													<col style="width:100px" />
+												</colgroup>
+												<thead>
+													<tr>
+														<th>Type</th>
+														<th>Item</th>
+														<th class="num">Qty</th>
+														<th>Unit</th>
+														<th class="num">Unit cost</th>
+														<th>Supplier</th>
+														<th class="num">Amount</th>
+													</tr>
+												</thead>
+												<tbody>
+													{#each lines as line (line.id)}
+														<tr>
+															<td>{TYPE_LABELS[line.type]}</td>
+															<td class="sub-item">{line.item_name || '—'}</td>
+															<td class="num">{line.type === 'item' ? (line.quantity ?? '') : ''}</td>
+															<td>{line.unit ?? ''}</td>
+															<td class="num">{line.unit_cost != null ? formatCurrency(line.unit_cost) : '—'}</td>
+															<td class="sub-item">
+																{#if line.item_url}
+																	<a href={line.item_url} target="_blank" rel="noopener noreferrer">
+																		{line.supplier || line.item_url}
+																	</a>
+																{:else}
+																	{line.supplier ?? ''}
+																{/if}
+															</td>
+															<td class="num" class:negative={line.type === 'discount' || line.type === 'refund'}>
+																{#if line.total_cost == null}
+																	—
+																{:else}
+																	{line.type === 'discount' || line.type === 'refund' ? '-' : ''}{formatCurrency(line.total_cost)}
+																{/if}
+															</td>
+														</tr>
+													{/each}
+												</tbody>
+												<tfoot>
+													<tr>
+														<td colspan="6">Total</td>
+														<td class="num">{t.total_cost != null ? formatCurrency(t.total_cost) : '—'}</td>
+													</tr>
+												</tfoot>
+											</table>
+											{#if lines.every((line) => line.unit_cost == null)}
+												<p class="muted mode-note">Recorded as one total for the whole purchase.</p>
+											{/if}
+										{/if}
 									</div>
 								</td>
 							</tr>
@@ -330,98 +541,160 @@
 							<tr class="panel-row">
 								<td colspan={colCount}>
 									<div class="money-panel" transition:slide={{ duration: 150 }}>
-										<form method="POST" action={`/api/transactions/${t.id}/update`} onsubmit={(e) => handleSave(e, t.id)}>
-											<div class="panel-grid">
-												<label class="field">
-													<span class="field-label">Date</span>
-													<input type="date" name="transactionDate" value={t.transaction_date} required />
-												</label>
-												<label class="field">
-													<span class="field-label">Type</span>
-													<select name="type" bind:value={editingType}>
-														{#each Object.entries(TYPE_LABELS) as [value, label] (value)}
-															<option {value}>{label}</option>
-														{/each}
-													</select>
-												</label>
-												<label class="field">
-													<span class="field-label">{editingType === 'payment' ? 'Paid by' : 'Recorded by'}</span>
-													<select name="memberId" bind:value={editingMemberId}>
-														{#each members as member (member.id)}
-															<option value={member.id}>{member.displayName}</option>
-														{/each}
-													</select>
-												</label>
-
-												{#if editingType === 'payment'}
+										{#if t.type === 'bulk'}
+											<BulkTransactionForm
+												action={`/api/transactions/${t.id}/update-bulk`}
+												members={members}
+												parent={t}
+												lines={lines}
+												submitLabel="Save"
+												onSaved={(result) => handleBulkSaved(t.id, result)}
+												onCancel={cancelEdit}
+											/>
+										{:else}
+											<form method="POST" action={`/api/transactions/${t.id}/update`} onsubmit={(e) => handleSave(e, t.id)}>
+												<div class="panel-grid">
 													<label class="field">
-														<span class="field-label">Paid to</span>
-														<select name="relatedMemberId" bind:value={editingRelatedMemberId} required>
-															<option value="" disabled>Select member…</option>
-															{#each members.filter((m) => m.id !== editingMemberId) as member (member.id)}
+														<span class="field-label">Date</span>
+														<input type="date" name="transactionDate" bind:value={editingDate} required />
+													</label>
+													<label class="field">
+														<span class="field-label">Type</span>
+														<select name="type" bind:value={editingType}>
+															{#each SINGLE_TYPES as value (value)}
+																<option {value}>{TYPE_LABELS[value]}</option>
+															{/each}
+														</select>
+													</label>
+													<label class="field">
+														<span class="field-label">{editingType === 'payment' ? 'Paid by' : 'Recorded by'}</span>
+														<select name="memberId" bind:value={editingMemberId}>
+															{#each members as member (member.id)}
 																<option value={member.id}>{member.displayName}</option>
 															{/each}
 														</select>
 													</label>
-												{:else}
+
+													{#if editingType === 'payment'}
+														<label class="field">
+															<span class="field-label">Paid to</span>
+															<select name="relatedMemberId" bind:value={editingRelatedMemberId} required>
+																<option value="" disabled>Select member…</option>
+																{#each members.filter((m) => m.id !== editingMemberId) as member (member.id)}
+																	<option value={member.id}>{member.displayName}</option>
+																{/each}
+															</select>
+														</label>
+													{:else}
+														{#if editingType === 'item'}
+															<label class="field">
+																<span class="field-label">
+																	From BOM
+																	{#if editingBomId}
+																		<button type="button" class="copy-btn" onclick={copyAllToEdit}>copy all</button>
+																	{/if}
+																</span>
+																<select value={editingBomId} onchange={(e) => pickEditBom(e.currentTarget.value)}>
+																	<option value="">Custom item</option>
+																	{#each bomState.items as item (item.id)}
+																		<option value={item.id}>{item.part_name}</option>
+																	{/each}
+																</select>
+															</label>
+														{/if}
+														<label class="field">
+															<span class="field-label">
+																Item
+																{#if editingBomId && editingType === 'item'}
+																	<button type="button" class="copy-btn" onclick={() => copyToEdit('itemName')}>copy</button>
+																{/if}
+															</span>
+															<input
+																type="text"
+																name="itemName"
+																bind:value={editingItemName}
+																placeholder="Item name"
+																maxlength="200"
+																disabled={editingType !== 'item'}
+															/>
+														</label>
+													{/if}
+
+													{#if editingType === 'item'}
+														<label class="field">
+															<span class="field-label">
+																Quantity
+																{#if editingBomId}
+																	<button type="button" class="copy-btn" onclick={() => copyToEdit('quantity')}>copy</button>
+																{/if}
+															</span>
+															<input type="number" step="any" min="0" name="quantity" bind:value={editingQuantity} />
+														</label>
+														<label class="field">
+															<span class="field-label">
+																Unit
+																{#if editingBomId}
+																	<button type="button" class="copy-btn" onclick={() => copyToEdit('unit')}>copy</button>
+																{/if}
+															</span>
+															<input type="text" name="unit" bind:value={editingUnit} placeholder="e.g. pcs" maxlength="50" />
+														</label>
+													{/if}
+
 													<label class="field">
-														<span class="field-label">Item</span>
+														<span class="field-label">
+															{editingType === 'item' ? 'Unit cost' : 'Amount'}
+															{#if editingBomId && editingType === 'item'}
+																<button type="button" class="copy-btn" onclick={() => copyToEdit('unitCost')}>copy</button>
+															{/if}
+														</span>
 														<input
-															type="text"
-															name="itemName"
-															value={t.item_name ?? ''}
-															placeholder="Item name"
-															maxlength="200"
-															disabled={editingType !== 'item'}
+															type="number"
+															step="any"
+															min="0"
+															name="unitCost"
+															bind:value={editingUnitCost}
+															placeholder={unitCostPlaceholder(editingType)}
+															required
 														/>
 													</label>
-												{/if}
 
-												{#if editingType === 'item'}
-													<label class="field">
-														<span class="field-label">Quantity</span>
-														<input type="number" step="any" min="0" name="quantity" value={t.quantity ?? ''} />
-													</label>
-													<label class="field">
-														<span class="field-label">Unit</span>
-														<input type="text" name="unit" value={t.unit ?? ''} placeholder="e.g. pcs" maxlength="50" />
-													</label>
-												{/if}
+													{#if editingType !== 'payment'}
+														<label class="field">
+															<span class="field-label">
+																Supplier
+																{#if editingBomId && editingType === 'item'}
+																	<button type="button" class="copy-btn" onclick={() => copyToEdit('supplier')}>copy</button>
+																{/if}
+															</span>
+															<input
+																type="text"
+																name="supplier"
+																bind:value={editingSupplier}
+																placeholder="Supplier name"
+																maxlength="200"
+															/>
+														</label>
+														<label class="field field-wide">
+															<span class="field-label">
+																Supplier link
+																{#if editingBomId && editingType === 'item'}
+																	<button type="button" class="copy-btn" onclick={() => copyToEdit('itemUrl')}>copy</button>
+																{/if}
+															</span>
+															<input type="url" name="itemUrl" bind:value={editingItemUrl} placeholder="https://…" />
+														</label>
+													{/if}
+												</div>
 
-												<label class="field">
-													<span class="field-label">{editingType === 'item' ? 'Unit cost' : 'Amount'}</span>
-													<input
-														type="number"
-														step="any"
-														min="0"
-														name="unitCost"
-														value={t.unit_cost ?? ''}
-														placeholder={unitCostPlaceholder(editingType)}
-														required
-													/>
-												</label>
+												{#if rowError?.id === t.id}<p class="panel-error">{rowError.message}</p>{/if}
 
-												{#if editingType !== 'payment'}
-													<label class="field">
-														<span class="field-label">Supplier</span>
-														<input
-															type="text"
-															name="supplier"
-															value={t.supplier ?? ''}
-															placeholder="Supplier name"
-															maxlength="200"
-														/>
-													</label>
-												{/if}
-											</div>
-
-											{#if rowError?.id === t.id}<p class="panel-error">{rowError.message}</p>{/if}
-
-											<div class="panel-actions">
-												<button type="submit" disabled={savingId === t.id}>{savingId === t.id ? 'Saving…' : 'Save'}</button>
-												<button type="button" class="btn-plain" onclick={cancelEdit}>Cancel</button>
-											</div>
-										</form>
+												<div class="panel-actions">
+													<button type="submit" disabled={savingId === t.id}>{savingId === t.id ? 'Saving…' : 'Save'}</button>
+													<button type="button" class="btn-plain" onclick={cancelEdit}>Cancel</button>
+												</div>
+											</form>
+										{/if}
 									</div>
 								</td>
 							</tr>
@@ -447,101 +720,171 @@
 	{/if}
 
 	{#if canEdit}
-		<form method="POST" action={`/api/projects/${projectId}/transactions/create`} onsubmit={handleAddSubmit} class="add-form">
-			{#if showAddForm}
-				<div class="money-panel add-panel" transition:slide={{ duration: 150 }} onoutroend={() => (addButtonVisible = true)}>
-					<div class="panel-grid">
-						<label class="field">
-							<span class="field-label">Date</span>
-							<input type="date" name="transactionDate" required bind:value={addTransactionDate} />
-						</label>
-						<label class="field">
-							<span class="field-label">Type</span>
-							<select name="type" bind:value={addType}>
-								{#each Object.entries(TYPE_LABELS) as [value, label] (value)}
-									<option {value}>{label}</option>
-								{/each}
-							</select>
-						</label>
-						<label class="field">
-							<span class="field-label">{addType === 'payment' ? 'Paid by' : 'Recorded by'}</span>
-							<select name="memberId" required bind:value={addMemberId}>
-								<option value="" disabled>Select member…</option>
-								{#each members as member (member.id)}
-									<option value={member.id}>{member.displayName}</option>
-								{/each}
-							</select>
-						</label>
-
-						{#if addType === 'payment'}
+		<div class="add-area">
+			<form method="POST" action={`/api/projects/${projectId}/transactions/create`} onsubmit={handleAddSubmit} class="add-form">
+				{#if showAddForm}
+					<div class="money-panel add-panel" transition:slide={{ duration: 150 }} onoutroend={() => (addButtonVisible = true)}>
+						<div class="panel-grid">
 							<label class="field">
-								<span class="field-label">Paid to</span>
-								<select name="relatedMemberId" required bind:value={addRelatedMemberId}>
+								<span class="field-label">Date</span>
+								<input type="date" name="transactionDate" required bind:value={addTransactionDate} />
+							</label>
+							<label class="field">
+								<span class="field-label">Type</span>
+								<select name="type" bind:value={addType}>
+									{#each SINGLE_TYPES as value (value)}
+										<option {value}>{TYPE_LABELS[value]}</option>
+									{/each}
+								</select>
+							</label>
+							<label class="field">
+								<span class="field-label">{addType === 'payment' ? 'Paid by' : 'Recorded by'}</span>
+								<select name="memberId" required bind:value={addMemberId}>
 									<option value="" disabled>Select member…</option>
-									{#each members.filter((m) => m.id !== addMemberId) as member (member.id)}
+									{#each members as member (member.id)}
 										<option value={member.id}>{member.displayName}</option>
 									{/each}
 								</select>
 							</label>
-						{:else}
+
+							{#if addType === 'payment'}
+								<label class="field">
+									<span class="field-label">Paid to</span>
+									<select name="relatedMemberId" required bind:value={addRelatedMemberId}>
+										<option value="" disabled>Select member…</option>
+										{#each members.filter((m) => m.id !== addMemberId) as member (member.id)}
+											<option value={member.id}>{member.displayName}</option>
+										{/each}
+									</select>
+								</label>
+							{:else}
+								{#if addType === 'item'}
+									<label class="field">
+										<span class="field-label">
+											From BOM
+											{#if addBomId}
+												<button type="button" class="copy-btn" onclick={copyAllToAdd}>copy all</button>
+											{/if}
+										</span>
+										<select value={addBomId} onchange={(e) => pickAddBom(e.currentTarget.value)}>
+											<option value="">Custom item</option>
+											{#each bomState.items as item (item.id)}
+												<option value={item.id}>{item.part_name}</option>
+											{/each}
+										</select>
+									</label>
+								{/if}
+								<label class="field">
+									<span class="field-label">
+										Item
+										{#if addBomId && addType === 'item'}
+											<button type="button" class="copy-btn" onclick={() => copyToAdd('itemName')}>copy</button>
+										{/if}
+									</span>
+									<input
+										type="text"
+										name="itemName"
+										placeholder="Item name"
+										maxlength="200"
+										disabled={addType !== 'item'}
+										bind:value={addItemName}
+									/>
+								</label>
+							{/if}
+
+							{#if addType === 'item'}
+								<label class="field">
+									<span class="field-label">
+										Quantity
+										{#if addBomId}
+											<button type="button" class="copy-btn" onclick={() => copyToAdd('quantity')}>copy</button>
+										{/if}
+									</span>
+									<input type="number" step="any" min="0" name="quantity" placeholder="Qty" bind:value={addQuantity} />
+								</label>
+								<label class="field">
+									<span class="field-label">
+										Unit
+										{#if addBomId}
+											<button type="button" class="copy-btn" onclick={() => copyToAdd('unit')}>copy</button>
+										{/if}
+									</span>
+									<input type="text" name="unit" placeholder="e.g. pcs" maxlength="50" bind:value={addUnit} />
+								</label>
+							{/if}
+
 							<label class="field">
-								<span class="field-label">Item</span>
+								<span class="field-label">
+									{addType === 'item' ? 'Unit cost' : 'Amount'}
+									{#if addBomId && addType === 'item'}
+										<button type="button" class="copy-btn" onclick={() => copyToAdd('unitCost')}>copy</button>
+									{/if}
+								</span>
 								<input
-									type="text"
-									name="itemName"
-									placeholder="Item name"
-									maxlength="200"
-									disabled={addType !== 'item'}
-									bind:value={addItemName}
+									type="number"
+									step="any"
+									min="0"
+									name="unitCost"
+									placeholder={unitCostPlaceholder(addType)}
+									required
+									bind:value={addUnitCost}
 								/>
 							</label>
-						{/if}
 
-						{#if addType === 'item'}
-							<label class="field">
-								<span class="field-label">Quantity</span>
-								<input type="number" step="any" min="0" name="quantity" placeholder="Qty" bind:value={addQuantity} />
-							</label>
-							<label class="field">
-								<span class="field-label">Unit</span>
-								<input type="text" name="unit" placeholder="e.g. pcs" maxlength="50" bind:value={addUnit} />
-							</label>
-						{/if}
+							{#if addType !== 'payment'}
+								<label class="field">
+									<span class="field-label">
+										Supplier
+										{#if addBomId && addType === 'item'}
+											<button type="button" class="copy-btn" onclick={() => copyToAdd('supplier')}>copy</button>
+										{/if}
+									</span>
+									<input type="text" name="supplier" placeholder="Supplier name" maxlength="200" bind:value={addSupplier} />
+								</label>
+								<label class="field field-wide">
+									<span class="field-label">
+										Supplier link
+										{#if addBomId && addType === 'item'}
+											<button type="button" class="copy-btn" onclick={() => copyToAdd('itemUrl')}>copy</button>
+										{/if}
+									</span>
+									<input type="url" name="itemUrl" placeholder="https://…" bind:value={addItemUrl} />
+								</label>
+							{/if}
+						</div>
 
-						<label class="field">
-							<span class="field-label">{addType === 'item' ? 'Unit cost' : 'Amount'}</span>
-							<input
-								type="number"
-								step="any"
-								min="0"
-								name="unitCost"
-								placeholder={unitCostPlaceholder(addType)}
-								required
-								bind:value={addUnitCost}
-							/>
-						</label>
-
-						{#if addType !== 'payment'}
-							<label class="field">
-								<span class="field-label">Supplier</span>
-								<input type="text" name="supplier" placeholder="Supplier name" maxlength="200" bind:value={addSupplier} />
-							</label>
-						{/if}
+						{#if addError}<p class="panel-error">{addError}</p>{/if}
 					</div>
+				{/if}
 
-					{#if addError}<p class="panel-error">{addError}</p>{/if}
+				<!-- Driven by addButtonVisible rather than showAddForm so the row stays put
+				     while the panel slides shut, then swaps back to the idle buttons. -->
+				{#if !addButtonVisible && !showBulkForm}
+					<div class="add-form-actions">
+						<button type="submit" disabled={adding}>{adding ? 'Adding…' : 'Add transaction'}</button>
+						<button type="button" class="btn-plain" onclick={closeAddForm}>Cancel</button>
+					</div>
+				{/if}
+			</form>
+
+			{#if showBulkForm}
+				<div class="money-panel add-panel" transition:slide={{ duration: 150 }} onoutroend={() => (addButtonVisible = true)}>
+					<BulkTransactionForm
+						action={`/api/projects/${projectId}/transactions/create-bulk`}
+						members={members}
+						onSaved={handleBulkAdded}
+						onCancel={closeBulkForm}
+					/>
 				</div>
 			{/if}
 
-			<div class="add-form-actions">
-				{#if addButtonVisible}
+			{#if addButtonVisible}
+				<div class="add-form-actions">
 					<button type="button" class="btn-plain" onclick={openAddForm}>Add transaction</button>
-				{:else}
-					<button type="submit" disabled={adding}>{adding ? 'Adding…' : 'Add transaction'}</button>
-					<button type="button" class="btn-plain" onclick={closeAddForm}>Cancel</button>
-				{/if}
-			</div>
-		</form>
+					<button type="button" class="btn-plain" onclick={openBulkForm}>Add bulk transaction</button>
+				</div>
+			{/if}
+		</div>
 	{/if}
 </section>
 
@@ -566,6 +909,10 @@
 		color: var(--color-role-auditor);
 	}
 
+	.type-bulk {
+		color: var(--color-role-editor);
+	}
+
 	.type-shipping {
 		color: var(--color-muted);
 	}
@@ -573,6 +920,22 @@
 	.negative {
 		color: var(--color-role-viewer);
 	}
+
+	.line-count {
+		color: var(--color-muted);
+	}
+
+	.bulk-lines {
+		margin-top: var(--space-3);
+	}
+
+	.mode-note {
+		font-size: 0.72rem;
+		margin: var(--space-2) 0 0;
+	}
+
+	/* .copy-btn lives in global.css — the bulk form is a separate component and needs
+	   the same button. */
 
 	.empty {
 		font-size: 0.85rem;

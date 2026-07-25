@@ -9,10 +9,24 @@ export function signedAmount(t: Transaction): number {
 	return t.type === 'discount' || t.type === 'refund' ? -total : total;
 }
 
+// The lines of a bulk transaction are its parent's itemised breakdown, not money in
+// their own right — the parent row carries the whole amount. Counting both would
+// double the purchase, so every aggregate below runs on parents/standalones only.
+// (Pre-bulk rows all have group_id null, so this changes nothing for them.)
+export function isLine(t: Transaction): boolean {
+	return t.group_id != null;
+}
+
+export function topLevel(transactions: Transaction[]): Transaction[] {
+	return transactions.filter((t) => !isLine(t));
+}
+
 // Payments are transfers between members settling dues, not project costs — they
 // shouldn't inflate or deflate the project's actual net spend.
 export function netSpend(transactions: Transaction[]): number {
-	return transactions.filter((t) => t.type !== 'payment').reduce((sum, t) => sum + signedAmount(t), 0);
+	return topLevel(transactions)
+		.filter((t) => t.type !== 'payment')
+		.reduce((sum, t) => sum + signedAmount(t), 0);
 }
 
 // A payment isn't the payer's own project spend — it's money handed directly to
@@ -20,7 +34,7 @@ export function netSpend(transactions: Transaction[]): number {
 // and *against* the payee's "paid" (reduces what they're owed back), rather than
 // being attributed to just one member_id like every other transaction type.
 export function paidByMember(transactions: Transaction[], memberId: string): number {
-	return transactions.reduce((sum, t) => {
+	return topLevel(transactions).reduce((sum, t) => {
 		if (t.type === 'payment') {
 			if (t.member_id === memberId) return sum + (t.total_cost ?? 0);
 			if (t.related_member_id === memberId) return sum - (t.total_cost ?? 0);

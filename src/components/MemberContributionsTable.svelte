@@ -4,7 +4,7 @@
 	import { formatCurrency, initCurrency } from '../lib/currency.svelte';
 	import { transactionsState, initTransactions, type Transaction, type TransactionType } from '../lib/transactions-store.svelte';
 	import { contributionsState, initContributions, setContributionPercents } from '../lib/contributions-store.svelte';
-	import { netSpend, paidByMember, entryAmount } from '../lib/money-math';
+	import { netSpend, paidByMember, entryAmount, topLevel } from '../lib/money-math';
 
 	interface Member {
 		id: string;
@@ -39,6 +39,7 @@
 		discount: 'Discount',
 		refund: 'Refund',
 		payment: 'Payment',
+		bulk: 'Bulk',
 	};
 
 	const colCount = 5;
@@ -74,8 +75,10 @@
 		return contributionAmount(memberId) - paid(memberId);
 	}
 
+	// topLevel first: a bulk transaction belongs in a member's history once, as the
+	// parent row that carries the amount, not again as each of its lines.
 	function transactionsFor(memberId: string): Transaction[] {
-		return transactionsState.items
+		return topLevel(transactionsState.items)
 			.filter((t) => t.member_id === memberId || t.related_member_id === memberId)
 			.slice()
 			.sort((a, b) => a.transaction_date.localeCompare(b.transaction_date));
@@ -351,48 +354,8 @@
 		text-align: right;
 	}
 
-	.sub-table {
-		width: 100%;
-		table-layout: fixed;
-		border-collapse: collapse;
-		margin: 0;
-		font-size: 0.76rem;
-	}
-
-	.sub-table th,
-	.sub-table td {
-		padding: 2px var(--space-2);
-		border: none;
-		border-bottom: 1px dashed var(--color-border);
-		vertical-align: top;
-	}
-
-	.sub-table thead th {
-		background: none;
-		border-bottom: 1px solid var(--color-border);
-		color: var(--color-muted);
-		font-size: 0.66rem;
-		font-weight: 700;
-		letter-spacing: 0.05em;
-		text-transform: uppercase;
-	}
-
-	.sub-table tfoot td {
-		border-bottom: none;
-		border-top: 1px solid var(--color-border-strong);
-		font-weight: 700;
-	}
-
-	.sub-date {
-		color: var(--color-muted);
-		font-variant-numeric: tabular-nums;
-	}
-
-	.sub-item {
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
+	/* .sub-table / .sub-date / .sub-item live in global.css — TransactionsTable's bulk
+	   breakdown is a separate island and needs the same look. */
 
 	.no-txns {
 		font-size: 0.78rem;

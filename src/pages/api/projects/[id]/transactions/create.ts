@@ -1,5 +1,7 @@
 import type { APIRoute } from 'astro';
 import { canEditMoney } from '../../../../../lib/money-access';
+import { itemUrlError } from '../../../../../lib/item-url';
+import { TRANSACTION_COLUMNS } from '../../../../../lib/transaction-columns';
 
 export const prerender = false;
 
@@ -30,6 +32,7 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 	const itemName = formData.get('itemName')?.toString().trim() || null;
 	const unit = formData.get('unit')?.toString().trim() || null;
 	const supplier = formData.get('supplier')?.toString().trim() || null;
+	const itemUrl = formData.get('itemUrl')?.toString().trim() || null;
 	const relatedMemberId = formData.get('relatedMemberId')?.toString().trim() || null;
 
 	if (!transactionDate) {
@@ -61,6 +64,11 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 	}
 	if (supplier && supplier.length > 200) {
 		return new Response('Supplier: max 200 characters', { status: 400 });
+	}
+
+	const urlError = itemUrlError(itemUrl);
+	if (urlError) {
+		return new Response(urlError, { status: 400 });
 	}
 
 	let payeeDisplayName: string | null = null;
@@ -113,10 +121,9 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 			unit_cost: unitCost,
 			// A member-to-member payment has no supplier; every other type can.
 			supplier: type === 'payment' ? null : supplier,
+			item_url: type === 'payment' ? null : itemUrl,
 		})
-		.select(
-			'id, transaction_date, type, item_name, quantity, unit, unit_cost, supplier, total_cost, member_id, related_member_id, profiles!transactions_member_id_fkey(display_name)',
-		)
+		.select(TRANSACTION_COLUMNS)
 		.single();
 
 	if (error) {

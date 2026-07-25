@@ -426,6 +426,90 @@ thead th {
 	margin: var(--space-2) 0 0;
 }
 
+/* Supplier links are the only links inside the money tables and panels, and a cell of
+   plain text gives no hint that one of them is clickable — so they drop the site's
+   understated link style for the conventional blue + underline. Covers BomTable and
+   TransactionsTable alike, which are separate islands. */
+
+.money-table a,
+.money-panel a {
+	color: var(--color-link);
+	text-decoration: underline;
+	border-bottom: none;
+}
+
+.money-table a:hover,
+.money-panel a:hover {
+	text-decoration-thickness: 2px;
+}
+
+/* Copy-from-BOM button, tucked into a field's label row. Shared because both the
+   single-transaction form and the bulk form (a separate component) use it. */
+
+.money-panel .copy-btn {
+	padding: 0 var(--space-1);
+	margin-left: var(--space-1);
+	border: 1px solid var(--color-border);
+	background: none;
+	color: var(--color-muted);
+	font-size: 0.6rem;
+	letter-spacing: 0.04em;
+	line-height: 1.6;
+	text-transform: uppercase;
+}
+
+.money-panel .copy-btn:hover {
+	color: var(--color-text);
+	border-color: var(--color-border-strong);
+}
+
+/* Nested breakdown table inside a panel — a member's own transactions in
+   MemberContributionsTable, a bulk transaction's line items in TransactionsTable.
+   Shared here because those are separate islands, so neither can style the other. */
+
+.money-panel .sub-table {
+	width: 100%;
+	table-layout: fixed;
+	border-collapse: collapse;
+	margin: 0;
+	font-size: 0.76rem;
+}
+
+.money-panel .sub-table th,
+.money-panel .sub-table td {
+	padding: 2px var(--space-2);
+	border: none;
+	border-bottom: 1px dashed var(--color-border);
+	vertical-align: top;
+}
+
+.money-panel .sub-table thead th {
+	background: none;
+	border-bottom: 1px solid var(--color-border);
+	color: var(--color-muted);
+	font-size: 0.66rem;
+	font-weight: 700;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+}
+
+.money-panel .sub-table tfoot td {
+	border-bottom: none;
+	border-top: 1px solid var(--color-border-strong);
+	font-weight: 700;
+}
+
+.money-panel .sub-table .sub-date {
+	color: var(--color-muted);
+	font-variant-numeric: tabular-nums;
+}
+
+.money-panel .sub-table .sub-item {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
 /* Breadcrumbs */
 
 .breadcrumbs {
