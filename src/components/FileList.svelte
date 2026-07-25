@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { slide } from 'svelte/transition';
 	import FolderPickerModal from './FolderPickerModal.svelte';
+	import { splitFilename } from '../lib/file-kind';
 
 	interface FileRow {
 		id: string;
@@ -23,6 +24,8 @@
 		files,
 		viewMode,
 		loading = false,
+		openFileId = null,
+		onFileOpen,
 		onFileMoved,
 		onFileCopied,
 		onFileDeleted,
@@ -33,12 +36,13 @@
 		files: FileRow[];
 		viewMode: 'list' | 'grid';
 		loading?: boolean;
+		openFileId?: string | null;
+		onFileOpen: (file: FileRow) => void;
 		onFileMoved: (fileId: string, targetFolderId: string | null) => void;
 		onFileCopied: (file: FileRow, targetFolderId: string | null) => void;
 		onFileDeleted: (fileId: string) => void;
 	} = $props();
 
-	let loadingId = $state<string | null>(null);
 	let deletingId = $state<string | null>(null);
 	let openActionsId = $state<string | null>(null);
 	let rowError = $state<{ id: string; message: string } | null>(null);
@@ -49,27 +53,6 @@
 
 	function toggleActions(fileId: string) {
 		openActionsId = openActionsId === fileId ? null : fileId;
-	}
-
-	function splitName(filename: string): { base: string; ext: string } {
-		const idx = filename.lastIndexOf('.');
-		if (idx <= 0) return { base: filename, ext: '' };
-		return { base: filename.slice(0, idx), ext: filename.slice(idx) };
-	}
-
-	async function download(file: FileRow) {
-		loadingId = file.id;
-		const res = await fetch(`/api/files/${file.id}/download-url`);
-
-		if (!res.ok) {
-			alert('Failed to get download link');
-			loadingId = null;
-			return;
-		}
-
-		const { downloadUrl } = await res.json();
-		window.location.href = downloadUrl;
-		loadingId = null;
 	}
 
 	function openModal(file: FileRow, mode: 'move' | 'copy') {
@@ -149,17 +132,13 @@
 
 <ul class={viewMode === 'grid' ? 'grid-view' : 'file-list'}>
 	{#each files as file (file.id)}
-		{@const parts = splitName(file.filename)}
+		{@const parts = splitFilename(file.filename)}
 		{#if viewMode === 'grid'}
-			<li class="grid-item">
-				<button type="button" class="grid-download" onclick={() => download(file)} disabled={loadingId === file.id}>
+			<li class="grid-item" class:open={openFileId === file.id}>
+				<button type="button" class="grid-download" onclick={() => onFileOpen(file)}>
 					<span class="grid-icon">📄</span>
-					{#if loadingId === file.id}
-						<span class="grid-name">Loading…</span>
-					{:else}
-						<span class="grid-name">{parts.base}</span>
-						{#if parts.ext}<span class="grid-ext muted">{parts.ext}</span>{/if}
-					{/if}
+					<span class="grid-name">{parts.base}</span>
+					{#if parts.ext}<span class="grid-ext muted">{parts.ext}</span>{/if}
 				</button>
 
 				{#if canEdit}
@@ -177,13 +156,11 @@
 				{/if}
 			</li>
 		{:else}
-			<li class="file-row">
+			<li class="file-row" class:open={openFileId === file.id}>
 				<div class="file-header">
 					<div class="file-main">
 						<div class="file-name">
-							<button type="button" class="btn-plain" onclick={() => download(file)} disabled={loadingId === file.id}>
-								{loadingId === file.id ? 'Loading…' : parts.base}
-							</button>
+							<button type="button" class="btn-plain" onclick={() => onFileOpen(file)}>{parts.base}</button>
 							{#if parts.ext}<span class="file-ext muted">{parts.ext}</span>{/if}
 						</div>
 						<span class="muted file-meta">
@@ -246,6 +223,17 @@
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-2);
+	}
+
+	/* The file whose preview panel is open. The negative margin cancels the padding so
+	   the band widens without the row's text shifting sideways as it opens. */
+	.file-list > .file-row.open {
+		background: var(--color-highlight);
+		box-shadow: inset 2px 0 0 var(--color-border-strong);
+		padding-left: var(--space-2);
+		padding-right: var(--space-2);
+		margin-left: calc(-1 * var(--space-2));
+		margin-right: calc(-1 * var(--space-2));
 	}
 
 	.file-header {
@@ -320,6 +308,11 @@
 		border: 1px solid var(--color-border);
 		padding: var(--space-3) var(--space-2);
 		text-align: center;
+	}
+
+	.grid-item.open {
+		border-color: var(--color-border-strong);
+		background: var(--color-highlight);
 	}
 
 	.grid-download {

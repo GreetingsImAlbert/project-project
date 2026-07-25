@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { slide } from 'svelte/transition';
 	import FileList from './FileList.svelte';
+	import FileViewerPanel from './FileViewerPanel.svelte';
 	import UploadForm from './UploadForm.svelte';
 	import ProjectStorageUsed from './ProjectStorageUsed.svelte';
 	import { adjustProjectStorage } from '../lib/project-storage.svelte';
@@ -58,6 +59,7 @@
 
 	let viewMode = $state<'list' | 'grid'>(getInitialViewMode());
 	let backStack = $state<(string | null)[]>([]);
+	let viewingFile = $state<FileRow | null>(null);
 
 	let creatingFolder = $state(false);
 	let createFolderError = $state<string | null>(null);
@@ -184,6 +186,8 @@
 	function handleFileDeleted(fileId: string) {
 		const deletedFile = files.find((f) => f.id === fileId);
 		files = files.filter((f) => f.id !== fileId);
+		// The preview would keep showing a file that no longer exists.
+		if (viewingFile?.id === fileId) viewingFile = null;
 		adjustProjectStorage(-(deletedFile?.size_bytes ?? 0));
 		// Only give quota back to the current viewer if it was actually their own
 		// file — deleting a project-mate's upload frees their quota, not ours.
@@ -364,11 +368,15 @@
 	files={loading ? [] : files}
 	viewMode={viewMode}
 	loading={loading}
+	openFileId={viewingFile?.id ?? null}
+	onFileOpen={(file) => (viewingFile = file)}
 	onFileMoved={handleFileMoved}
 	onFileCopied={handleFileCopied}
 	onFileDeleted={handleFileDeleted}
 />
 {#if loading}<p class="muted">Loading…</p>{/if}
+
+<FileViewerPanel file={viewingFile} onClose={() => (viewingFile = null)} />
 
 <style>
 	.browser-header {
