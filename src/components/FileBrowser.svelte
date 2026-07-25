@@ -3,6 +3,7 @@
 	import { slide } from 'svelte/transition';
 	import FileList from './FileList.svelte';
 	import UploadForm from './UploadForm.svelte';
+	import ProjectStorageUsed from './ProjectStorageUsed.svelte';
 	import { adjustProjectStorage } from '../lib/project-storage.svelte';
 
 	interface Folder {
@@ -28,6 +29,8 @@
 		initialFiles,
 		initialAvailableBytes,
 		initialViewMode,
+		initialStorageBytes,
+		initialStorageFailed,
 	}: {
 		projectId: string;
 		currentUserId: string;
@@ -37,6 +40,8 @@
 		initialFiles: FileRow[];
 		initialAvailableBytes: number | null;
 		initialViewMode?: 'list' | 'grid';
+		initialStorageBytes: number;
+		initialStorageFailed: boolean;
 	} = $props();
 
 	let currentFolderId = $state(initialFolderId);
@@ -237,6 +242,47 @@
 	});
 </script>
 
+<div class="browser-meta">
+	<ProjectStorageUsed initialUsedBytes={initialStorageBytes} initialFailed={initialStorageFailed} />
+
+	<div class="view-toggle">
+		<button
+			type="button"
+			class="btn-plain"
+			class:active={viewMode === 'grid'}
+			aria-pressed={viewMode === 'grid'}
+			aria-label="Grid view"
+			title="Grid view"
+			onclick={() => setViewMode('grid')}
+		>
+			<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+				<rect x="1" y="1" width="6" height="6" rx="1" />
+				<rect x="9" y="1" width="6" height="6" rx="1" />
+				<rect x="1" y="9" width="6" height="6" rx="1" />
+				<rect x="9" y="9" width="6" height="6" rx="1" />
+			</svg>
+		</button>
+		<button
+			type="button"
+			class="btn-plain"
+			class:active={viewMode === 'list'}
+			aria-pressed={viewMode === 'list'}
+			aria-label="List view"
+			title="List view"
+			onclick={() => setViewMode('list')}
+		>
+			<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+				<rect x="1" y="2" width="2" height="2" rx="0.5" />
+				<rect x="5" y="2" width="10" height="2" rx="1" />
+				<rect x="1" y="7" width="2" height="2" rx="0.5" />
+				<rect x="5" y="7" width="10" height="2" rx="1" />
+				<rect x="1" y="12" width="2" height="2" rx="0.5" />
+				<rect x="5" y="12" width="10" height="2" rx="1" />
+			</svg>
+		</button>
+	</div>
+</div>
+
 <div class="browser-header">
 	<div class="breadcrumb-group">
 		<button type="button" class="btn-plain nav-btn" onclick={goBack} disabled={backStack.length === 0}>← Back</button>
@@ -263,11 +309,6 @@
 	{/if}
 </div>
 {#if createFolderError}<p class="row-error">{createFolderError}</p>{/if}
-
-<div class="view-toggle">
-	<button type="button" class="btn-plain" class:active={viewMode === 'grid'} onclick={() => setViewMode('grid')}>Grid</button>
-	<button type="button" class="btn-plain" class:active={viewMode === 'list'} onclick={() => setViewMode('list')}>List</button>
-</div>
 
 {#if subfolders.length > 0}
 	<ul class={viewMode === 'grid' ? 'grid-view' : 'list-plain folder-list'}>
@@ -391,15 +432,36 @@
 		}
 	}
 
+	.browser-meta {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--space-3);
+		margin-bottom: var(--space-3);
+	}
+
+	.browser-meta :global(p) {
+		margin: 0;
+	}
+
 	.view-toggle {
 		display: flex;
 		gap: var(--space-2);
-		margin: 0 0 var(--space-3);
+		flex: 0 0 auto;
 	}
 
 	.view-toggle button {
-		font-size: 0.8rem;
-		padding: var(--space-1) var(--space-2);
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		padding: var(--space-1);
+		line-height: 0;
+	}
+
+	.view-toggle svg {
+		width: 14px;
+		height: 14px;
+		fill: currentColor;
 	}
 
 	.view-toggle button.active {
