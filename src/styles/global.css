@@ -459,7 +459,7 @@ thead th {
 }
 
 .money-panel .copy-btn:hover {
-	color: var(--color-text);
+	color: var(--color-fg);
 	border-color: var(--color-border-strong);
 }
 

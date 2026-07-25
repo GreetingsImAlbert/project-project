@@ -43,7 +43,7 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 		return new Response(built.error, { status: 400 });
 	}
 
-	const memberId = built.parent.member_id as string;
+	const memberId = built.parent.member_id;
 
 	const { data: memberCheck } = await locals.supabase
 		.from('project_members')
@@ -60,7 +60,7 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 
 	const { data: parent, error: parentError } = await locals.supabase
 		.from('transactions')
-		.update(parentFields as never)
+		.update(parentFields)
 		.eq('id', transactionId)
 		.select(TRANSACTION_COLUMNS)
 		.single();
@@ -82,15 +82,7 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 
 	const { data: lines, error: linesError } = await locals.supabase
 		.from('transactions')
-		.insert(
-			lineRows(
-				built.lines,
-				transactionId!,
-				existing.project_id,
-				memberId,
-				built.parent.transaction_date as string,
-			) as never,
-		)
+		.insert(lineRows(built.lines, transactionId!, existing.project_id, memberId, built.parent.transaction_date))
 		.select(TRANSACTION_COLUMNS);
 
 	if (linesError || !lines) {

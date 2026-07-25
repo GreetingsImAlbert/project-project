@@ -4,7 +4,7 @@
 	import { formatCurrency, initCurrency } from '../lib/currency.svelte';
 	import { transactionsState, initTransactions, type Transaction, type TransactionType } from '../lib/transactions-store.svelte';
 	import { contributionsState, initContributions, setContributionPercents } from '../lib/contributions-store.svelte';
-	import { netSpend, paidByMember, entryAmount, topLevel } from '../lib/money-math';
+	import { netSpend, paidByMember, entryAmount, topLevel, resolveContributionPercents } from '../lib/money-math';
 
 	interface Member {
 		id: string;
@@ -25,7 +25,7 @@
 	} = $props();
 
 	initTransactions(initialTransactions);
-	initContributions(Object.fromEntries(members.map((m) => [m.id, m.contributionPercent ?? 100 / members.length])));
+	initContributions(resolveContributionPercents(members));
 
 	let editingPercents = $state(false);
 	let draftPercents = $state<Record<string, number>>({});
@@ -56,6 +56,29 @@
 	let remainderValid = $derived(remainderPercent >= 0 && remainderPercent <= 100);
 
 	let netTotal = $derived(netSpend(transactionsState.items));
+
+	// The footer used to hardcode 100% / net / net / 0, which quietly told the wrong
+	// story whenever the stored shares didn't actually add up (a member added after the
+	// split was saved sits at 0%, a removed one leaves their share unassigned). It now
+	// sums the rows above it, and says so when the total isn't 100%.
+	let totalPercent = $derived(members.reduce((sum, member) => sum + (percents[member.id] ?? 0), 0));
+	let totalOwed = $derived(members.reduce((sum, member) => sum + contributionAmount(member.id), 0));
+	let totalPaid = $derived(members.reduce((sum, member) => sum + paid(member.id), 0));
+	// Snapped to cents, and `|| 0` turns the -0 a balanced group lands on into plain 0 —
+	// Intl formats negative zero with the sign, so the footer would read '-0.00'.
+	let totalDues = $derived((Math.round((totalOwed - totalPaid) * 100) || 0) / 100);
+	// Half a display cent of slack — the shares are kept at full float precision, so an
+	// exactly-100 split can still sum to 99.99999999999999.
+	let splitBalanced = $derived(Math.abs(totalPercent - 100) < 0.005);
+
+	// Whether a member has a *stored* share, which the resolved percent can't tell you:
+	// someone sitting at 0% because they joined after the split was saved needs pointing
+	// out, someone deliberately set to 0% does not. Seeded from the SSR prop and extended
+	// on save, since the prop doesn't refresh without a reload.
+	let assignedIds = $state(members.filter((m) => m.contributionPercent != null).map((m) => m.id));
+	let unassignedMembers = $derived(
+		assignedIds.length > 0 ? members.filter((m) => !assignedIds.includes(m.id)) : [],
+	);
 
 	function displayPercent(memberId: string): number {
 		if (editingPercents && memberId === remainderMember?.id) return remainderPercent;
@@ -136,7 +159,10 @@
 		}
 
 		const fullDraft = { ...draftPercents, [remainderMember.id]: remainderPercent };
-		const changed = members.filter((m) => fullDraft[m.id] !== percents[m.id]);
+		// Members with nothing stored yet are written even when their resolved 0% already
+		// matches the draft — otherwise saving the split would leave them unassigned and
+		// the notice below would never clear.
+		const changed = members.filter((m) => fullDraft[m.id] !== percents[m.id] || !assignedIds.includes(m.id));
 
 		saving = true;
 
@@ -157,6 +183,8 @@
 		}
 
 		setContributionPercents(fullDraft);
+		// Every member now has a stored share — the loop above wrote the ones that didn't.
+		assignedIds = members.map((m) => m.id);
 		saving = false;
 		editingPercents = false;
 	}
@@ -295,14 +323,37 @@
 				<tfoot>
 					<tr class="total-row">
 						<td>All members</td>
-						<td class="num">100.00%</td>
-						<td class="num">{formatCurrency(netTotal)}</td>
-						<td class="num">{formatCurrency(netTotal)}</td>
-						<td class="num">{formatCurrency(0)}</td>
+						<td class="num" class:unbalanced={!splitBalanced}>{totalPercent.toFixed(2)}%</td>
+						<td class="num">{formatCurrency(totalOwed)}</td>
+						<td class="num">{formatCurrency(totalPaid)}</td>
+						<td class="num">{formatCurrency(totalDues)}</td>
 					</tr>
 				</tfoot>
 			</table>
 		</div>
+
+		{#if !splitBalanced}
+			<p class="split-warning">
+				Shares add up to {totalPercent.toFixed(2)}%, not 100% — the split is out of date, so each member's
+				share of the net spend is off.
+				{#if canEdit}
+					Edit the split and save it to rebalance.
+				{:else}
+					Ask the project owner to update it.
+				{/if}
+			</p>
+		{/if}
+
+		{#if unassignedMembers.length > 0}
+			<p class="split-note">
+				{unassignedMembers.map((m) => m.displayName).join(', ')}
+				{unassignedMembers.length === 1 ? 'has' : 'have'} no share in the split yet, so
+				{unassignedMembers.length === 1 ? 'it counts' : 'they count'} as 0%.
+				{#if canEdit}
+					Edit the split to give {unassignedMembers.length === 1 ? 'them' : 'each of them'} one.
+				{/if}
+			</p>
+		{/if}
 
 		{#if rowError}<p class="panel-error standalone-error">{rowError}</p>{/if}
 	{/if}
@@ -341,6 +392,24 @@
 
 	.remainder-value.invalid {
 		color: var(--color-danger);
+	}
+
+	.money-table .total-row .unbalanced {
+		color: var(--color-danger);
+	}
+
+	.split-warning {
+		color: var(--color-danger);
+		font-size: 0.78rem;
+		margin: 0 0 var(--space-2);
+	}
+
+	/* Not an error — a member with no share yet is a normal state, just one worth
+	   pointing out, so it stays in the muted voice. */
+	.split-note {
+		color: var(--color-muted);
+		font-size: 0.78rem;
+		margin: 0 0 var(--space-2);
 	}
 
 	/* The percent input sits inside a right-aligned numeric cell, so it has to hug

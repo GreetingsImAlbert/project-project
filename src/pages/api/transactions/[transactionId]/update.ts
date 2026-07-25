@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
 import { canEditMoney } from '../../../../lib/money-access';
 import { itemUrlError } from '../../../../lib/item-url';
+import { transactionDateError } from '../../../../lib/transaction-date';
 import { TRANSACTION_COLUMNS } from '../../../../lib/transaction-columns';
 
 export const prerender = false;
@@ -23,7 +24,7 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 
 	const { data: transaction, error: transactionError } = await locals.supabase
 		.from('transactions')
-		.select('project_id, type')
+		.select('project_id, type, group_id')
 		.eq('id', transactionId)
 		.single();
 
@@ -32,9 +33,14 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 	}
 
 	// A bulk row's amount is derived from its lines — editing it through the
-	// single-transaction form would leave the two disagreeing.
+	// single-transaction form would leave the two disagreeing. The same goes the other
+	// way for one of its lines: the parent carries the money, so a line edited on its
+	// own would no longer add up to it.
 	if (transaction.type === 'bulk') {
 		return new Response('Edit this bulk transaction from its own form', { status: 400 });
+	}
+	if (transaction.group_id) {
+		return new Response('Edit this item from its bulk transaction', { status: 400 });
 	}
 
 	if (!(await canEditMoney(locals.supabase, transaction.project_id, locals.user.id))) {
@@ -51,8 +57,9 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 	const itemUrl = formData.get('itemUrl')?.toString().trim() || null;
 	const relatedMemberId = formData.get('relatedMemberId')?.toString().trim() || null;
 
-	if (!transactionDate) {
-		return new Response('Date is required', { status: 400 });
+	const dateError = transactionDateError(transactionDate);
+	if (dateError) {
+		return new Response(dateError, { status: 400 });
 	}
 	if (!type || !TYPES.includes(type)) {
 		return new Response('Invalid transaction type', { status: 400 });

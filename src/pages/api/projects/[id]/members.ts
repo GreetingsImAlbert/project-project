@@ -53,11 +53,9 @@ export const POST: APIRoute = async ({ params, request, locals, redirect }) => {
 			return new Response('Invalid role', { status: 400 });
 		}
 
-		// is_auditor isn't in the generated Database types until update-types runs,
-		// so the update payload is cast to sidestep the column-name check.
 		const { error: updateError } = await locals.supabase
 			.from('project_members')
-			.update({ role, is_auditor: isAuditor } as never)
+			.update({ role, is_auditor: isAuditor })
 			.eq('project_id', projectId)
 			.eq('user_id', existingUserId);
 
@@ -95,7 +93,7 @@ export const POST: APIRoute = async ({ params, request, locals, redirect }) => {
 	// specifically because locals.user is confirmed the project owner
 	const { error: insertError } = await locals.supabase
 		.from('project_members')
-		.insert({ project_id: projectId, user_id: targetUser.id, role, is_auditor: isAuditor } as never);
+		.insert({ project_id: projectId, user_id: targetUser.id, role, is_auditor: isAuditor });
 
 	if (insertError) {
 		return new Response(`Failed to add member: ${insertError.message}`, { status: 500 });

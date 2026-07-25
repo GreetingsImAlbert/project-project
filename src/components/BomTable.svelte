@@ -156,9 +156,13 @@
 		deletingId = null;
 	}
 
+	// addError is cleared here, not on close: the panel deliberately keeps a half-filled
+	// row across a close, but a stale error from the last attempt shouldn't come back
+	// with it.
 	function openAddForm() {
 		showAddForm = true;
 		addButtonVisible = false;
+		addError = null;
 	}
 
 	function closeAddForm() {

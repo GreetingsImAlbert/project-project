@@ -25,15 +25,11 @@ if (error || !project) {
 	return new Response('Project not found', { status: 404 });
 }
 
-// is_auditor isn't in the generated Database types yet, so cast the raw result
-// (overrideTypes drops columns it can't see — see money.astro).
-const { data: rawMembers } = await Astro.locals.supabase
+const { data: members } = await Astro.locals.supabase
 	.from('project_members')
 	.select('role, is_auditor, user_id, profiles(display_name, email)')
-	.eq('project_id', id);
-
-const members = rawMembers as unknown as
-	{ role: string; is_auditor: boolean; user_id: string; profiles: { display_name: string; email: string } }[] | null;
+	.eq('project_id', id)
+	.overrideTypes<{ role: string; is_auditor: boolean; user_id: string; profiles: { display_name: string; email: string } }[]>();
 
 const userRole = members?.find(member => member.user_id === user.id)?.role;
 const isOwner = userRole === 'owner';

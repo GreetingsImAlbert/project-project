@@ -6,6 +6,7 @@ import BomTable from '../../../components/BomTable.svelte';
 import TransactionsTable from '../../../components/TransactionsTable.svelte';
 import MemberContributionsTable from '../../../components/MemberContributionsTable.svelte';
 import { TRANSACTION_COLUMNS } from '../../../lib/transaction-columns';
+import { resolveContributionPercents } from '../../../lib/money-math';
 
 export const prerender = false;
 
@@ -26,16 +27,13 @@ if (error || !project) {
 	return new Response('Project not found', { status: 404 });
 }
 
-// is_auditor isn't in the generated Database types until `npm run update-types`
-// runs, and overrideTypes()'s merge check drops columns it can't see — so select
-// it and cast the raw result directly (same pattern as the transactions query).
-const { data: rawMembers } = await Astro.locals.supabase
+const { data: members } = await Astro.locals.supabase
 	.from('project_members')
 	.select('role, is_auditor, user_id, contribution_percent, profiles(display_name, email)')
-	.eq('project_id', id);
-
-const members = rawMembers as unknown as
-	{ role: string; is_auditor: boolean; user_id: string; contribution_percent: number | null; profiles: { display_name: string; email: string } }[] | null;
+	.eq('project_id', id)
+	.overrideTypes<
+		{ role: string; is_auditor: boolean; user_id: string; contribution_percent: number | null; profiles: { display_name: string; email: string } }[]
+	>();
 
 const currentMember = members?.find(member => member.user_id === user.id);
 const userRole = currentMember?.role;
@@ -65,16 +63,16 @@ interface TransactionRow {
 	profiles: { display_name: string } | null;
 }
 
-const { data: rawTransactions } = await Astro.locals.supabase
+// created_at breaks the tie: every line of a bulk transaction carries its parent's
+// date, so ordering by date alone leaves a purchase's own breakdown in whatever order
+// Postgres happens to return it in.
+const { data: transactions } = await Astro.locals.supabase
 	.from('transactions')
 	.select(TRANSACTION_COLUMNS)
 	.eq('project_id', id)
-	.order('transaction_date', { ascending: true });
-
-// related_member_id/supplier aren't in the generated Database types until `npm run update-types`
-// is run against the live schema — overrideTypes()'s merge check rejects a field it
-// can't see on the base row type, so cast directly instead.
-const transactions = rawTransactions as unknown as TransactionRow[] | null;
+	.order('transaction_date', { ascending: true })
+	.order('created_at', { ascending: true })
+	.overrideTypes<TransactionRow[]>();
 
 const memberOptions = (members ?? []).map((member) => ({
 	id: member.user_id,
@@ -87,11 +85,9 @@ const contributionMembers = (members ?? []).map((member) => ({
 	contributionPercent: member.contribution_percent,
 }));
 
-// Same default MemberContributionsTable applies when a member has no explicit split
-// yet — computed here too so the summary strip and the table agree on first paint.
-const initialPercents = Object.fromEntries(
-	contributionMembers.map((member) => [member.id, member.contributionPercent ?? 100 / contributionMembers.length]),
-);
+// Same resolution MemberContributionsTable applies to an unset split — computed here
+// too so the summary strip and the table agree on first paint.
+const initialPercents = resolveContributionPercents(contributionMembers);
 ---
 <BaseLayout title={`${project.name} — Money`}>
 	<ProjectShell project={project} members={members ?? []} userRole={userRole} activePage="money">

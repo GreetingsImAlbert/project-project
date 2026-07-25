@@ -3,6 +3,12 @@
 // rather than being copy-pasted (and drifting) across the two routes.
 
 import { itemUrlError } from './item-url';
+import { transactionDateError } from './transaction-date';
+import type { Database } from './supabase/database.types';
+
+// The rows handed to the endpoints are typed as real transaction inserts, so a
+// mistyped column name here is a compile error rather than a runtime 500.
+export type TransactionInsert = Database['public']['Tables']['transactions']['Insert'];
 
 export const BULK_LINE_TYPES = ['item', 'shipping', 'discount', 'refund'] as const;
 
@@ -54,7 +60,7 @@ function toText(value: unknown, max: number): string | null | undefined {
 export function buildBulkRows(
 	payload: unknown,
 	projectId: string,
-): { error: string } | { parent: Record<string, unknown>; lines: BulkLine[]; total: number } {
+): { error: string } | { parent: TransactionInsert; lines: BulkLine[]; total: number } {
 	if (typeof payload !== 'object' || payload === null) {
 		return { error: 'Invalid request body' };
 	}
@@ -70,6 +76,10 @@ export function buildBulkRows(
 	const transactionDate = toText(body.transactionDate, 32);
 	if (!transactionDate) {
 		return { error: 'Date is required' };
+	}
+	const dateError = transactionDateError(transactionDate);
+	if (dateError) {
+		return { error: dateError };
 	}
 
 	const memberId = toText(body.memberId, 100);
@@ -217,7 +227,7 @@ export function lineRows(
 	projectId: string,
 	memberId: string,
 	transactionDate: string,
-): Record<string, unknown>[] {
+): TransactionInsert[] {
 	return lines.map((line) => ({
 		project_id: projectId,
 		member_id: memberId,

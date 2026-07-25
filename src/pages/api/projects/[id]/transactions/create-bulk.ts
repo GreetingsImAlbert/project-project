@@ -29,7 +29,7 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 		return new Response(built.error, { status: 400 });
 	}
 
-	const memberId = built.parent.member_id as string;
+	const memberId = built.parent.member_id;
 
 	const { data: memberCheck } = await locals.supabase
 		.from('project_members')
@@ -44,7 +44,7 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 
 	const { data: parent, error: parentError } = await locals.supabase
 		.from('transactions')
-		.insert(built.parent as never)
+		.insert(built.parent)
 		.select(TRANSACTION_COLUMNS)
 		.single();
 
@@ -52,13 +52,11 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 		return new Response(`Failed to create transaction: ${parentError?.message ?? 'unknown error'}`, { status: 500 });
 	}
 
-	const parentId = (parent as unknown as { id: string }).id;
+	const parentId = parent.id;
 
 	const { data: lines, error: linesError } = await locals.supabase
 		.from('transactions')
-		.insert(
-			lineRows(built.lines, parentId, projectId!, memberId, built.parent.transaction_date as string) as never,
-		)
+		.insert(lineRows(built.lines, parentId, projectId!, memberId, built.parent.transaction_date))
 		.select(TRANSACTION_COLUMNS);
 
 	// No transaction across the two inserts — a parent with no lines would show as an

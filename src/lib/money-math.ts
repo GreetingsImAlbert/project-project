@@ -21,6 +21,24 @@ export function topLevel(transactions: Transaction[]): Transaction[] {
 	return transactions.filter((t) => !isLine(t));
 }
 
+// A member with no explicit contribution_percent means one of two things: nobody has
+// set a split yet (so everyone shares equally), or a split does exist and this member
+// joined after it was saved. Defaulting to an equal share in that second case pushes
+// the page's total past 100% — every member's "owes total" then overstates their real
+// share — so an unset percent only counts as an equal share when *no* member has one.
+export function resolveContributionPercents(
+	members: { id: string; contributionPercent: number | null }[],
+): Record<string, number> {
+	const anyExplicit = members.some((member) => member.contributionPercent != null);
+
+	return Object.fromEntries(
+		members.map((member) => [
+			member.id,
+			member.contributionPercent ?? (anyExplicit ? 0 : 100 / members.length),
+		]),
+	);
+}
+
 // Payments are transfers between members settling dues, not project costs — they
 // shouldn't inflate or deflate the project's actual net spend.
 export function netSpend(transactions: Transaction[]): number {

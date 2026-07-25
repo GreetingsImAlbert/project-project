@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
 import { canEditMoney } from '../../../../../lib/money-access';
 import { itemUrlError } from '../../../../../lib/item-url';
+import { transactionDateError } from '../../../../../lib/transaction-date';
 import { TRANSACTION_COLUMNS } from '../../../../../lib/transaction-columns';
 
 export const prerender = false;
@@ -35,8 +36,9 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 	const itemUrl = formData.get('itemUrl')?.toString().trim() || null;
 	const relatedMemberId = formData.get('relatedMemberId')?.toString().trim() || null;
 
-	if (!transactionDate) {
-		return new Response('Date is required', { status: 400 });
+	const dateError = transactionDateError(transactionDate);
+	if (dateError) {
+		return new Response(dateError, { status: 400 });
 	}
 	if (!type || !TYPES.includes(type)) {
 		return new Response('Invalid transaction type', { status: 400 });

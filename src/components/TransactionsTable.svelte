@@ -100,6 +100,20 @@
 		return type === 'item' ? 'Unit cost' : 'Amount';
 	}
 
+	// The payee list excludes whoever is currently the payer, so switching the payer to
+	// the member already picked as payee leaves a selection that's no longer in the list:
+	// the select renders blank, `required` still sees a value and lets the form through,
+	// and the server has to bounce it. Drop the payee instead, so the field asks again.
+	// Both read the new payer off the event rather than the bound state, which isn't
+	// guaranteed to have been written by the time this listener runs.
+	function onAddMemberChange(newMemberId: string) {
+		if (addRelatedMemberId === newMemberId) addRelatedMemberId = '';
+	}
+
+	function onEditMemberChange(newMemberId: string) {
+		if (editingRelatedMemberId === newMemberId) editingRelatedMemberId = '';
+	}
+
 	function memberName(id: string | null, profile: { display_name: string } | null = null): string {
 		if (!id) return '—';
 		return profile?.display_name ?? members.find((m) => m.id === id)?.displayName ?? 'Unknown';
@@ -268,16 +282,21 @@
 		deletingId = null;
 	}
 
+	// Both openers clear addError: the panel keeps its half-filled state across a close,
+	// but the error from the last failed attempt has nothing to do with the reopened
+	// form and shouldn't be sitting under it.
 	function openAddForm() {
 		showAddForm = true;
 		showBulkForm = false;
 		addButtonVisible = false;
+		addError = null;
 	}
 
 	function openBulkForm() {
 		showBulkForm = true;
 		showAddForm = false;
 		addButtonVisible = false;
+		addError = null;
 	}
 
 	function closeAddForm() {
@@ -568,7 +587,11 @@
 													</label>
 													<label class="field">
 														<span class="field-label">{editingType === 'payment' ? 'Paid by' : 'Recorded by'}</span>
-														<select name="memberId" bind:value={editingMemberId}>
+														<select
+															name="memberId"
+															bind:value={editingMemberId}
+															onchange={(e) => onEditMemberChange(e.currentTarget.value)}
+														>
 															{#each members as member (member.id)}
 																<option value={member.id}>{member.displayName}</option>
 															{/each}
@@ -739,7 +762,12 @@
 							</label>
 							<label class="field">
 								<span class="field-label">{addType === 'payment' ? 'Paid by' : 'Recorded by'}</span>
-								<select name="memberId" required bind:value={addMemberId}>
+								<select
+									name="memberId"
+									required
+									bind:value={addMemberId}
+									onchange={(e) => onAddMemberChange(e.currentTarget.value)}
+								>
 									<option value="" disabled>Select member…</option>
 									{#each members as member (member.id)}
 										<option value={member.id}>{member.displayName}</option>
