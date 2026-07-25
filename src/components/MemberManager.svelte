@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { slide } from 'svelte/transition';
 
 	interface Member {
 		user_id: string;
@@ -18,23 +18,25 @@
 
 	let members = $state(initialMembers);
 
-	// user_id of the member whose edit modal is open, or null when closed.
+	// user_id of the member whose edit panel is open, or null when closed.
 	let editingId = $state<string | null>(null);
 	let draftRole = $state('editor');
 	let draftAuditor = $state(false);
 	let busy = $state(false);
 	let error = $state<string | null>(null);
 
-	let editingMember = $derived(members.find((m) => m.user_id === editingId) ?? null);
-
-	function openEdit(member: Member) {
+	function toggleEdit(member: Member) {
+		if (editingId === member.user_id) {
+			editingId = null;
+			return;
+		}
 		editingId = member.user_id;
 		draftRole = member.role;
 		draftAuditor = member.is_auditor;
 		error = null;
 	}
 
-	function closeEdit() {
+	function cancelEdit() {
 		if (busy) return;
 		editingId = null;
 		error = null;
@@ -67,61 +69,55 @@
 		busy = false;
 		editingId = null;
 	}
-
-	onMount(() => {
-		function onKeydown(e: KeyboardEvent) {
-			if (e.key === 'Escape') closeEdit();
-		}
-		window.addEventListener('keydown', onKeydown);
-		return () => window.removeEventListener('keydown', onKeydown);
-	});
 </script>
+
+{#snippet editPanel()}
+	<div class="edit-panel" transition:slide={{ duration: 150 }}>
+		<label class="field">
+			<span>Role</span>
+			<select bind:value={draftRole}>
+				<option value="editor">Editor</option>
+				<option value="viewer">Viewer</option>
+			</select>
+		</label>
+
+		<label class="auditor-field">
+			<input type="checkbox" bind:checked={draftAuditor} />
+			<span>Auditor <span class="muted">— can edit the Money page</span></span>
+		</label>
+
+		{#if error}<p class="row-error">{error}</p>{/if}
+
+		<div class="panel-actions">
+			<button type="button" onclick={save} disabled={busy}>{busy ? 'Saving…' : 'Save'}</button>
+			<button type="button" class="btn-plain" onclick={cancelEdit} disabled={busy}>Cancel</button>
+		</div>
+	</div>
+{/snippet}
 
 <ul class="member-list">
 	{#each members as m (m.user_id)}
 		<li class={`member-row role-${m.role}`}>
-			<span class="member-name">
-				{m.display_name} ({m.role}){#if m.is_auditor}<span class="auditor-badge"> · auditor</span>{/if}
-			</span>
-			{#if m.role !== 'owner'}
-				<button
-					type="button"
-					class="edit-icon"
-					aria-label={`Edit ${m.display_name}'s role`}
-					onclick={() => openEdit(m)}
-				>✎</button>
+			<div class="member-header">
+				<span class="member-name">
+					{m.display_name} ({m.role}){#if m.is_auditor}<span class="auditor-badge"> · auditor</span>{/if}
+				</span>
+				{#if m.role !== 'owner'}
+					<button
+						type="button"
+						class="edit-icon"
+						aria-label={`Edit ${m.display_name}'s role`}
+						onclick={() => toggleEdit(m)}
+					>✎</button>
+				{/if}
+			</div>
+
+			{#if editingId === m.user_id}
+				{@render editPanel()}
 			{/if}
 		</li>
 	{/each}
 </ul>
-
-{#if editingMember}
-	<div class="modal-backdrop" onclick={closeEdit}>
-		<div class="modal-box" role="dialog" aria-modal="true" onclick={(e) => e.stopPropagation()}>
-			<p class="modal-title">{editingMember.display_name}</p>
-
-			<label class="field">
-				<span>Role</span>
-				<select bind:value={draftRole}>
-					<option value="editor">Editor</option>
-					<option value="viewer">Viewer</option>
-				</select>
-			</label>
-
-			<label class="auditor-field">
-				<input type="checkbox" bind:checked={draftAuditor} />
-				<span>Auditor <span class="muted">— can edit the Money page</span></span>
-			</label>
-
-			{#if error}<p class="row-error">{error}</p>{/if}
-
-			<div class="modal-actions">
-				<button type="button" onclick={save} disabled={busy}>{busy ? 'Saving…' : 'Save'}</button>
-				<button type="button" class="btn-plain" onclick={closeEdit} disabled={busy}>Cancel</button>
-			</div>
-		</div>
-	</div>
-{/if}
 
 <style>
 	.member-list {
@@ -132,10 +128,14 @@
 	}
 
 	.member-row {
+		margin-bottom: var(--space-1);
+		min-width: 0;
+	}
+
+	.member-header {
 		display: flex;
 		align-items: center;
 		gap: var(--space-2);
-		margin-bottom: var(--space-1);
 		min-width: 0;
 	}
 
@@ -177,31 +177,15 @@
 		opacity: 0.6;
 	}
 
-	.modal-backdrop {
-		position: fixed;
-		inset: 0;
-		background: rgba(0, 0, 0, 0.4);
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		padding: var(--space-4);
-		z-index: 100;
-	}
-
-	.modal-box {
-		background: var(--color-bg);
-		border: 1px solid var(--color-border-strong);
-		padding: var(--space-5);
-		width: 100%;
-		max-width: 360px;
+	.edit-panel {
+		margin-top: var(--space-2);
 		display: flex;
 		flex-direction: column;
-		gap: var(--space-3);
-	}
-
-	.modal-title {
-		font-weight: 700;
-		margin: 0;
+		gap: var(--space-2);
+		color: var(--color-fg);
+		background: var(--color-bg);
+		border: 1px solid var(--color-border-strong);
+		padding: var(--space-3);
 	}
 
 	.field {
@@ -218,6 +202,7 @@
 		display: flex;
 		align-items: flex-start;
 		gap: var(--space-2);
+		color: var(--color-role-auditor);
 	}
 
 	.auditor-field input {
@@ -230,12 +215,12 @@
 		color: var(--color-muted);
 	}
 
-	.modal-actions {
+	.panel-actions {
 		display: flex;
 		gap: var(--space-2);
 	}
 
-	.modal-actions button {
+	.panel-actions button {
 		flex: 1;
 	}
 
