@@ -12,6 +12,7 @@
 	--color-role-owner: #b3261e;
 	--color-role-editor: #2f6690;
 	--color-role-viewer: #3f7d52;
+	--color-role-auditor: #6a3fb5;
 
 	--space-1: 4px;
 	--space-2: 8px;
@@ -36,6 +37,7 @@
 	--color-role-owner: #ff8a80;
 	--color-role-editor: #6ab0f3;
 	--color-role-viewer: #7bd9a5;
+	--color-role-auditor: #c6a4ff;
 }
 
 :root[data-theme='dark'] {
@@ -50,4 +52,5 @@
 	--color-role-owner: #ff8a80;
 	--color-role-editor: #6ab0f3;
 	--color-role-viewer: #7bd9a5;
+	--color-role-auditor: #c6a4ff;
 }

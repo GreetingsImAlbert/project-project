@@ -1,4 +1,5 @@
 import type { APIRoute } from 'astro';
+import { canEditMoney } from '../../../../../../lib/money-access';
 
 export const prerender = false;
 
@@ -10,14 +11,7 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 	const projectId = params.id;
 	const memberId = params.userId;
 
-	const { data: membership } = await locals.supabase
-		.from('project_members')
-		.select('role')
-		.eq('project_id', projectId)
-		.eq('user_id', locals.user.id)
-		.single();
-
-	if (!membership || !['owner', 'editor'].includes(membership.role)) {
+	if (!(await canEditMoney(locals.supabase, projectId!, locals.user.id))) {
 		return new Response('Forbidden', { status: 403 });
 	}
 

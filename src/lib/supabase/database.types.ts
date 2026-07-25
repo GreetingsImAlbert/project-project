@@ -194,6 +194,7 @@ export type Database = {
       project_members: {
         Row: {
           contribution_percent: number | null
+          is_auditor: boolean
           joined_at: string | null
           project_id: string
           role: string
@@ -201,6 +202,7 @@ export type Database = {
         }
         Insert: {
           contribution_percent?: number | null
+          is_auditor?: boolean
           joined_at?: string | null
           project_id: string
           role: string
@@ -208,6 +210,7 @@ export type Database = {
         }
         Update: {
           contribution_percent?: number | null
+          is_auditor?: boolean
           joined_at?: string | null
           project_id?: string
           role?: string
@@ -337,6 +340,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      can_edit_money: { Args: { check_project_id: string }; Returns: boolean }
       is_project_member: {
         Args: { check_project_id: string }
         Returns: boolean

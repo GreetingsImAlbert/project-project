@@ -1,6 +1,9 @@
 ---
+import MemberManager from './MemberManager.svelte';
+
 interface Member {
 	role: string;
+	is_auditor: boolean;
 	user_id: string;
 	profiles: { display_name: string; email: string };
 }
@@ -13,25 +16,50 @@ interface Props {
 }
 
 const { project, members, userRole, activePage } = Astro.props;
+const isOwner = userRole === 'owner';
+
+// Flat, serializable shape for the owner's editing island.
+const memberData = members.map((m) => ({
+	user_id: m.user_id,
+	role: m.role,
+	is_auditor: m.is_auditor,
+	display_name: m.profiles?.display_name ?? '',
+}));
+
+// Bounce the add-member POST back to whichever project page it was submitted
+// from; safeReturnTo() in the endpoint re-checks it's an in-app /projects/ path.
+const returnTo = Astro.url.pathname;
 ---
 
 <aside class="project-sidebar">
 	<p class="sidebar-title">{project.name}</p>
 
 	<p class="sidebar-label">Members:</p>
-	<ul class="member-list">
-		{members.map((m) => (
-			<li class={`member-row role-${m.role}`}>{m.profiles?.display_name} ({m.role})</li>
-		))}
-	</ul>
 
-	{userRole === 'owner' && (
-		<form method="POST" action={`/api/projects/${project.id}/members`} onsubmit="this.querySelector('button').disabled = true">
+	{isOwner ? (
+		<MemberManager client:load projectId={project.id} members={memberData} />
+	) : (
+		<ul class="member-list">
+			{members.map((m) => (
+				<li class={`member-row role-${m.role}`}>
+					{m.profiles?.display_name} ({m.role}){m.is_auditor && (<span class="auditor-badge"> · auditor</span>)}
+				</li>
+			))}
+		</ul>
+	)}
+
+	{isOwner && (
+		<form method="POST" action={`/api/projects/${project.id}/members`} class="add-member" onsubmit="this.querySelector('button').disabled = true">
+			<input type="hidden" name="returnTo" value={returnTo} />
 			<input type="email" name="email" placeholder="User's email" required />
 			<select name="role">
 				<option value="editor">Editor</option>
 				<option value="viewer">Viewer</option>
 			</select>
+			<label class="auditor-toggle">
+				<input type="checkbox" name="isAuditor" />
+				Auditor (can edit Money)
+			</label>
 			<button type="submit">Add member</button>
 		</form>
 	)}
@@ -75,6 +103,7 @@ const { project, members, userRole, activePage } = Astro.props;
 		overflow: hidden;
 		white-space: nowrap;
 		text-overflow: ellipsis;
+		margin-bottom: var(--space-1);
 	}
 
 	.member-row.role-owner {
@@ -89,10 +118,28 @@ const { project, members, userRole, activePage } = Astro.props;
 		color: var(--color-role-viewer);
 	}
 
-	.project-sidebar form {
+	.auditor-badge {
+		color: var(--color-role-auditor);
+	}
+
+	.auditor-toggle {
+		display: flex;
+		align-items: center;
+		gap: var(--space-1);
+		color: var(--color-role-auditor);
+		font-size: 0.8rem;
+	}
+
+	.auditor-toggle input {
+		width: auto;
+		flex: 0 0 auto;
+	}
+
+	.add-member {
 		flex-direction: column;
 		align-items: stretch;
-		margin: 0 0 var(--space-4);
+		gap: var(--space-2);
+		margin: var(--space-3) 0 var(--space-4);
 	}
 
 	.sidebar-nav {

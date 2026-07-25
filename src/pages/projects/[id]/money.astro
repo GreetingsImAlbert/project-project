@@ -24,16 +24,21 @@ if (error || !project) {
 	return new Response('Project not found', { status: 404 });
 }
 
-const { data: members } = await Astro.locals.supabase
+// is_auditor isn't in the generated Database types until `npm run update-types`
+// runs, and overrideTypes()'s merge check drops columns it can't see — so select
+// it and cast the raw result directly (same pattern as the transactions query).
+const { data: rawMembers } = await Astro.locals.supabase
 	.from('project_members')
-	.select('role, user_id, contribution_percent, profiles(display_name, email)')
-	.eq('project_id', id)
-	.overrideTypes<
-		{ role: string; user_id: string; contribution_percent: number | null; profiles: { display_name: string; email: string } }[]
-	>();
+	.select('role, is_auditor, user_id, contribution_percent, profiles(display_name, email)')
+	.eq('project_id', id);
 
-const userRole = members?.find(member => member.user_id === user.id)?.role;
-const canEdit = userRole === 'owner' || userRole === 'editor';
+const members = rawMembers as unknown as
+	{ role: string; is_auditor: boolean; user_id: string; contribution_percent: number | null; profiles: { display_name: string; email: string } }[] | null;
+
+const currentMember = members?.find(member => member.user_id === user.id);
+const userRole = currentMember?.role;
+// Money-page edit rights = owner OR auditor (a plain editor cannot edit Money).
+const canEdit = currentMember?.role === 'owner' || currentMember?.is_auditor === true;
 
 const { data: bomItems } = await Astro.locals.supabase
 	.from('bom_items')

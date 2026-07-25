@@ -26,13 +26,18 @@ if (error || !project) {
 	return new Response('Project not found', { status: 404 });
 }
 
-const { data: members } = await Astro.locals.supabase
+// is_auditor isn't in the generated Database types yet, so cast the raw result
+// (overrideTypes drops columns it can't see — see money.astro).
+const { data: rawMembers } = await Astro.locals.supabase
 	.from('project_members')
-	.select('role, user_id, profiles(display_name, email)')
-	.eq('project_id', id)
-	.overrideTypes<{ role: string; user_id: string, profiles: { display_name: string; email: string } }[]>();
+	.select('role, is_auditor, user_id, profiles(display_name, email)')
+	.eq('project_id', id);
+
+const members = rawMembers as unknown as
+	{ role: string; is_auditor: boolean; user_id: string; profiles: { display_name: string; email: string } }[] | null;
 
 const userRole = members?.find(member => member.user_id === user.id)?.role;
+// Files edit rights stay with the base role (owner/editor); auditor is Money-only.
 const canEdit = userRole === 'owner' || userRole === 'editor';
 
 const currentFolderId = Astro.url.searchParams.get('folder');
