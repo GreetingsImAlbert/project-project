@@ -504,7 +504,7 @@
 
 			<div class="add-form-actions">
 				{#if addButtonVisible}
-					<button type="button" class="btn-plain" onclick={openAddForm}>+ Add transaction</button>
+					<button type="button" class="btn-plain" onclick={openAddForm}>Add transaction</button>
 				{:else}
 					<button type="submit" disabled={adding}>{adding ? 'Adding…' : 'Add transaction'}</button>
 					<button type="button" class="btn-plain" onclick={closeAddForm}>Cancel</button>

@@ -465,7 +465,7 @@
 
 			<div class="add-form-actions">
 				{#if addButtonVisible}
-					<button type="button" class="btn-plain" onclick={openAddForm}>+ Add BOM item</button>
+					<button type="button" class="btn-plain" onclick={openAddForm}>Add BOM item</button>
 				{:else}
 					<button type="submit" disabled={adding}>{adding ? 'Adding…' : 'Add BOM item'}</button>
 					<button type="button" class="btn-plain" onclick={closeAddForm}>Cancel</button>
