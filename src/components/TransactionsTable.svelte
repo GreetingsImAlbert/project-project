@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { slide } from 'svelte/transition';
 	import { formatCurrency, initCurrency } from '../lib/currency.svelte';
+	import { netSpend } from '../lib/money-math';
 	import {
 		transactionsState,
 		initTransactions,
@@ -31,7 +32,10 @@
 
 	initTransactions(initialTransactions);
 
-	let editingId = $state<string | null>(null);
+	// One row panel at a time — read-only detail or the edit form, never both.
+	let openId = $state<string | null>(null);
+	let openMode = $state<'detail' | 'edit'>('detail');
+
 	let savingId = $state<string | null>(null);
 	let deletingId = $state<string | null>(null);
 	let rowError = $state<{ id: string; message: string } | null>(null);
@@ -49,7 +53,6 @@
 	let addMemberId = $state('');
 	let addRelatedMemberId = $state('');
 
-	let expandedId = $state<string | null>(null);
 	let editingType = $state<TransactionType>('item');
 	let editingMemberId = $state('');
 	let editingRelatedMemberId = $state('');
@@ -62,34 +65,29 @@
 		payment: 'Payment',
 	};
 
+	let colCount = $derived(canEdit ? 9 : 8);
+
 	function unitCostPlaceholder(type: TransactionType): string {
 		return type === 'item' ? 'Unit cost' : 'Amount';
 	}
 
-	function memberName(id: string, profile: { display_name: string } | null): string {
+	function memberName(id: string | null, profile: { display_name: string } | null = null): string {
+		if (!id) return '—';
 		return profile?.display_name ?? members.find((m) => m.id === id)?.displayName ?? 'Unknown';
 	}
 
-	let groups = $derived.by(() => {
-		const map = new Map<string, Transaction[]>();
-		for (const t of transactionsState.items) {
-			if (!map.has(t.transaction_date)) map.set(t.transaction_date, []);
-			map.get(t.transaction_date)!.push(t);
-		}
-		const keys = [...map.keys()].sort((a, b) => b.localeCompare(a));
-		return keys.map((date) => ({ date, items: map.get(date)! }));
+	// Newest date first, and the first row of each date carries a rule above it —
+	// the Date column is still present per row, so a full-width date banner would
+	// just be the same string twice.
+	let rows = $derived.by(() => {
+		const sorted = [...transactionsState.items].sort((a, b) => b.transaction_date.localeCompare(a.transaction_date));
+		return sorted.map((t, i) => ({
+			t,
+			isGroupStart: i === 0 || sorted[i - 1].transaction_date !== t.transaction_date,
+		}));
 	});
 
-	function signedAmount(t: Transaction): number {
-		const total = t.total_cost ?? 0;
-		return t.type === 'discount' || t.type === 'refund' ? -total : total;
-	}
-
-	// Payments are transfers between members settling dues, not project costs — they
-	// shouldn't inflate or deflate the project's actual net spend.
-	let netTotal = $derived(
-		transactionsState.items.filter((t) => t.type !== 'payment').reduce((sum, t) => sum + signedAmount(t), 0),
-	);
+	let netTotal = $derived(netSpend(transactionsState.items));
 
 	onMount(() => {
 		initCurrency();
@@ -97,11 +95,21 @@
 
 	function handleRowClick(e: MouseEvent, id: string) {
 		if ((e.target as HTMLElement).closest('.row-actions, a')) return;
-		expandedId = expandedId === id ? null : id;
+		if (openId === id && openMode === 'detail') {
+			openId = null;
+			return;
+		}
+		openId = id;
+		openMode = 'detail';
 	}
 
 	function startEdit(t: Transaction) {
-		editingId = t.id;
+		if (openId === t.id && openMode === 'edit') {
+			openId = null;
+			return;
+		}
+		openId = t.id;
+		openMode = 'edit';
 		editingType = t.type;
 		editingMemberId = t.member_id;
 		editingRelatedMemberId = t.related_member_id ?? '';
@@ -109,15 +117,17 @@
 	}
 
 	function cancelEdit() {
-		editingId = null;
+		openId = null;
 		rowError = null;
 	}
 
-	async function handleSave(id: string) {
+	async function handleSave(e: SubmitEvent, id: string) {
+		e.preventDefault();
+		const form = e.currentTarget as HTMLFormElement;
+
 		rowError = null;
 		savingId = id;
 
-		const form = document.getElementById(`transaction-update-${id}`) as HTMLFormElement;
 		const res = await fetch(form.action, { method: 'POST', body: new FormData(form) });
 
 		if (!res.ok) {
@@ -126,9 +136,8 @@
 			return;
 		}
 
-		const updated: Transaction = await res.json();
-		updateTransaction(updated);
-		editingId = null;
+		updateTransaction(await res.json());
+		openId = null;
 		savingId = null;
 	}
 
@@ -147,6 +156,7 @@
 		}
 
 		removeTransaction(id);
+		if (openId === id) openId = null;
 		deletingId = null;
 	}
 
@@ -174,8 +184,7 @@
 			return;
 		}
 
-		const created: Transaction = await res.json();
-		addTransaction(created);
+		addTransaction(await res.json());
 		form.reset();
 		addType = 'item';
 		addTransactionDate = '';
@@ -190,345 +199,381 @@
 	}
 </script>
 
-<h2>Transactions</h2>
+<section class="money-section">
+	<div class="money-section-head">
+		<h2>Transactions</h2>
+		<span class="section-meta">
+			{transactionsState.items.length} entr{transactionsState.items.length === 1 ? 'y' : 'ies'} · net
+			<strong>{formatCurrency(netTotal)}</strong>
+		</span>
+	</div>
 
-{#if transactionsState.items.length === 0}
-	<p class="muted">No transactions yet.</p>
-{:else}
-	<div class="table-scroll">
-	<table>
-		{#if canEdit}
-			<colgroup>
-				<col style="width:110px" />
-				<col style="width:100px" />
-				<col style="width:160px" />
-				<col style="width:70px" />
-				<col style="width:80px" />
-				<col style="width:100px" />
-				<col style="width:110px" />
-				<col style="width:150px" />
-				<col style="width:150px" />
-			</colgroup>
-		{:else}
-			<colgroup>
-				<col style="width:110px" />
-				<col style="width:100px" />
-				<col style="width:160px" />
-				<col style="width:70px" />
-				<col style="width:80px" />
-				<col style="width:100px" />
-				<col style="width:110px" />
-				<col style="width:150px" />
-			</colgroup>
-		{/if}
-		<thead>
-			<tr>
-				<th>Date</th>
-				<th>Type</th>
-				<th>Item</th>
-				<th>Qty</th>
-				<th>Unit</th>
-				<th>Unit cost</th>
-				<th>Total</th>
-				<th>By</th>
-				{#if canEdit}<th></th>{/if}
-			</tr>
-		</thead>
-		<tbody>
-			{#each groups as group (group.date)}
-				<tr class="date-row">
-					<td colspan={canEdit ? 9 : 8} class="date-header">{group.date}</td>
-				</tr>
-				{#each group.items as t (t.id)}
-					{#if editingId === t.id}
-						<tr class="editing-row">
-							<td>
-								<input form={`transaction-update-${t.id}`} type="date" name="transactionDate" value={t.transaction_date} required />
-							</td>
-							<td>
-								<select form={`transaction-update-${t.id}`} name="type" bind:value={editingType}>
-									{#each Object.entries(TYPE_LABELS) as [value, label]}
-										<option {value}>{label}</option>
-									{/each}
-								</select>
-							</td>
-							<td>
-								{#if editingType === 'payment'}
-									<select form={`transaction-update-${t.id}`} name="relatedMemberId" bind:value={editingRelatedMemberId} required>
-										<option value="" disabled selected>Pay…</option>
-										{#each members.filter((m) => m.id !== editingMemberId) as member (member.id)}
-											<option value={member.id}>{member.displayName}</option>
-										{/each}
-									</select>
-								{:else}
-									<input
-										form={`transaction-update-${t.id}`}
-										type="text"
-										name="itemName"
-										value={t.item_name ?? ''}
-										placeholder="Item name"
-										maxlength="200"
-										disabled={editingType !== 'item'}
-									/>
-								{/if}
-							</td>
-							<td>
-								<input
-									form={`transaction-update-${t.id}`}
-									type="number"
-									step="any"
-									min="0"
-									name="quantity"
-									value={t.quantity ?? ''}
-									disabled={editingType !== 'item'}
-								/>
-							</td>
-							<td>
-								<input
-									form={`transaction-update-${t.id}`}
-									type="text"
-									name="unit"
-									value={t.unit ?? ''}
-									placeholder="e.g. pcs"
-									maxlength="50"
-									disabled={editingType !== 'item'}
-								/>
-							</td>
-							<td>
-								<input
-									form={`transaction-update-${t.id}`}
-									type="number"
-									step="any"
-									min="0"
-									name="unitCost"
-									value={t.unit_cost ?? ''}
-									placeholder={unitCostPlaceholder(editingType)}
-									required
-								/>
-							</td>
-							<td class="muted">—</td>
-							<td>
-								<select form={`transaction-update-${t.id}`} name="memberId" bind:value={editingMemberId}>
-									{#each members as member (member.id)}
-										<option value={member.id}>{member.displayName}</option>
-									{/each}
-								</select>
-							</td>
-							{#if canEdit}
-								<td class="actions-cell">
-									<div class="row-actions">
-										<button type="button" onclick={() => handleSave(t.id)} disabled={savingId === t.id}>
-											{savingId === t.id ? 'Saving…' : 'Save'}
-										</button>
-										<button type="button" class="btn-plain" onclick={cancelEdit}>Cancel</button>
-									</div>
-								</td>
-							{/if}
-						</tr>
-					{:else}
-						<tr class="display-row" class:expanded={expandedId === t.id} onclick={(e) => handleRowClick(e, t.id)}>
-							<td>{t.transaction_date}</td>
-							<td>{TYPE_LABELS[t.type]}</td>
+	{#if transactionsState.items.length === 0}
+		<p class="muted empty">No transactions yet.</p>
+	{:else}
+		<div class="money-table">
+			<table>
+				<colgroup>
+					<col style="width:92px" />
+					<col style="width:78px" />
+					<col style="width:170px" />
+					<col style="width:50px" />
+					<col style="width:66px" />
+					<col style="width:92px" />
+					<col style="width:96px" />
+					<col style="width:120px" />
+					{#if canEdit}<col style="width:130px" />{/if}
+				</colgroup>
+				<thead>
+					<tr>
+						<th>Date</th>
+						<th>Type</th>
+						<th>Item</th>
+						<th class="num">Qty</th>
+						<th>Unit</th>
+						<th class="num">Unit cost</th>
+						<th class="num">Total</th>
+						<th>By</th>
+						{#if canEdit}<th><span class="sr-only">Actions</span></th>{/if}
+					</tr>
+				</thead>
+				<tbody>
+					{#each rows as row (row.t.id)}
+						{@const t = row.t}
+						<tr
+							class="data-row clickable"
+							class:group-start={row.isGroupStart}
+							class:open={openId === t.id}
+							onclick={(e) => handleRowClick(e, t.id)}
+						>
+							<td class="date-cell">{t.transaction_date}</td>
+							<td><span class={`type-tag type-${t.type}`}>{TYPE_LABELS[t.type]}</span></td>
 							<td>{t.item_name ?? ''}</td>
-							<td>{t.type === 'item' ? (t.quantity ?? '') : ''}</td>
+							<td class="num">{t.type === 'item' ? (t.quantity ?? '') : ''}</td>
 							<td>{t.unit ?? ''}</td>
-							<td>{t.type === 'item' && t.unit_cost != null ? formatCurrency(t.unit_cost) : ''}</td>
-							<td>{t.type === 'discount' || t.type === 'refund' ? '-' : ''}{t.total_cost != null ? formatCurrency(t.total_cost) : ''}</td>
+							<td class="num">{t.type === 'item' && t.unit_cost != null ? formatCurrency(t.unit_cost) : ''}</td>
+							<td class="num" class:negative={t.type === 'discount' || t.type === 'refund'}>
+								{t.type === 'discount' || t.type === 'refund' ? '-' : ''}{t.total_cost != null ? formatCurrency(t.total_cost) : ''}
+							</td>
 							<td>{memberName(t.member_id, t.profiles)}</td>
 							{#if canEdit}
 								<td class="actions-cell">
 									<div class="row-actions">
 										<button type="button" class="btn-plain" onclick={() => startEdit(t)}>Edit</button>
 										<button type="button" class="btn-danger" onclick={() => handleDelete(t.id)} disabled={deletingId === t.id}>
-											{deletingId === t.id ? 'Deleting…' : 'Delete'}
+											{deletingId === t.id ? '…' : 'Delete'}
 										</button>
 									</div>
 								</td>
 							{/if}
 						</tr>
-					{/if}
-					{#if rowError?.id === t.id}
-						<tr>
-							<td colspan={canEdit ? 9 : 8} class="row-error">{rowError.message}</td>
-						</tr>
-					{/if}
-				{/each}
-			{/each}
-		</tbody>
-		<tfoot>
-			<tr class="total-row">
-				<td colspan="6">Net total</td>
-				<td>{formatCurrency(netTotal)}</td>
-				<td></td>
-				{#if canEdit}<td></td>{/if}
-			</tr>
-		</tfoot>
-	</table>
-	</div>
-{/if}
 
-{#if canEdit}
-	{#each transactionsState.items as t (t.id)}
-		<form id={`transaction-update-${t.id}`} method="POST" action={`/api/transactions/${t.id}/update`} class="hidden-form"></form>
-	{/each}
+						{#if openId === t.id && openMode === 'detail'}
+							<tr class="panel-row">
+								<td colspan={colCount}>
+									<div class="money-panel" transition:slide={{ duration: 150 }}>
+										<div class="panel-grid">
+											<div class="field">
+												<span class="field-label">Date</span>
+												<span class="field-value">{t.transaction_date}</span>
+											</div>
+											<div class="field">
+												<span class="field-label">Type</span>
+												<span class="field-value">{TYPE_LABELS[t.type]}</span>
+											</div>
+											<div class="field">
+												<span class="field-label">{t.type === 'payment' ? 'Paid to' : 'Item'}</span>
+												<span class="field-value">
+													{t.type === 'payment' ? memberName(t.related_member_id) : t.item_name || '—'}
+												</span>
+											</div>
+											{#if t.type === 'item'}
+												<div class="field">
+													<span class="field-label">Quantity</span>
+													<span class="field-value">{t.quantity ?? '—'} {t.unit ?? ''}</span>
+												</div>
+												<div class="field">
+													<span class="field-label">Unit cost</span>
+													<span class="field-value">{t.unit_cost != null ? formatCurrency(t.unit_cost) : '—'}</span>
+												</div>
+											{/if}
+											<div class="field">
+												<span class="field-label">Total</span>
+												<span class="field-value">
+													{t.type === 'discount' || t.type === 'refund' ? '-' : ''}{t.total_cost != null
+														? formatCurrency(t.total_cost)
+														: '—'}
+												</span>
+											</div>
+											<div class="field">
+												<span class="field-label">{t.type === 'payment' ? 'Paid by' : 'Recorded by'}</span>
+												<span class="field-value">{memberName(t.member_id, t.profiles)}</span>
+											</div>
+										</div>
+									</div>
+								</td>
+							</tr>
+						{/if}
 
-	<form method="POST" action={`/api/projects/${projectId}/transactions/create`} onsubmit={handleAddSubmit}>
-		{#if showAddForm}
-			<div class="add-fields-wrap" transition:slide={{ duration: 150 }} onoutroend={() => (addButtonVisible = true)}>
-				<div class="add-fields">
-					<input type="date" name="transactionDate" required bind:value={addTransactionDate} />
-					<select name="type" bind:value={addType}>
-						{#each Object.entries(TYPE_LABELS) as [value, label]}
-							<option {value}>{label}</option>
-						{/each}
-					</select>
-					{#if addType === 'payment'}
-						<select name="relatedMemberId" required bind:value={addRelatedMemberId}>
-							<option value="" disabled selected>Pay…</option>
-							{#each members.filter((m) => m.id !== addMemberId) as member (member.id)}
-								<option value={member.id}>{member.displayName}</option>
-							{/each}
-						</select>
-					{:else}
-						<input type="text" name="itemName" placeholder="Item name" maxlength="200" disabled={addType !== 'item'} bind:value={addItemName} />
-					{/if}
-					<input type="number" step="any" min="0" name="quantity" placeholder="Qty" disabled={addType !== 'item'} bind:value={addQuantity} />
-					<input type="text" name="unit" placeholder="Unit (e.g. pcs)" maxlength="50" disabled={addType !== 'item'} bind:value={addUnit} />
-					<input type="number" step="any" min="0" name="unitCost" placeholder={unitCostPlaceholder(addType)} required bind:value={addUnitCost} />
-					<select name="memberId" required bind:value={addMemberId}>
-						<option value="" disabled selected>Made by…</option>
-						{#each members as member (member.id)}
-							<option value={member.id}>{member.displayName}</option>
-						{/each}
-					</select>
-				</div>
-			</div>
-		{/if}
-		<div class="add-form-actions">
-			{#if addButtonVisible}
-				<button type="button" onclick={openAddForm}>Add transaction</button>
-			{:else}
-				<button type="submit" disabled={adding}>{adding ? 'Adding…' : 'Add transaction'}</button>
-				<button type="button" class="btn-plain" onclick={closeAddForm} aria-label="Cancel add transaction">✕</button>
-			{/if}
+						{#if canEdit && openId === t.id && openMode === 'edit'}
+							<tr class="panel-row">
+								<td colspan={colCount}>
+									<div class="money-panel" transition:slide={{ duration: 150 }}>
+										<form method="POST" action={`/api/transactions/${t.id}/update`} onsubmit={(e) => handleSave(e, t.id)}>
+											<div class="panel-grid">
+												<label class="field">
+													<span class="field-label">Date</span>
+													<input type="date" name="transactionDate" value={t.transaction_date} required />
+												</label>
+												<label class="field">
+													<span class="field-label">Type</span>
+													<select name="type" bind:value={editingType}>
+														{#each Object.entries(TYPE_LABELS) as [value, label] (value)}
+															<option {value}>{label}</option>
+														{/each}
+													</select>
+												</label>
+												<label class="field">
+													<span class="field-label">{editingType === 'payment' ? 'Paid by' : 'Recorded by'}</span>
+													<select name="memberId" bind:value={editingMemberId}>
+														{#each members as member (member.id)}
+															<option value={member.id}>{member.displayName}</option>
+														{/each}
+													</select>
+												</label>
+
+												{#if editingType === 'payment'}
+													<label class="field">
+														<span class="field-label">Paid to</span>
+														<select name="relatedMemberId" bind:value={editingRelatedMemberId} required>
+															<option value="" disabled>Select member…</option>
+															{#each members.filter((m) => m.id !== editingMemberId) as member (member.id)}
+																<option value={member.id}>{member.displayName}</option>
+															{/each}
+														</select>
+													</label>
+												{:else}
+													<label class="field">
+														<span class="field-label">Item</span>
+														<input
+															type="text"
+															name="itemName"
+															value={t.item_name ?? ''}
+															placeholder="Item name"
+															maxlength="200"
+															disabled={editingType !== 'item'}
+														/>
+													</label>
+												{/if}
+
+												{#if editingType === 'item'}
+													<label class="field">
+														<span class="field-label">Quantity</span>
+														<input type="number" step="any" min="0" name="quantity" value={t.quantity ?? ''} />
+													</label>
+													<label class="field">
+														<span class="field-label">Unit</span>
+														<input type="text" name="unit" value={t.unit ?? ''} placeholder="e.g. pcs" maxlength="50" />
+													</label>
+												{/if}
+
+												<label class="field">
+													<span class="field-label">{editingType === 'item' ? 'Unit cost' : 'Amount'}</span>
+													<input
+														type="number"
+														step="any"
+														min="0"
+														name="unitCost"
+														value={t.unit_cost ?? ''}
+														placeholder={unitCostPlaceholder(editingType)}
+														required
+													/>
+												</label>
+											</div>
+
+											{#if rowError?.id === t.id}<p class="panel-error">{rowError.message}</p>{/if}
+
+											<div class="panel-actions">
+												<button type="submit" disabled={savingId === t.id}>{savingId === t.id ? 'Saving…' : 'Save'}</button>
+												<button type="button" class="btn-plain" onclick={cancelEdit}>Cancel</button>
+											</div>
+										</form>
+									</div>
+								</td>
+							</tr>
+						{/if}
+
+						{#if rowError?.id === t.id && !(openId === t.id && openMode === 'edit')}
+							<tr class="row-error">
+								<td colspan={colCount}>{rowError.message}</td>
+							</tr>
+						{/if}
+					{/each}
+				</tbody>
+				<tfoot>
+					<tr class="total-row">
+						<td colspan="6">Net total</td>
+						<td class="num">{formatCurrency(netTotal)}</td>
+						<td></td>
+						{#if canEdit}<td></td>{/if}
+					</tr>
+				</tfoot>
+			</table>
 		</div>
-	</form>
-	{#if addError}<p class="row-error">{addError}</p>{/if}
-{/if}
+	{/if}
+
+	{#if canEdit}
+		<form method="POST" action={`/api/projects/${projectId}/transactions/create`} onsubmit={handleAddSubmit} class="add-form">
+			{#if showAddForm}
+				<div class="money-panel add-panel" transition:slide={{ duration: 150 }} onoutroend={() => (addButtonVisible = true)}>
+					<div class="panel-grid">
+						<label class="field">
+							<span class="field-label">Date</span>
+							<input type="date" name="transactionDate" required bind:value={addTransactionDate} />
+						</label>
+						<label class="field">
+							<span class="field-label">Type</span>
+							<select name="type" bind:value={addType}>
+								{#each Object.entries(TYPE_LABELS) as [value, label] (value)}
+									<option {value}>{label}</option>
+								{/each}
+							</select>
+						</label>
+						<label class="field">
+							<span class="field-label">{addType === 'payment' ? 'Paid by' : 'Recorded by'}</span>
+							<select name="memberId" required bind:value={addMemberId}>
+								<option value="" disabled>Select member…</option>
+								{#each members as member (member.id)}
+									<option value={member.id}>{member.displayName}</option>
+								{/each}
+							</select>
+						</label>
+
+						{#if addType === 'payment'}
+							<label class="field">
+								<span class="field-label">Paid to</span>
+								<select name="relatedMemberId" required bind:value={addRelatedMemberId}>
+									<option value="" disabled>Select member…</option>
+									{#each members.filter((m) => m.id !== addMemberId) as member (member.id)}
+										<option value={member.id}>{member.displayName}</option>
+									{/each}
+								</select>
+							</label>
+						{:else}
+							<label class="field">
+								<span class="field-label">Item</span>
+								<input
+									type="text"
+									name="itemName"
+									placeholder="Item name"
+									maxlength="200"
+									disabled={addType !== 'item'}
+									bind:value={addItemName}
+								/>
+							</label>
+						{/if}
+
+						{#if addType === 'item'}
+							<label class="field">
+								<span class="field-label">Quantity</span>
+								<input type="number" step="any" min="0" name="quantity" placeholder="Qty" bind:value={addQuantity} />
+							</label>
+							<label class="field">
+								<span class="field-label">Unit</span>
+								<input type="text" name="unit" placeholder="e.g. pcs" maxlength="50" bind:value={addUnit} />
+							</label>
+						{/if}
+
+						<label class="field">
+							<span class="field-label">{addType === 'item' ? 'Unit cost' : 'Amount'}</span>
+							<input
+								type="number"
+								step="any"
+								min="0"
+								name="unitCost"
+								placeholder={unitCostPlaceholder(addType)}
+								required
+								bind:value={addUnitCost}
+							/>
+						</label>
+					</div>
+
+					{#if addError}<p class="panel-error">{addError}</p>{/if}
+				</div>
+			{/if}
+
+			<div class="add-form-actions">
+				{#if addButtonVisible}
+					<button type="button" class="btn-plain" onclick={openAddForm}>+ Add transaction</button>
+				{:else}
+					<button type="submit" disabled={adding}>{adding ? 'Adding…' : 'Add transaction'}</button>
+					<button type="button" class="btn-plain" onclick={closeAddForm}>Cancel</button>
+				{/if}
+			</div>
+		</form>
+	{/if}
+</section>
 
 <style>
-	.table-scroll table {
-		table-layout: fixed;
+	.date-cell {
+		color: var(--color-muted);
+		font-variant-numeric: tabular-nums;
+	}
+
+	.type-tag {
+		font-size: 0.7rem;
+		letter-spacing: 0.03em;
+		text-transform: uppercase;
+	}
+
+	.type-discount,
+	.type-refund {
+		color: var(--color-role-viewer);
+	}
+
+	.type-payment {
+		color: var(--color-role-auditor);
+	}
+
+	.type-shipping {
+		color: var(--color-muted);
+	}
+
+	.negative {
+		color: var(--color-role-viewer);
+	}
+
+	.empty {
 		font-size: 0.85rem;
 	}
 
-	.date-header {
-		font-weight: 700;
-		padding-top: var(--space-3);
+	.add-form {
+		display: block;
+		margin: 0;
 	}
 
-	.date-row:first-child .date-header {
-		padding-top: var(--space-2);
-	}
-
-	.table-scroll tbody tr:last-child td {
-		border-bottom: none;
-	}
-
-	.total-row td {
-		font-weight: 700;
-		border-top: 1px solid var(--color-border-strong);
-	}
-
-	.table-scroll th {
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
-
-	tr.editing-row td {
-		position: relative;
-	}
-
-	tr.display-row {
-		cursor: pointer;
-	}
-
-	tr.display-row td {
-		overflow: hidden;
-		white-space: nowrap;
-		text-overflow: ellipsis;
-	}
-
-	tr.display-row td.actions-cell {
-		overflow: visible;
-		cursor: default;
-	}
-
-	tr.display-row.expanded {
-		background: var(--color-highlight);
-	}
-
-	tr.display-row.expanded td {
-		overflow: visible;
-		white-space: normal;
-		text-overflow: clip;
-		overflow-wrap: break-word;
-		word-break: break-word;
-	}
-
-	.table-scroll td input,
-	.table-scroll td select {
-		width: 100%;
-		min-width: 0;
-		box-sizing: border-box;
-		padding: 2px var(--space-2);
-	}
-
-	.table-scroll td input:focus {
-		position: absolute;
-		top: 0;
-		left: 0;
-		width: 220px;
-		max-width: calc(100vw - var(--space-6));
-		z-index: 2;
-		background: var(--color-bg);
-		border-color: var(--color-border-strong);
-	}
-
-	.row-actions {
-		display: flex;
-		flex-wrap: wrap;
-		gap: var(--space-2);
-		white-space: nowrap;
-	}
-
-	.row-actions button {
-		white-space: nowrap;
-		flex-shrink: 0;
-		padding: 2px var(--space-2);
-		font-size: 0.8rem;
-	}
-
-	.hidden-form {
-		display: none;
-	}
-
-	.add-fields {
-		display: flex;
-		flex-wrap: wrap;
-		gap: var(--space-3);
-		align-items: flex-start;
+	.add-panel {
+		border: 1px solid var(--color-border-strong);
+		margin-bottom: var(--space-2);
 	}
 
 	.add-form-actions {
 		display: flex;
 		gap: var(--space-2);
 		align-items: center;
-		margin-top: var(--space-3);
 	}
 
-	.row-error {
-		color: var(--color-danger);
+	.add-form-actions button {
+		padding: var(--space-1) var(--space-3);
+		font-size: 0.8rem;
+	}
+
+	.sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip: rect(0 0 0 0);
+		white-space: nowrap;
 	}
 </style>

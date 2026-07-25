@@ -184,6 +184,248 @@ thead th {
 	font-weight: 700;
 }
 
+/* Money tables (BOM / Transactions / Member contributions)
+
+   Dense, fully-ruled grid shared by three separate Svelte islands. It lives here
+   rather than in any one component's scoped <style> because Astro/Svelte scoping
+   can't reach across island boundaries, and all three tables have to line up
+   pixel-for-pixel to read as one page. */
+
+.money-section {
+	margin-top: var(--space-6);
+	padding-top: var(--space-4);
+	border-top: 1px solid var(--color-border);
+}
+
+.money-section-head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--space-3);
+	flex-wrap: wrap;
+	margin-bottom: var(--space-3);
+}
+
+.money-section-head h2 {
+	margin: 0;
+	padding-top: 0;
+	border-top: none;
+}
+
+.money-section-head .section-meta {
+	font-size: 0.78rem;
+	color: var(--color-muted);
+	white-space: nowrap;
+}
+
+.money-section-head .section-meta strong {
+	color: var(--color-fg);
+	font-variant-numeric: tabular-nums;
+}
+
+.money-table {
+	overflow-x: auto;
+	-webkit-overflow-scrolling: touch;
+	border: 1px solid var(--color-border-strong);
+	margin: 0 0 var(--space-3);
+}
+
+.money-table table {
+	table-layout: fixed;
+	width: 100%;
+	margin: 0;
+	font-size: 0.78rem;
+	line-height: 1.5;
+}
+
+.money-table th,
+.money-table td {
+	padding: 3px var(--space-2);
+	border-bottom: 1px solid var(--color-border);
+	border-right: 1px solid var(--color-border);
+	vertical-align: top;
+}
+
+.money-table th:last-child,
+.money-table td:last-child {
+	border-right: none;
+}
+
+.money-table tbody:last-child tr:last-child td,
+.money-table tfoot tr:last-child td {
+	border-bottom: none;
+}
+
+.money-table thead th {
+	background: var(--color-highlight);
+	border-bottom: 1px solid var(--color-border-strong);
+	color: var(--color-muted);
+	font-size: 0.68rem;
+	font-weight: 700;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/* Numeric columns are right-aligned with tabular figures so decimal points stack
+   into a readable column instead of drifting with each value's digit count. */
+.money-table .num {
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+}
+
+.money-table .data-row td {
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.money-table .data-row.clickable {
+	cursor: pointer;
+}
+
+.money-table .data-row.clickable:hover,
+.money-table .data-row.open {
+	background: var(--color-highlight);
+}
+
+.money-table .group-row td {
+	background: var(--color-highlight);
+	border-top: 1px solid var(--color-border-strong);
+	border-right: none;
+	font-size: 0.7rem;
+	font-weight: 700;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.money-table tbody tr.group-row:first-child td {
+	border-top: none;
+}
+
+/* Transactions keeps its Date column, so date changes are marked with a rule
+   across the row rather than a redundant full-width date banner. */
+.money-table .data-row.group-start td {
+	border-top: 1px solid var(--color-border-strong);
+}
+
+.money-table tbody tr.data-row.group-start:first-child td {
+	border-top: none;
+}
+
+.money-table .total-row td {
+	background: var(--color-highlight);
+	border-top: 1px solid var(--color-border-strong);
+	font-weight: 700;
+}
+
+.money-table td.actions-cell {
+	white-space: nowrap;
+	overflow: visible;
+	cursor: default;
+}
+
+.money-table .row-actions {
+	display: flex;
+	gap: var(--space-1);
+}
+
+.money-table .row-actions button {
+	flex-shrink: 0;
+	white-space: nowrap;
+	padding: 0 var(--space-2);
+	font-size: 0.7rem;
+	line-height: 1.8;
+}
+
+.money-table .row-error td {
+	color: var(--color-danger);
+	white-space: normal;
+}
+
+/* Slide-down panels (row detail, row edit, add form) */
+
+.money-table .panel-row > td {
+	padding: 0;
+	border-right: none;
+	background: var(--color-bg);
+}
+
+.money-panel {
+	border-top: 1px solid var(--color-border-strong);
+	padding: var(--space-3);
+}
+
+/* Undo the global flex-row form styling — inside a panel the form is just a
+   block wrapper around the grid and its action row. */
+.money-panel form {
+	display: block;
+	margin: 0;
+}
+
+.money-panel .panel-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+	gap: var(--space-3);
+	align-items: start;
+}
+
+.money-panel .field {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	min-width: 0;
+}
+
+.money-panel .field > .field-label {
+	color: var(--color-muted);
+	font-size: 0.68rem;
+	font-weight: 700;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+}
+
+.money-panel .field input,
+.money-panel .field select {
+	width: 100%;
+	min-width: 0;
+	padding: var(--space-1) var(--space-2);
+	font-size: 0.8rem;
+}
+
+.money-panel .field .field-value {
+	font-size: 0.8rem;
+	overflow-wrap: break-word;
+	word-break: break-word;
+}
+
+.money-panel .field-wide {
+	grid-column: 1 / -1;
+}
+
+.money-panel .panel-actions {
+	display: flex;
+	gap: var(--space-2);
+	align-items: center;
+	margin-top: var(--space-3);
+}
+
+.money-panel .panel-actions button {
+	padding: var(--space-1) var(--space-3);
+	font-size: 0.8rem;
+}
+
+.money-panel .panel-error {
+	color: var(--color-danger);
+	font-size: 0.78rem;
+	margin: var(--space-2) 0 0;
+}
+
 /* Breadcrumbs */
 
 .breadcrumbs {

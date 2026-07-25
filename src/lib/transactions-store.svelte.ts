@@ -22,8 +22,12 @@ export const transactionsState = $state<{ items: Transaction[] }>({ items: [] })
 
 let initialized = false;
 
+// The once-only guard is a client-side concern (keep the first island's data, don't
+// let a later island's props clobber it). On the server the module lives for the
+// whole Worker isolate, not one request, so honouring the guard there would render
+// the *previous* request's transactions into this request's HTML — always reassign.
 export function initTransactions(initial: Transaction[]) {
-	if (initialized) return;
+	if (initialized && !import.meta.env.SSR) return;
 	transactionsState.items = initial;
 	initialized = true;
 }

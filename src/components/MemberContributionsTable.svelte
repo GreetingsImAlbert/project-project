@@ -3,6 +3,8 @@
 	import { onMount } from 'svelte';
 	import { formatCurrency, initCurrency } from '../lib/currency.svelte';
 	import { transactionsState, initTransactions, type Transaction, type TransactionType } from '../lib/transactions-store.svelte';
+	import { contributionsState, initContributions, setContributionPercents } from '../lib/contributions-store.svelte';
+	import { netSpend, paidByMember, entryAmount } from '../lib/money-math';
 
 	interface Member {
 		id: string;
@@ -23,25 +25,13 @@
 	} = $props();
 
 	initTransactions(initialTransactions);
-
-	let percents = $state<Record<string, number>>(
-		Object.fromEntries(members.map((m) => [m.id, m.contributionPercent ?? 100 / members.length])),
-	);
+	initContributions(Object.fromEntries(members.map((m) => [m.id, m.contributionPercent ?? 100 / members.length])));
 
 	let editingPercents = $state(false);
-	let draftPercents = $state<Record<string, number>>({ ...percents });
+	let draftPercents = $state<Record<string, number>>({});
 	let saving = $state(false);
 	let rowError = $state<string | null>(null);
-	let expanded = $state(false);
-
-	// The last member column is the remainder: it's never directly edited, it's always
-	// whatever makes the other members' percentages add up to 100 — so the total can
-	// never be wrong by construction, no cross-field validation needed. Kept at full
-	// float precision (only rounded for display) so the underlying math stays accurate.
-	let remainderMember = $derived(members[members.length - 1]);
-	let editableMembers = $derived(members.slice(0, -1));
-	let remainderPercent = $derived(100 - editableMembers.reduce((sum, m) => sum + (draftPercents[m.id] ?? 0), 0));
-	let remainderValid = $derived(remainderPercent >= 0 && remainderPercent <= 100);
+	let expandedId = $state<string | null>(null);
 
 	const TYPE_LABELS: Record<TransactionType, string> = {
 		item: 'Item',
@@ -51,38 +41,37 @@
 		payment: 'Payment',
 	};
 
-	function signedAmount(t: Transaction): number {
-		const total = t.total_cost ?? 0;
-		return t.type === 'discount' || t.type === 'refund' ? -total : total;
-	}
+	const colCount = 5;
 
-	// Payments are transfers between members settling dues, not project costs — they
-	// shouldn't inflate or deflate the project's actual net spend.
-	let netTotal = $derived(
-		transactionsState.items.filter((t) => t.type !== 'payment').reduce((sum, t) => sum + signedAmount(t), 0),
-	);
+	let percents = $derived(contributionsState.percents);
+
+	// The last member is the remainder: it's never directly edited, it's always
+	// whatever makes the other members' percentages add up to 100 — so the total can
+	// never be wrong by construction, no cross-field validation needed. Kept at full
+	// float precision (only rounded for display) so the underlying math stays accurate.
+	let remainderMember = $derived(members[members.length - 1]);
+	let editableMembers = $derived(members.slice(0, -1));
+	let remainderPercent = $derived(100 - editableMembers.reduce((sum, m) => sum + (draftPercents[m.id] ?? 0), 0));
+	let remainderValid = $derived(remainderPercent >= 0 && remainderPercent <= 100);
+
+	let netTotal = $derived(netSpend(transactionsState.items));
+
+	function displayPercent(memberId: string): number {
+		if (editingPercents && memberId === remainderMember?.id) return remainderPercent;
+		if (editingPercents) return draftPercents[memberId] ?? 0;
+		return percents[memberId] ?? 0;
+	}
 
 	function contributionAmount(memberId: string): number {
 		return (netTotal * (percents[memberId] ?? 0)) / 100;
 	}
 
-	// A payment isn't the payer's own project spend — it's money handed directly to
-	// another member, so it counts toward the payer's "spent" (reduces what they owe)
-	// and *against* the payee's "spent" (reduces what they're owed back), rather than
-	// being attributed to just one member_id like every other transaction type.
-	function spentByMember(memberId: string): number {
-		return transactionsState.items.reduce((sum, t) => {
-			if (t.type === 'payment') {
-				if (t.member_id === memberId) return sum + (t.total_cost ?? 0);
-				if (t.related_member_id === memberId) return sum - (t.total_cost ?? 0);
-				return sum;
-			}
-			return t.member_id === memberId ? sum + signedAmount(t) : sum;
-		}, 0);
+	function paid(memberId: string): number {
+		return paidByMember(transactionsState.items, memberId);
 	}
 
 	function dues(memberId: string): number {
-		return contributionAmount(memberId) - spentByMember(memberId);
+		return contributionAmount(memberId) - paid(memberId);
 	}
 
 	function transactionsFor(memberId: string): Transaction[] {
@@ -92,13 +81,16 @@
 			.sort((a, b) => a.transaction_date.localeCompare(b.transaction_date));
 	}
 
-	// Same member_id/related_member_id split as spentByMember — from the payee's side a
-	// payment is negative (it's money they received, not money they spent).
-	function entryAmount(t: Transaction, viewingMemberId: string): number {
+	function entryLabel(t: Transaction, memberId: string): string {
 		if (t.type === 'payment') {
-			return t.member_id === viewingMemberId ? (t.total_cost ?? 0) : -(t.total_cost ?? 0);
+			return t.member_id === memberId ? (t.item_name ?? 'Payment') : 'Payment received';
 		}
-		return signedAmount(t);
+		return t.item_name || TYPE_LABELS[t.type];
+	}
+
+	function toggleExpanded(e: MouseEvent, memberId: string) {
+		if ((e.target as HTMLElement).closest('input, button')) return;
+		expandedId = expandedId === memberId ? null : memberId;
 	}
 
 	function startEditPercents() {
@@ -161,7 +153,7 @@
 			}
 		}
 
-		percents = { ...percents, ...fullDraft };
+		setContributionPercents(fullDraft);
 		saving = false;
 		editingPercents = false;
 	}
@@ -171,164 +163,172 @@
 	});
 </script>
 
-<h2>Member contributions</h2>
-
-{#if members.length === 0}
-	<p class="muted">No members yet.</p>
-{:else}
-	<div class="table-scroll">
-	<table>
-		<colgroup>
-			<col style="width:140px" />
-			{#each members as member (member.id)}
-				<col style="width:160px" />
-			{/each}
-			{#if canEdit}
-				<col style="width:190px" />
-			{/if}
-		</colgroup>
-		<thead>
-			<tr>
-				<th></th>
-				{#each members as member (member.id)}
-					<th>{member.displayName}</th>
-				{/each}
-				{#if canEdit}<th></th>{/if}
-			</tr>
-		</thead>
-		<tbody>
-			<tr>
-				<td>Contribution (%)</td>
-				{#each members as member (member.id)}
-					<td>
-						{#if editingPercents && member.id === remainderMember.id}
-							<span
-								class="remainder-value"
-								class:invalid={!remainderValid}
-								title="Automatically calculated so all members add up to 100%"
-							>
-								{remainderPercent.toFixed(2)}%
-							</span>
-						{:else if editingPercents}
-							<input
-								type="number"
-								step="0.01"
-								min="0"
-								max="100"
-								value={(draftPercents[member.id] ?? 0).toFixed(2)}
-								disabled={saving}
-								onchange={(e) => handlePercentInput(member.id, (e.currentTarget as HTMLInputElement).value)}
-							/>
-						{:else}
-							{(percents[member.id] ?? 0).toFixed(2)}%
-						{/if}
-					</td>
-				{/each}
-				{#if canEdit}
-					<td class="actions-cell">
-						<div class="row-actions">
-							{#if editingPercents}
-								<button type="button" onclick={savePercents} disabled={saving || !remainderValid}>{saving ? 'Saving…' : 'Save'}</button>
-								<button type="button" class="btn-plain" onclick={cancelEditPercents} disabled={saving}>Cancel</button>
-								<button
-									type="button"
-									class="btn-plain icon-btn"
-									onclick={resetToEqualSplit}
-									disabled={saving}
-									title="Reset to equal split"
-									aria-label="Reset to equal split"
-								>
-									↺
-								</button>
-							{:else}
-								<button type="button" class="btn-plain" onclick={startEditPercents}>Edit</button>
-							{/if}
-						</div>
-					</td>
-				{/if}
-			</tr>
-			<tr>
-				<td>Contribution</td>
-				{#each members as member (member.id)}
-					<td>{formatCurrency(contributionAmount(member.id))}</td>
-				{/each}
-				{#if canEdit}<td></td>{/if}
-			</tr>
-			<tr class="dues-row">
-				<td>Dues</td>
-				{#each members as member (member.id)}
-					<td class:dues-owed={dues(member.id) > 0} class:dues-credit={dues(member.id) < 0}>
-						{formatCurrency(dues(member.id))}
-					</td>
-				{/each}
-				{#if canEdit}<td></td>{/if}
-			</tr>
-			<tr class="toggle-row">
-				<td colspan={members.length + (canEdit ? 2 : 1)}>
-					<button type="button" class="btn-plain" onclick={() => (expanded = !expanded)}>
-						{expanded ? '▲ Hide transactions' : '▼ Show transactions'}
+<section class="money-section">
+	<div class="money-section-head">
+		<h2>Member contributions</h2>
+		{#if canEdit && members.length > 0}
+			<div class="head-actions">
+				{#if editingPercents}
+					<button type="button" onclick={savePercents} disabled={saving || !remainderValid}>
+						{saving ? 'Saving…' : 'Save split'}
 					</button>
-				</td>
-			</tr>
-			{#if expanded}
-				<tr class="detail-row">
-					<td class="detail-label"></td>
-					{#each members as member (member.id)}
-						<td class="detail-cell">
-							<div class="member-column" transition:slide={{ duration: 150 }}>
-								{#each transactionsFor(member.id) as t (t.id)}
-									<div class="txn-entry">
-										<span class="txn-date">{t.transaction_date}</span>
-										<span class="txn-label">
-											{(t.type === 'item' || t.type === 'payment') && t.item_name ? t.item_name : TYPE_LABELS[t.type]}
-										</span>
-										<span class="txn-amount">{formatCurrency(entryAmount(t, member.id))}</span>
-									</div>
-								{:else}
-									<p class="muted">No transactions.</p>
-								{/each}
-							</div>
-						</td>
-					{/each}
-					{#if canEdit}<td class="detail-cell"></td>{/if}
-				</tr>
-			{/if}
-		</tbody>
-	</table>
+					<button type="button" class="btn-plain" onclick={cancelEditPercents} disabled={saving}>Cancel</button>
+					<button
+						type="button"
+						class="btn-plain"
+						onclick={resetToEqualSplit}
+						disabled={saving}
+						title="Reset to equal split"
+						aria-label="Reset to equal split"
+					>↺</button>
+				{:else}
+					<button type="button" class="btn-plain" onclick={startEditPercents}>Edit split</button>
+				{/if}
+			</div>
+		{/if}
 	</div>
-	{#if rowError}<p class="row-error">{rowError}</p>{/if}
-{/if}
+
+	{#if members.length === 0}
+		<p class="muted empty">No members yet.</p>
+	{:else}
+		<div class="money-table">
+			<table>
+				<colgroup>
+					<col style="width:170px" />
+					<col style="width:96px" />
+					<col style="width:120px" />
+					<col style="width:120px" />
+					<col style="width:120px" />
+				</colgroup>
+				<thead>
+					<tr>
+						<th>Member</th>
+						<th class="num">Share</th>
+						<th class="num">Owes total</th>
+						<th class="num">Paid</th>
+						<th class="num">Dues</th>
+					</tr>
+				</thead>
+				<tbody>
+					{#each members as member (member.id)}
+						{@const memberDues = dues(member.id)}
+						<tr class="data-row clickable" class:open={expandedId === member.id} onclick={(e) => toggleExpanded(e, member.id)}>
+							<td>
+								<span class="caret">{expandedId === member.id ? '▾' : '▸'}</span>{member.displayName}
+							</td>
+							<td class="num">
+								{#if editingPercents && member.id === remainderMember.id}
+									<span class="remainder-value" class:invalid={!remainderValid} title="Automatically calculated so all members add up to 100%">
+										{remainderPercent.toFixed(2)}%
+									</span>
+								{:else if editingPercents}
+									<input
+										type="number"
+										step="0.01"
+										min="0"
+										max="100"
+										value={(draftPercents[member.id] ?? 0).toFixed(2)}
+										disabled={saving}
+										onchange={(e) => handlePercentInput(member.id, (e.currentTarget as HTMLInputElement).value)}
+									/>
+								{:else}
+									{displayPercent(member.id).toFixed(2)}%
+								{/if}
+							</td>
+							<td class="num">{formatCurrency(contributionAmount(member.id))}</td>
+							<td class="num">{formatCurrency(paid(member.id))}</td>
+							<td class="num" class:dues-owed={memberDues > 0} class:dues-credit={memberDues < 0}>
+								{formatCurrency(memberDues)}
+							</td>
+						</tr>
+
+						{#if expandedId === member.id}
+							<tr class="panel-row">
+								<td colspan={colCount}>
+									<div class="money-panel" transition:slide={{ duration: 150 }}>
+										{#if transactionsFor(member.id).length === 0}
+											<p class="muted no-txns">No transactions for {member.displayName}.</p>
+										{:else}
+											<table class="sub-table">
+												<colgroup>
+													<col style="width:96px" />
+													<col style="width:84px" />
+													<col />
+													<col style="width:110px" />
+												</colgroup>
+												<thead>
+													<tr>
+														<th>Date</th>
+														<th>Type</th>
+														<th>Item</th>
+														<th class="num">Amount</th>
+													</tr>
+												</thead>
+												<tbody>
+													{#each transactionsFor(member.id) as t (t.id)}
+														{@const amount = entryAmount(t, member.id)}
+														<tr>
+															<td class="sub-date">{t.transaction_date}</td>
+															<td>{TYPE_LABELS[t.type]}</td>
+															<td class="sub-item">{entryLabel(t, member.id)}</td>
+															<td class="num" class:dues-credit={amount < 0}>{formatCurrency(amount)}</td>
+														</tr>
+													{/each}
+												</tbody>
+												<tfoot>
+													<tr>
+														<td colspan="3">Paid</td>
+														<td class="num">{formatCurrency(paid(member.id))}</td>
+													</tr>
+												</tfoot>
+											</table>
+										{/if}
+									</div>
+								</td>
+							</tr>
+						{/if}
+					{/each}
+				</tbody>
+				<tfoot>
+					<tr class="total-row">
+						<td>All members</td>
+						<td class="num">100.00%</td>
+						<td class="num">{formatCurrency(netTotal)}</td>
+						<td class="num">{formatCurrency(netTotal)}</td>
+						<td class="num">{formatCurrency(0)}</td>
+					</tr>
+				</tfoot>
+			</table>
+		</div>
+
+		{#if rowError}<p class="panel-error standalone-error">{rowError}</p>{/if}
+	{/if}
+</section>
 
 <style>
-	.table-scroll table {
-		table-layout: fixed;
-		font-size: 0.85rem;
+	.head-actions {
+		display: flex;
+		gap: var(--space-2);
+		align-items: center;
 	}
 
-	.table-scroll th,
-	.table-scroll td {
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
+	.head-actions button {
+		padding: var(--space-1) var(--space-3);
+		font-size: 0.8rem;
 	}
 
-	.table-scroll td input {
-		width: 100px;
-		box-sizing: border-box;
-		padding: 2px var(--space-2);
+	.caret {
+		display: inline-block;
+		width: 1.1em;
+		color: var(--color-muted);
 	}
 
-	.dues-row .dues-owed {
+	.dues-owed {
 		color: var(--color-danger);
 	}
 
-	.dues-row .dues-credit {
-		color: var(--color-role-editor);
-	}
-
-	.toggle-row td {
-		border-top: 1px solid var(--color-border);
-		padding-top: var(--space-2);
+	.dues-credit {
+		color: var(--color-role-viewer);
 	}
 
 	.remainder-value {
@@ -340,62 +340,70 @@
 		color: var(--color-danger);
 	}
 
-	.row-actions {
-		display: flex;
-		flex-wrap: wrap;
-		gap: var(--space-2);
-		white-space: nowrap;
+	/* The percent input sits inside a right-aligned numeric cell, so it has to hug
+	   the right edge rather than fill the column. */
+	.money-table td input {
+		width: 100%;
+		max-width: 84px;
+		box-sizing: border-box;
+		padding: 0 var(--space-1);
+		font-size: 0.78rem;
+		text-align: right;
 	}
 
-	.row-actions button {
-		white-space: nowrap;
-		flex-shrink: 0;
+	.sub-table {
+		width: 100%;
+		table-layout: fixed;
+		border-collapse: collapse;
+		margin: 0;
+		font-size: 0.76rem;
+	}
+
+	.sub-table th,
+	.sub-table td {
 		padding: 2px var(--space-2);
-		font-size: 0.8rem;
-	}
-
-	.icon-btn {
-		padding: 2px var(--space-1);
-		line-height: 1;
-	}
-
-	.detail-row td {
-		vertical-align: top;
-		white-space: normal;
-		overflow: visible;
-		text-overflow: clip;
-	}
-
-	.detail-cell {
-		padding-top: var(--space-2);
-	}
-
-	.member-column {
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-1);
-		min-width: 0;
-		overflow: hidden;
-	}
-
-	.txn-entry {
-		display: flex;
-		flex-direction: column;
-		font-size: 0.8rem;
-		padding: var(--space-1) 0;
+		border: none;
 		border-bottom: 1px dashed var(--color-border);
+		vertical-align: top;
 	}
 
-	.txn-date {
+	.sub-table thead th {
+		background: none;
+		border-bottom: 1px solid var(--color-border);
 		color: var(--color-muted);
+		font-size: 0.66rem;
+		font-weight: 700;
+		letter-spacing: 0.05em;
+		text-transform: uppercase;
 	}
 
-	.txn-label {
-		overflow-wrap: break-word;
-		word-break: break-word;
+	.sub-table tfoot td {
+		border-bottom: none;
+		border-top: 1px solid var(--color-border-strong);
+		font-weight: 700;
 	}
 
-	.row-error {
-		color: var(--color-danger);
+	.sub-date {
+		color: var(--color-muted);
+		font-variant-numeric: tabular-nums;
+	}
+
+	.sub-item {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.no-txns {
+		font-size: 0.78rem;
+		margin: 0;
+	}
+
+	.standalone-error {
+		margin-top: 0;
+	}
+
+	.empty {
+		font-size: 0.85rem;
 	}
 </style>

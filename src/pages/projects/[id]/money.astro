@@ -1,6 +1,7 @@
 ---
 import BaseLayout from '../../../layouts/BaseLayout.astro';
 import ProjectShell from '../../../components/ProjectShell.astro';
+import MoneySummary from '../../../components/MoneySummary.svelte';
 import BomTable from '../../../components/BomTable.svelte';
 import TransactionsTable from '../../../components/TransactionsTable.svelte';
 import MemberContributionsTable from '../../../components/MemberContributionsTable.svelte';
@@ -83,9 +84,22 @@ const contributionMembers = (members ?? []).map((member) => ({
 	displayName: member.profiles.display_name,
 	contributionPercent: member.contribution_percent,
 }));
+
+// Same default MemberContributionsTable applies when a member has no explicit split
+// yet — computed here too so the summary strip and the table agree on first paint.
+const initialPercents = Object.fromEntries(
+	contributionMembers.map((member) => [member.id, member.contributionPercent ?? 100 / contributionMembers.length]),
+);
 ---
 <BaseLayout title={`${project.name} — Money`}>
 	<ProjectShell project={project} members={members ?? []} userRole={userRole} activePage="money">
+		<MoneySummary
+			client:load
+			currentUserId={user.id}
+			initialItems={bomItems ?? []}
+			initialTransactions={transactions ?? []}
+			initialPercents={initialPercents}
+		/>
 		<BomTable client:load projectId={project.id} initialItems={bomItems ?? []} canEdit={canEdit} />
 		<TransactionsTable
 			client:load
