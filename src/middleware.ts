@@ -19,9 +19,14 @@ export const onRequest = defineMiddleware(async (context, next) => {
     const { data, error} = await supabase.auth.getClaims();
 
     context.locals.supabase = supabase;
+    // display_name is written into user_metadata at signup (see api/auth/signup.ts),
+    // so the JWT already carries it — no profiles round trip just to name the user.
+    const displayName = data?.claims.user_metadata?.display_name;
+
     context.locals.user = error || !data ? null : {
         id: data.claims.sub,
         email: data.claims.email,
+        displayName: typeof displayName === 'string' && displayName ? displayName : undefined,
     };
 
     return next();

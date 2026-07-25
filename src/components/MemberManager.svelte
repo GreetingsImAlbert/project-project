@@ -18,6 +18,26 @@
 
 	let members = $state(initialMembers);
 
+	// Grouped by role instead of colour-coded — owner first, then editors, then
+	// viewers; unknown roles (if the check constraint grows) fall in after those.
+	const ROLE_ORDER = ['owner', 'editor', 'viewer'];
+	const ROLE_LABELS: Record<string, string> = { owner: 'Owner', editor: 'Editors', viewer: 'Viewers' };
+
+	function roleRank(role: string) {
+		const i = ROLE_ORDER.indexOf(role);
+		return i === -1 ? ROLE_ORDER.length : i;
+	}
+
+	const groups = $derived(
+		[...new Set(members.map((m) => m.role))]
+			.sort((a, b) => roleRank(a) - roleRank(b))
+			.map((role) => ({
+				role,
+				label: ROLE_LABELS[role] ?? role,
+				members: members.filter((m) => m.role === role),
+			})),
+	);
+
 	// user_id of the member whose edit panel is open, or null when closed.
 	let editingId = $state<string | null>(null);
 	let draftRole = $state('editor');
@@ -95,34 +115,57 @@
 	</div>
 {/snippet}
 
-<ul class="member-list">
-	{#each members as m (m.user_id)}
-		<li class={`member-row role-${m.role}`}>
-			<div class="member-header">
-				<span class="member-name">
-					{m.display_name} ({m.role}){#if m.is_auditor}<span class="auditor-badge"> · auditor</span>{/if}
-				</span>
-				{#if m.role !== 'owner'}
-					<button
-						type="button"
-						class="edit-icon"
-						aria-label={`Edit ${m.display_name}'s role`}
-						onclick={() => toggleEdit(m)}
-					>✎</button>
-				{/if}
-			</div>
+<div class="member-groups">
+	{#each groups as group (group.role)}
+		<div class="member-group">
+			<p class="group-label">{group.label}</p>
+			<ul class="member-list">
+				{#each group.members as m (m.user_id)}
+					<li class="member-row">
+						<div class="member-header">
+							<span class="member-name">
+								{m.display_name}{#if m.is_auditor}<span class="capability"> [auditor]</span>{/if}
+							</span>
+							{#if m.role !== 'owner'}
+								<button
+									type="button"
+									class="edit-icon"
+									aria-label={`Edit ${m.display_name}'s role`}
+									onclick={() => toggleEdit(m)}
+								>✎</button>
+							{/if}
+						</div>
 
-			{#if editingId === m.user_id}
-				{@render editPanel()}
-			{/if}
-		</li>
+						{#if editingId === m.user_id}
+							{@render editPanel()}
+						{/if}
+					</li>
+				{/each}
+			</ul>
+		</div>
 	{/each}
-</ul>
+</div>
 
 <style>
+	.member-groups {
+		margin: 0 0 var(--space-3);
+	}
+
+	.member-group + .member-group {
+		margin-top: var(--space-3);
+	}
+
+	.group-label {
+		margin: 0 0 var(--space-1);
+		font-size: 0.75rem;
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+		color: var(--color-muted);
+	}
+
 	.member-list {
 		list-style: none;
-		margin: 0 0 var(--space-3);
+		margin: 0;
 		padding: 0;
 		min-width: 0;
 	}
@@ -146,20 +189,8 @@
 		min-width: 0;
 	}
 
-	.member-row.role-owner {
-		color: var(--color-role-owner);
-	}
-
-	.member-row.role-editor {
-		color: var(--color-role-editor);
-	}
-
-	.member-row.role-viewer {
-		color: var(--color-role-viewer);
-	}
-
-	.auditor-badge {
-		color: var(--color-role-auditor);
+	.capability {
+		color: var(--color-muted);
 	}
 
 	.edit-icon {
@@ -202,7 +233,6 @@
 		display: flex;
 		align-items: flex-start;
 		gap: var(--space-2);
-		color: var(--color-role-auditor);
 	}
 
 	.auditor-field input {

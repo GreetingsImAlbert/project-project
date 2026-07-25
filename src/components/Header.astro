@@ -3,7 +3,7 @@ import ThemeToggle from './ThemeToggle.svelte';
 import CurrencyPicker from './CurrencyPicker.svelte';
 
 interface Props {
-	user: { id: string; email: string | undefined } | null;
+	user: { id: string; email: string | undefined; displayName: string | undefined } | null;
 }
 const { user } = Astro.props;
 const path = Astro.url.pathname;
@@ -32,13 +32,18 @@ function isActive(href: string) {
 					{navLinks.map((link) => (
 						<a href={link.href} class={isActive(link.href) ? 'active' : ''}>{link.label}</a>
 					))}
-					<form method="POST" action="/api/auth/logout">
-						<button type="submit" class="btn-plain">Log out</button>
-					</form>
 				</nav>
 			)}
 			<ThemeToggle client:load />
 			<CurrencyPicker client:load />
+			{user && (
+				<Fragment>
+					<span class="site-user" title={user.email}>{user.displayName ?? user.email}</span>
+					<form method="POST" action="/api/auth/logout">
+						<button type="submit" class="btn-plain">Log out</button>
+					</form>
+				</Fragment>
+			)}
 		</div>
 	</div>
 </header>
@@ -79,11 +84,15 @@ function isActive(href: string) {
 		font-size: 0.8rem;
 	}
 
+	/* One row: nav links, theme toggle, currency, username, log out. Every child
+	   is centered on the same horizontal centerline, so the text items and the
+	   taller control boxes line up regardless of their individual heights. */
 	.header-right {
 		display: flex;
 		align-items: center;
 		gap: var(--space-5);
 		flex-wrap: wrap;
+		min-width: 0;
 	}
 
 	.site-nav {
@@ -94,19 +103,32 @@ function isActive(href: string) {
 
 	.site-nav a {
 		border-bottom: 1px solid transparent;
+		line-height: 1.4;
 	}
 
 	.site-nav a.active {
 		border-bottom-color: currentColor;
 	}
 
-	.site-nav form {
+	.site-user {
+		flex: 0 1 auto;
+		min-width: 0;
+		max-width: 28ch;
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+		font-size: 0.8rem;
+		line-height: 1.4;
+		color: var(--color-muted);
+	}
+
+	.header-right form {
 		margin: 0;
 	}
 
-	.site-nav button {
-		padding: var(--space-1) var(--space-3);
-		font-size: 0.85rem;
+	.header-right form button {
+		padding: var(--space-1) var(--space-2);
+		font-size: 0.8rem;
 	}
 
 	@media (max-width: 640px) {

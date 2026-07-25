@@ -13,13 +13,7 @@ if (!user) {
 	return Astro.redirect('/login');
 }
 
-const { data: profile } = await Astro.locals.supabase
-	.from('profiles')
-	.select('display_name')
-	.eq('id', user.id)
-	.single();
-
-const displayName = profile?.display_name;
+const displayName = user.displayName;
 
 const admin = getSupabaseAdmin(env);
 const { totalBytes, truncated } = await getUserStorageBytes(admin, user.id);
