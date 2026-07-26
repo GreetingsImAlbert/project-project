@@ -23,6 +23,9 @@
 	// Reported by the panel. The modal centres itself in what's left of the viewport, so
 	// opening (or dragging) a preview slides it clear instead of hiding under it.
 	let panelWidth = $state(0);
+	// Also reported by the panel: true while its editor holds unsaved changes. The modal
+	// closes the panel by unmounting it, so every close path here has to ask first.
+	let previewDirty = $state(false);
 
 	async function openModal() {
 		open = true;
@@ -46,9 +49,21 @@
 	}
 
 	function closeModal() {
+		if (previewDirty && !confirm('Discard your unsaved changes to the open file?')) return;
+
 		open = false;
 		// The panel is fixed to the viewport, so it would outlive the modal it was opened from.
 		viewingFile = null;
+	}
+
+	function handleFileSaved(fileId: string, sizeBytes: number) {
+		const saved = files.find((f) => f.id === fileId);
+		if (!saved) return;
+
+		// Every file listed here is one this user uploaded, so the whole delta lands on
+		// their own usage figure.
+		adjustStorageUsage(sizeBytes - (saved.size_bytes ?? 0));
+		files = files.map((f) => (f.id === fileId ? { ...f, size_bytes: sizeBytes } : f));
 	}
 
 	async function handleDelete(fileId: string) {
@@ -78,6 +93,9 @@
 		// an open preview. The panel's own Escape handling is off for the same reason.
 		function onKeydown(e: KeyboardEvent) {
 			if (!open || e.key !== 'Escape') return;
+			// An open editor with unsaved changes swallows Escape entirely, exactly as it
+			// does in the panel itself — the buffer leaves through Save or Cancel only.
+			if (previewDirty) return;
 			if (viewingFile) viewingFile = null;
 			else closeModal();
 		}
@@ -166,6 +184,12 @@
 	zIndex={110}
 	closeOnEscape={false}
 	onWidthChange={(w) => (panelWidth = w)}
+	onDirtyChange={(d) => (previewDirty = d)}
+	onSaved={handleFileSaved}
+	onFileRestore={(fileId) => {
+		const previous = files.find((f) => f.id === fileId);
+		if (previous) viewingFile = previous;
+	}}
 	onClose={() => (viewingFile = null)}
 />
 

@@ -196,6 +196,18 @@
 		}
 	}
 
+	function handleFileSaved(fileId: string, sizeBytes: number) {
+		const saved = files.find((f) => f.id === fileId);
+		if (!saved) return;
+
+		const delta = sizeBytes - (saved.size_bytes ?? 0);
+		files = files.map((f) => (f.id === fileId ? { ...f, size_bytes: sizeBytes } : f));
+		adjustProjectStorage(delta);
+		// An edit is charged to whoever uploaded the file (that's the column the quota
+		// sums by), so it only moves the current viewer's own headroom when it's theirs.
+		if (saved.uploaded_by === currentUserId && availableBytes !== null) availableBytes -= delta;
+	}
+
 	async function handleCreateFolder(e: SubmitEvent) {
 		e.preventDefault();
 		const form = e.currentTarget as HTMLFormElement;
@@ -376,7 +388,15 @@
 />
 {#if loading}<p class="muted">Loading…</p>{/if}
 
-<FileViewerPanel file={viewingFile} onClose={() => (viewingFile = null)} />
+<FileViewerPanel
+	file={viewingFile}
+	onClose={() => (viewingFile = null)}
+	onSaved={handleFileSaved}
+	onFileRestore={(fileId) => {
+		const previous = files.find((f) => f.id === fileId);
+		if (previous) viewingFile = previous;
+	}}
+/>
 
 <style>
 	.browser-header {
