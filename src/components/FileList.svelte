@@ -55,6 +55,23 @@
 		openActionsId = openActionsId === fileId ? null : fileId;
 	}
 
+	function handleWindowClick(e: MouseEvent) {
+		if (openActionsId === null) return;
+
+		// The whole composed path, not just e.target: a button inside the popover can already
+		// be detached by the time the click reaches the window (Delete swaps to 'Deleting…',
+		// Move/Copy close the popover outright), and a detached node has no ancestors left to
+		// match against. The path is fixed when the event is dispatched, so it still names the
+		// popover. The marker is on the toggle too — otherwise the click that opens the popover
+		// would immediately close it again. Folder popovers use their own marker so clicking
+		// one closes the other.
+		const insideActions = e
+			.composedPath()
+			.some((node) => node instanceof Element && node.hasAttribute('data-file-actions'));
+
+		if (!insideActions) openActionsId = null;
+	}
+
 	function openModal(file: FileRow, mode: 'move' | 'copy') {
 		modalFile = { file, mode };
 		modalError = null;
@@ -117,7 +134,7 @@
 </script>
 
 {#snippet actionsPanel(file: FileRow)}
-	<div class="actions-panel" transition:slide={{ duration: 150 }}>
+	<div class="actions-panel" data-file-actions transition:slide={{ duration: 150 }}>
 		<button type="button" class="btn-plain" onclick={() => openModal(file, 'move')}>Move</button>
 		<button type="button" class="btn-plain" onclick={() => openModal(file, 'copy')}>Copy</button>
 		<button type="button" class="btn-danger" onclick={() => handleDelete(file.id)} disabled={deletingId === file.id}>
@@ -125,6 +142,8 @@
 		</button>
 	</div>
 {/snippet}
+
+<svelte:window onclick={handleWindowClick} />
 
 {#if !loading && files.length === 0}
 	<p class="muted">No files here.</p>
@@ -142,7 +161,7 @@
 				</button>
 
 				{#if canEdit}
-					<button type="button" class="grid-actions-toggle" aria-label="Actions" onclick={() => toggleActions(file.id)}>
+					<button type="button" class="grid-actions-toggle" data-file-actions aria-label="Actions" onclick={() => toggleActions(file.id)}>
 						{openActionsId === file.id ? '▴' : '▾'}
 					</button>
 				{/if}
@@ -170,7 +189,7 @@
 					</div>
 
 					{#if canEdit}
-						<button type="button" class="btn-plain actions-toggle" onclick={() => toggleActions(file.id)}>
+						<button type="button" class="btn-plain actions-toggle" data-file-actions onclick={() => toggleActions(file.id)}>
 							Actions {openActionsId === file.id ? '▴' : '▾'}
 						</button>
 					{/if}

@@ -71,6 +71,20 @@
 		openFolderActionsId = openFolderActionsId === folderId ? null : folderId;
 	}
 
+	function handleWindowClick(e: MouseEvent) {
+		if (openFolderActionsId === null) return;
+
+		// See FileList's copy of this: the composed path (fixed at dispatch) survives the
+		// popover's own buttons detaching mid-click, and the marker sits on the toggle as
+		// well so opening the popover doesn't immediately close it. Files carry their own
+		// marker, so clicking a file's Actions toggle closes this one.
+		const insideActions = e
+			.composedPath()
+			.some((node) => node instanceof Element && node.hasAttribute('data-folder-actions'));
+
+		if (!insideActions) openFolderActionsId = null;
+	}
+
 	let folderById = $derived(new Map(allFolders.map((f) => [f.id, f])));
 
 	let subfolders = $derived(
@@ -258,6 +272,8 @@
 	});
 </script>
 
+<svelte:window onclick={handleWindowClick} />
+
 <div class="browser-meta">
 	<ProjectStorageUsed initialUsedBytes={initialStorageBytes} initialFailed={initialStorageFailed} />
 
@@ -337,13 +353,13 @@
 					</a>
 
 					{#if canEdit}
-						<button type="button" class="grid-actions-toggle" aria-label="Actions" onclick={() => toggleFolderActions(folder.id)}>
+						<button type="button" class="grid-actions-toggle" data-folder-actions aria-label="Actions" onclick={() => toggleFolderActions(folder.id)}>
 							{openFolderActionsId === folder.id ? '▴' : '▾'}
 						</button>
 					{/if}
 
 					{#if canEdit && openFolderActionsId === folder.id}
-						<div class="actions-panel" transition:slide={{ duration: 150 }}>
+						<div class="actions-panel" data-folder-actions transition:slide={{ duration: 150 }}>
 							<button type="button" class="btn-danger" onclick={() => handleDeleteFolder(folder.id)} disabled={deletingFolderId === folder.id}>
 								{deletingFolderId === folder.id ? 'Deleting…' : 'Delete'}
 							</button>
