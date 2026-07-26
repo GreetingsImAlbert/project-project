@@ -8,7 +8,27 @@
 		filename: string;
 	}
 
-	let { file, onClose }: { file: ViewerFile | null; onClose: () => void } = $props();
+	let {
+		file,
+		onClose,
+		zIndex = 50,
+		closeOnEscape = true,
+		onWidthChange,
+	}: {
+		file: ViewerFile | null;
+		onClose: () => void;
+		// Raised when the panel opens over something that already has its own overlay
+		// (MyFilesModal's backdrop sits at 100).
+		zIndex?: number;
+		// Off when the host already owns Escape: two window listeners both firing on the
+		// same keydown would close the panel and its host in one press, and which of the
+		// two runs first isn't something either component can rely on.
+		closeOnEscape?: boolean;
+		// How much of the right edge the panel is covering right now (0 when closed), so a
+		// host that overlays content of its own can keep it clear of the panel. Fires on
+		// open, on close, and continuously while the handle is dragged.
+		onWidthChange?: (width: number) => void;
+	} = $props();
 
 	const MIN_WIDTH = 280;
 
@@ -91,6 +111,10 @@
 			});
 	});
 
+	$effect(() => {
+		onWidthChange?.(file && width !== null ? width : 0);
+	});
+
 	async function download() {
 		if (!file) return;
 
@@ -135,7 +159,7 @@
 	}
 
 	function onWindowKeydown(e: KeyboardEvent) {
-		if (e.key === 'Escape' && file) onClose();
+		if (e.key === 'Escape' && file && closeOnEscape) onClose();
 	}
 
 	// A width dragged out on a wide window would overhang a narrower one.
@@ -150,7 +174,7 @@
 	{@const parts = splitFilename(file.filename)}
 	<aside
 		class="viewer"
-		style={`width: ${width ?? 480}px`}
+		style={`width: ${width ?? 480}px; z-index: ${zIndex}`}
 		transition:fly={{ x: width ?? 480, duration: 180 }}
 		aria-label={`Preview of ${file.filename}`}
 	>
@@ -213,7 +237,7 @@
 		top: 0;
 		right: 0;
 		bottom: 0;
-		z-index: 50;
+		/* z-index comes in inline, from the zIndex prop. */
 		display: flex;
 		flex-direction: column;
 		max-width: 100vw;
