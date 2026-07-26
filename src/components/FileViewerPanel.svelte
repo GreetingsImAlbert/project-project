@@ -38,6 +38,7 @@
 	let width = $state<number | null>(null);
 	let sized = false;
 	let resizing = $state(false);
+	let panelEl = $state<HTMLElement | null>(null);
 
 	let content = $state<string | null>(null);
 	let error = $state<string | null>(null);
@@ -162,17 +163,57 @@
 		if (e.key === 'Escape' && file && closeOnEscape) onClose();
 	}
 
+	// Where the press that produced the click started, and what was open at the time.
+	// Both are read by onWindowClick below; see the reasoning there.
+	let pressOrigin: EventTarget | null = null;
+	let fileAtPress: ViewerFile | null = null;
+
+	function onWindowPointerDown(e: PointerEvent) {
+		pressOrigin = e.target;
+		fileAtPress = file;
+	}
+
+	function onWindowClick(e: MouseEvent) {
+		// Both press values are consumed here, not just read: a keyboard-activated click has
+		// no pointerdown of its own, and stale values from the last real press would make it
+		// look like a click on some other element, on some other file.
+		const origin = pressOrigin ?? e.target;
+		const openAtPress = fileAtPress;
+		pressOrigin = null;
+		fileAtPress = null;
+
+		if (!file) return;
+
+		// The click that opened this file arrives here too — it bubbles to the window after
+		// the list's own handler has already swapped `file` — and closing on it would make
+		// files in the list un-openable.
+		if (file.id !== openAtPress?.id) return;
+
+		// The press's origin, not the click's target: a resize drag that starts on the handle
+		// and ends out over the page reads as a click on their common ancestor, and selecting
+		// text in the panel can end anywhere at all.
+		if (origin instanceof Node && panelEl?.contains(origin)) return;
+
+		onClose();
+	}
+
 	// A width dragged out on a wide window would overhang a narrower one.
 	function onWindowResize() {
 		if (width !== null) width = clampWidth(width);
 	}
 </script>
 
-<svelte:window onkeydown={onWindowKeydown} onresize={onWindowResize} />
+<svelte:window
+	onkeydown={onWindowKeydown}
+	onresize={onWindowResize}
+	onpointerdown={onWindowPointerDown}
+	onclick={onWindowClick}
+/>
 
 {#if file}
 	{@const parts = splitFilename(file.filename)}
 	<aside
+		bind:this={panelEl}
 		class="viewer"
 		style={`width: ${width ?? 480}px; z-index: ${zIndex}`}
 		transition:fly={{ x: width ?? 480, duration: 180 }}
