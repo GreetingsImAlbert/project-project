@@ -554,6 +554,17 @@ thead th {
 		width: 100%;
 	}
 
+	/* iOS Safari zooms the whole page in when a focused control's text is under 16px,
+	   and never zooms back out — so body's 15px turns every tap on an input into a
+	   layout that looks broken until the user pinches out again. Controls with their
+	   own smaller font-size (the money panels) keep it: those selectors carry a class
+	   and outrank this one regardless of order. */
+	input,
+	select,
+	textarea {
+		font-size: 16px;
+	}
+
 	th,
 	td {
 		padding: var(--space-2);

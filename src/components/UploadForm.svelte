@@ -260,4 +260,21 @@
 		color: var(--color-danger);
 	}
 
+	/* Matches FileBrowser's .create-form mobile block — global.css columns every form
+	   below 640px, and this panel has to keep landing on the same two lines the New
+	   folder / New file panels do (full-width control, button row under it). */
+	@media (max-width: 640px) {
+		.upload-form form {
+			flex-direction: row;
+		}
+
+		.dropzone {
+			flex: 1 1 100%;
+			width: 100%;
+		}
+
+		.upload-form form button[type='submit'] {
+			flex: 1 1 0;
+		}
+	}
 </style>

@@ -391,43 +391,48 @@
 <svelte:window onclick={handleWindowClick} />
 
 <div class="browser-meta">
-	<ProjectStorageUsed initialUsedBytes={initialStorageBytes} initialFailed={initialStorageFailed} />
+	<!-- Figure + its icons are grouped so that below 640px each pair collapses to one
+	     full-width row of 'label ......... icons' instead of the four parts wrapping
+	     independently into a staircase. -->
+	<div class="view-meta">
+		<ProjectStorageUsed initialUsedBytes={initialStorageBytes} initialFailed={initialStorageFailed} />
 
-	<div class="view-toggle">
-		<button
-			type="button"
-			class="btn-plain"
-			class:active={viewMode === 'grid'}
-			aria-pressed={viewMode === 'grid'}
-			aria-label="Grid view"
-			title="Grid view"
-			onclick={() => setViewMode('grid')}
-		>
-			<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-				<rect x="1" y="1" width="6" height="6" rx="1" />
-				<rect x="9" y="1" width="6" height="6" rx="1" />
-				<rect x="1" y="9" width="6" height="6" rx="1" />
-				<rect x="9" y="9" width="6" height="6" rx="1" />
-			</svg>
-		</button>
-		<button
-			type="button"
-			class="btn-plain"
-			class:active={viewMode === 'list'}
-			aria-pressed={viewMode === 'list'}
-			aria-label="List view"
-			title="List view"
-			onclick={() => setViewMode('list')}
-		>
-			<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-				<rect x="1" y="2" width="2" height="2" rx="0.5" />
-				<rect x="5" y="2" width="10" height="2" rx="1" />
-				<rect x="1" y="7" width="2" height="2" rx="0.5" />
-				<rect x="5" y="7" width="10" height="2" rx="1" />
-				<rect x="1" y="12" width="2" height="2" rx="0.5" />
-				<rect x="5" y="12" width="10" height="2" rx="1" />
-			</svg>
-		</button>
+		<div class="view-toggle">
+			<button
+				type="button"
+				class="btn-plain"
+				class:active={viewMode === 'grid'}
+				aria-pressed={viewMode === 'grid'}
+				aria-label="Grid view"
+				title="Grid view"
+				onclick={() => setViewMode('grid')}
+			>
+				<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+					<rect x="1" y="1" width="6" height="6" rx="1" />
+					<rect x="9" y="1" width="6" height="6" rx="1" />
+					<rect x="1" y="9" width="6" height="6" rx="1" />
+					<rect x="9" y="9" width="6" height="6" rx="1" />
+				</svg>
+			</button>
+			<button
+				type="button"
+				class="btn-plain"
+				class:active={viewMode === 'list'}
+				aria-pressed={viewMode === 'list'}
+				aria-label="List view"
+				title="List view"
+				onclick={() => setViewMode('list')}
+			>
+				<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+					<rect x="1" y="2" width="2" height="2" rx="0.5" />
+					<rect x="5" y="2" width="10" height="2" rx="1" />
+					<rect x="1" y="7" width="2" height="2" rx="0.5" />
+					<rect x="5" y="7" width="10" height="2" rx="1" />
+					<rect x="1" y="12" width="2" height="2" rx="0.5" />
+					<rect x="5" y="12" width="10" height="2" rx="1" />
+				</svg>
+			</button>
+		</div>
 	</div>
 
 	{#if canEdit}
@@ -687,23 +692,6 @@
 		box-sizing: border-box;
 	}
 
-	@media (max-width: 640px) {
-		.browser-header {
-			flex-direction: column;
-			align-items: stretch;
-			margin-bottom: var(--space-5);
-		}
-
-		.breadcrumb-group {
-			flex-basis: auto;
-		}
-
-		/* Once browser-meta wraps, there's nothing to the right to line up with. */
-		.create-meta {
-			margin-left: 0;
-		}
-	}
-
 	.browser-meta {
 		display: flex;
 		flex-wrap: wrap;
@@ -714,6 +702,16 @@
 
 	.browser-meta :global(p) {
 		margin: 0;
+	}
+
+	/* Mirrors .create-meta's shape so the two halves of the meta row are structurally the
+	   same thing: a figure and the icon group it belongs to. */
+	.view-meta {
+		display: flex;
+		align-items: center;
+		gap: var(--space-3);
+		flex: 0 1 auto;
+		min-width: 0;
 	}
 
 	.view-toggle {
@@ -876,5 +874,51 @@
 
 	.row-error {
 		color: var(--color-danger);
+	}
+
+	/* Keep this block last. Media queries add no specificity, so an override here only
+	   beats the base rule it targets by coming later in the source — which is exactly
+	   what the old placement (above .create-meta) got wrong, leaving the Available:
+	   figure and the create icons pinned to the right edge on their own wrapped line. */
+	@media (max-width: 640px) {
+		.browser-meta {
+			flex-direction: column;
+			align-items: stretch;
+			gap: var(--space-2);
+		}
+
+		/* One full-width row each, figure left and icons right, instead of four parts
+		   wrapping into a staircase. */
+		.view-meta,
+		.create-meta {
+			justify-content: space-between;
+			margin-left: 0;
+		}
+
+		.browser-header {
+			flex-direction: column;
+			align-items: stretch;
+			margin-bottom: var(--space-5);
+		}
+
+		.breadcrumb-group {
+			flex-basis: auto;
+		}
+
+		/* global.css turns every form into a column below 640px. These panels are the
+		   exception: the input wants the full width, but its buttons belong beside each
+		   other on the line under it, not stacked and centre-aligned one per row. */
+		.create-form {
+			flex-direction: row;
+		}
+
+		.create-form input[type='text'] {
+			flex: 1 1 100%;
+			width: 100%;
+		}
+
+		.create-form button {
+			flex: 1 1 0;
+		}
 	}
 </style>
