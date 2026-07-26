@@ -14,6 +14,7 @@
 		onClose,
 		zIndex = 50,
 		closeOnEscape = true,
+		editOnOpen = false,
 		onWidthChange,
 		onDirtyChange,
 		onFileRestore,
@@ -28,6 +29,11 @@
 		// same keydown would close the panel and its host in one press, and which of the
 		// two runs first isn't something either component can rely on.
 		closeOnEscape?: boolean;
+		// Drop straight into the editor once this file's content has loaded, instead of
+		// showing it read-only first. Set by hosts that just created the file, where there
+		// is nothing to read yet and Edit is the only reason the panel opened. Read when the
+		// file id changes, so it can't turn a later open into an edit on its own.
+		editOnOpen?: boolean;
 		// How much of the right edge the panel is covering right now (0 when closed), so a
 		// host that overlays content of its own can keep it clear of the panel. Fires on
 		// open, on close, and continuously while the handle is dragged.
@@ -86,6 +92,9 @@
 	// from can't paint itself into the panel.
 	let requestSeq = 0;
 	let loadedId: string | null = null;
+	// Latched from editOnOpen at the moment a new file arrives, and spent by the load that
+	// follows — the prop may well have gone back to false by the time the content lands.
+	let autoEditPending = false;
 
 	function clampWidth(px: number): number {
 		const max = Math.max(MIN_WIDTH, window.innerWidth - 80);
@@ -133,6 +142,13 @@
 					etag = data.etag;
 				}
 				loading = false;
+
+				// Spent whether or not it can be honoured — a file the server won't let this
+				// user edit shouldn't stay armed for the next one that loads.
+				if (autoEditPending) {
+					autoEditPending = false;
+					if (content !== null && canEdit) startEditing();
+				}
 			})
 			.catch(() => {
 				if (seq !== requestSeq) return;
@@ -146,6 +162,7 @@
 
 		if (!current) {
 			loadedId = null;
+			autoEditPending = false;
 			// Every path that closes the panel has already asked about an unsaved buffer, so
 			// by here it's been abandoned on purpose — and leaving `dirty` true would keep
 			// the host's own Escape/close paths blocked long after the panel was gone.
@@ -172,6 +189,7 @@
 
 		loadedId = current.id;
 		resetEditor();
+		autoEditPending = editOnOpen;
 		loadContent(current);
 	});
 

@@ -141,14 +141,6 @@
 </script>
 
 <div class="upload-form">
-	{#if availableBytes === null}
-		<p class="available-space storage-error">
-			Available: unavailable
-			<button type="button" class="reload-btn" onclick={() => location.reload()}>⟳ Reload</button>
-		</p>
-	{:else}
-		<p class="muted available-space">Available: {formatBytes(Math.max(availableBytes, 0))}</p>
-	{/if}
 	<form onsubmit={handleSubmit}>
 		<input type="file" bind:this={fileInput} onchange={handleFileInputChange} class="visually-hidden" tabindex="-1" disabled={uploading} />
 		<div
@@ -170,16 +162,24 @@
 				<button type="button" class="clear-btn" aria-label="Remove selected file" onclick={clearSelectedFile} disabled={uploading}>×</button>
 			{/if}
 		</div>
-		<button type="submit" disabled={uploading || !selectedFile}>Upload</button>
+		<div class="upload-row">
+			<button type="submit" disabled={uploading || !selectedFile}>Upload</button>
+			<!-- Below the dropzone, not floated above it: the dropzone has to start on the
+			     same line as the breadcrumbs, so there's no room overhead any more. -->
+			{#if availableBytes === null}
+				<span class="available-space storage-error">
+					Available: unavailable
+					<button type="button" class="reload-btn" onclick={() => location.reload()}>⟳ Reload</button>
+				</span>
+			{:else}
+				<span class="muted available-space">Available: {formatBytes(Math.max(availableBytes, 0))}</span>
+			{/if}
+		</div>
 	</form>
 	{#if status}<p class="muted">{status}</p>{/if}
 </div>
 
 <style>
-	.upload-form {
-		position: relative;
-	}
-
 	.visually-hidden {
 		position: absolute;
 		width: 1px;
@@ -239,11 +239,15 @@
 		color: var(--color-danger);
 	}
 
+	.upload-row {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--space-2);
+		margin-top: var(--space-2);
+	}
+
 	.available-space {
-		position: absolute;
-		bottom: 100%;
-		left: 0;
-		margin: 0 0 var(--space-1);
 		font-size: 0.8rem;
 		white-space: nowrap;
 	}
