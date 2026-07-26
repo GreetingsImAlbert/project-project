@@ -284,6 +284,9 @@
 		max-width: 100vw;
 		background: var(--color-bg);
 		border-left: 1px solid var(--color-border-strong);
+		/* Set, not inherited: the panel is fixed, but `color` still comes down from
+		   whatever mounted it, and MyFilesModal's host line is muted. */
+		color: var(--color-fg);
 	}
 
 	.resize-handle {
