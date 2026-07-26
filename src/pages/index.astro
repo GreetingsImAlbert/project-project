@@ -16,11 +16,11 @@ if (!user) {
 const displayName = user.displayName;
 
 const admin = getSupabaseAdmin(env);
-const { totalBytes, truncated } = await getUserStorageBytes(admin, user.id);
+const { totalBytes, failed } = await getUserStorageBytes(admin, user.id);
 ---
 <BaseLayout title="Dashboard">
 	<h1>Dashboard</h1>
 	<p class="muted">Welcome, {displayName ?? user.email}</p>
 	<p><a href="/projects">Go to Projects →</a></p>
-	<StorageUsageBar usedBytes={totalBytes} capBytes={MAX_USER_STORAGE_BYTES} failed={truncated} />
+	<StorageUsageBar usedBytes={totalBytes} capBytes={MAX_USER_STORAGE_BYTES} failed={failed} />
 </BaseLayout>

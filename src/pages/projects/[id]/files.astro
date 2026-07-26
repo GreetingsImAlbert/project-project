@@ -14,39 +14,7 @@ if (!user) {
 }
 
 const { id } = Astro.params;
-
-const { data: project, error } = await Astro.locals.supabase
-	.from('projects')
-	.select('id, name, description, owner_id')
-	.eq('id', id)
-	.single();
-
-if (error || !project) {
-	return new Response('Project not found', { status: 404 });
-}
-
-const { data: members } = await Astro.locals.supabase
-	.from('project_members')
-	.select('role, is_auditor, user_id, profiles(display_name, email)')
-	.eq('project_id', id)
-	.overrideTypes<{ role: string; is_auditor: boolean; user_id: string; profiles: { display_name: string; email: string } }[]>();
-
-const userRole = members?.find(member => member.user_id === user.id)?.role;
-// Files edit rights stay with the base role (owner/editor); auditor is Money-only.
-const canEdit = userRole === 'owner' || userRole === 'editor';
-
 const currentFolderId = Astro.url.searchParams.get('folder');
-
-const { data: allFolders } = await Astro.locals.supabase
-	.from('folders')
-	.select('id, name, parent_folder_id')
-	.eq('project_id', id);
-
-const folderById = new Map((allFolders ?? []).map((f) => [f.id, f]));
-
-if (currentFolderId && !folderById.has(currentFolderId)) {
-	return new Response('Folder not found', { status: 404 });
-}
 
 let filesQuery = Astro.locals.supabase
 	.from('files')
@@ -56,14 +24,56 @@ let filesQuery = Astro.locals.supabase
 
 filesQuery = currentFolderId ? filesQuery.eq('folder_id', currentFolderId) : filesQuery.is('folder_id', null);
 
-const { data: files } = await filesQuery
-	.overrideTypes<{ id: string; filename: string; size_bytes: number | null; mime_type: string | null; created_at: string; uploaded_by: string; profiles: { display_name: string } }[]>()
-
 const admin = getSupabaseAdmin(env);
-const { totalBytes, truncated: userStorageFailed } = await getUserStorageBytes(admin, user.id);
-const availableBytes = userStorageFailed ? null : MAX_USER_STORAGE_BYTES - totalBytes;
 
-const { totalBytes: projectStorageBytes, failed: projectStorageFailed } = await getProjectStorageBytes(Astro.locals.supabase, id!);
+// The Worker sits far from Postgres, so every sequential query costs a full
+// round trip and the browser sees nothing until the last one lands. None of
+// these actually depend on each other — RLS scopes each one to the caller on
+// its own, and the two 404 checks below only need the results, not the ordering
+// (a bogus project/folder id just makes the other queries come back empty).
+const [
+	{ data: project, error },
+	{ data: members },
+	{ data: allFolders },
+	{ data: files },
+	{ totalBytes, failed: userStorageFailed },
+	{ totalBytes: projectStorageBytes, failed: projectStorageFailed },
+] = await Promise.all([
+	Astro.locals.supabase
+		.from('projects')
+		.select('id, name, description, owner_id')
+		.eq('id', id)
+		.single(),
+	Astro.locals.supabase
+		.from('project_members')
+		.select('role, is_auditor, user_id, profiles(display_name, email)')
+		.eq('project_id', id)
+		.overrideTypes<{ role: string; is_auditor: boolean; user_id: string; profiles: { display_name: string; email: string } }[]>(),
+	Astro.locals.supabase
+		.from('folders')
+		.select('id, name, parent_folder_id')
+		.eq('project_id', id),
+	filesQuery
+		.overrideTypes<{ id: string; filename: string; size_bytes: number | null; mime_type: string | null; created_at: string; uploaded_by: string; profiles: { display_name: string } }[]>(),
+	getUserStorageBytes(admin, user.id),
+	getProjectStorageBytes(Astro.locals.supabase, id!),
+]);
+
+if (error || !project) {
+	return new Response('Project not found', { status: 404 });
+}
+
+const folderById = new Map((allFolders ?? []).map((f) => [f.id, f]));
+
+if (currentFolderId && !folderById.has(currentFolderId)) {
+	return new Response('Folder not found', { status: 404 });
+}
+
+const userRole = members?.find(member => member.user_id === user.id)?.role;
+// Files edit rights stay with the base role (owner/editor); auditor is Money-only.
+const canEdit = userRole === 'owner' || userRole === 'editor';
+
+const availableBytes = userStorageFailed ? null : MAX_USER_STORAGE_BYTES - totalBytes;
 
 const storedViewMode = Astro.cookies.get('p2-file-view-mode')?.value;
 const initialViewMode = storedViewMode === 'list' ? 'list' : 'grid';

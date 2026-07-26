@@ -17,35 +17,6 @@ if (!user) {
 
 const { id } = Astro.params;
 
-const { data: project, error } = await Astro.locals.supabase
-	.from('projects')
-	.select('id, name, description, owner_id')
-	.eq('id', id)
-	.single();
-
-if (error || !project) {
-	return new Response('Project not found', { status: 404 });
-}
-
-const { data: members } = await Astro.locals.supabase
-	.from('project_members')
-	.select('role, is_auditor, user_id, contribution_percent, profiles(display_name, email)')
-	.eq('project_id', id)
-	.overrideTypes<
-		{ role: string; is_auditor: boolean; user_id: string; contribution_percent: number | null; profiles: { display_name: string; email: string } }[]
-	>();
-
-const currentMember = members?.find(member => member.user_id === user.id);
-const userRole = currentMember?.role;
-// Money-page edit rights = owner OR auditor (a plain editor cannot edit Money).
-const canEdit = currentMember?.role === 'owner' || currentMember?.is_auditor === true;
-
-const { data: bomItems } = await Astro.locals.supabase
-	.from('bom_items')
-	.select('id, part_name, category, description, quantity, unit, unit_cost, supplier, item_url, total_cost')
-	.eq('project_id', id)
-	.order('created_at', { ascending: true });
-
 interface TransactionRow {
 	id: string;
 	transaction_date: string;
@@ -63,16 +34,47 @@ interface TransactionRow {
 	profiles: { display_name: string } | null;
 }
 
-// created_at breaks the tie: every line of a bulk transaction carries its parent's
-// date, so ordering by date alone leaves a purchase's own breakdown in whatever order
-// Postgres happens to return it in.
-const { data: transactions } = await Astro.locals.supabase
-	.from('transactions')
-	.select(TRANSACTION_COLUMNS)
-	.eq('project_id', id)
-	.order('transaction_date', { ascending: true })
-	.order('created_at', { ascending: true })
-	.overrideTypes<TransactionRow[]>();
+// All four go out at once: the Worker is a long trip from Postgres and none of
+// them depend on the one before it (RLS scopes each to the caller independently),
+// so the 404 check just moves below the await.
+const [{ data: project, error }, { data: members }, { data: bomItems }, { data: transactions }] = await Promise.all([
+	Astro.locals.supabase
+		.from('projects')
+		.select('id, name, description, owner_id')
+		.eq('id', id)
+		.single(),
+	Astro.locals.supabase
+		.from('project_members')
+		.select('role, is_auditor, user_id, contribution_percent, profiles(display_name, email)')
+		.eq('project_id', id)
+		.overrideTypes<
+			{ role: string; is_auditor: boolean; user_id: string; contribution_percent: number | null; profiles: { display_name: string; email: string } }[]
+		>(),
+	Astro.locals.supabase
+		.from('bom_items')
+		.select('id, part_name, category, description, quantity, unit, unit_cost, supplier, item_url, total_cost')
+		.eq('project_id', id)
+		.order('created_at', { ascending: true }),
+	// created_at breaks the tie: every line of a bulk transaction carries its parent's
+	// date, so ordering by date alone leaves a purchase's own breakdown in whatever order
+	// Postgres happens to return it in.
+	Astro.locals.supabase
+		.from('transactions')
+		.select(TRANSACTION_COLUMNS)
+		.eq('project_id', id)
+		.order('transaction_date', { ascending: true })
+		.order('created_at', { ascending: true })
+		.overrideTypes<TransactionRow[]>(),
+]);
+
+if (error || !project) {
+	return new Response('Project not found', { status: 404 });
+}
+
+const currentMember = members?.find(member => member.user_id === user.id);
+const userRole = currentMember?.role;
+// Money-page edit rights = owner OR auditor (a plain editor cannot edit Money).
+const canEdit = currentMember?.role === 'owner' || currentMember?.is_auditor === true;
 
 const memberOptions = (members ?? []).map((member) => ({
 	id: member.user_id,

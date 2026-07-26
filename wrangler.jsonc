@@ -4,6 +4,12 @@
 	"compatibility_flags": ["global_fetch_strictly_public", "nodejs_compat"],
 	"name": "p2",
 	"main": "@astrojs/cloudflare/entrypoints/server",
+	// Every SSR page load is a chain of Supabase round trips, and Postgres sits in
+	// one fixed region while the Worker would otherwise run at the edge nearest the
+	// user — so each hop pays a full edge->region trip. Smart Placement runs the
+	// Worker near the database instead: N long hops become N short ones plus a
+	// single long user->Worker trip. Production-only, no effect under wrangler dev.
+	"placement": { "mode": "smart" },
 	"assets": {
 		"directory": "./dist",
 		"binding": "ASSETS"

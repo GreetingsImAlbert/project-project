@@ -15,33 +15,36 @@ if (!user) {
 
 const { id } = Astro.params;
 
-const { data: project, error } = await Astro.locals.supabase
-	.from('projects')
-	.select('id, name, description, owner_id')
-	.eq('id', id)
-	.single();
+// Fired together rather than in sequence: the Worker is a long trip from
+// Postgres and none of these depend on the one before it (RLS scopes each to
+// the caller independently), so the 404 check just moves below the await.
+const [{ data: project, error }, { data: members }, { data: bomItems }, { totalBytes: projectStorageBytes, failed: projectStorageFailed }] =
+	await Promise.all([
+		Astro.locals.supabase
+			.from('projects')
+			.select('id, name, description, owner_id')
+			.eq('id', id)
+			.single(),
+		Astro.locals.supabase
+			.from('project_members')
+			.select('role, is_auditor, user_id, profiles(display_name, email)')
+			.eq('project_id', id)
+			.overrideTypes<{ role: string; is_auditor: boolean; user_id: string; profiles: { display_name: string; email: string } }[]>(),
+		Astro.locals.supabase
+			.from('bom_items')
+			.select('total_cost')
+			.eq('project_id', id),
+		getProjectStorageBytes(Astro.locals.supabase, id!),
+	]);
 
 if (error || !project) {
 	return new Response('Project not found', { status: 404 });
 }
 
-const { data: members } = await Astro.locals.supabase
-	.from('project_members')
-	.select('role, is_auditor, user_id, profiles(display_name, email)')
-	.eq('project_id', id)
-	.overrideTypes<{ role: string; is_auditor: boolean; user_id: string; profiles: { display_name: string; email: string } }[]>();
-
 const userRole = members?.find(member => member.user_id === user.id)?.role;
 const isOwner = userRole === 'owner';
 
-const { data: bomItems } = await Astro.locals.supabase
-	.from('bom_items')
-	.select('total_cost')
-	.eq('project_id', id);
-
 const totalCost = (bomItems ?? []).reduce((sum, item) => sum + (item.total_cost ?? 0), 0);
-
-const { totalBytes: projectStorageBytes, failed: projectStorageFailed } = await getProjectStorageBytes(Astro.locals.supabase, id!);
 ---
 <BaseLayout title={project.name}>
 	<ProjectShell project={project} members={members ?? []} userRole={userRole} activePage="overview">

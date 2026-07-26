@@ -362,9 +362,20 @@ export type Database = {
         Returns: boolean
       }
       project_role: { Args: { check_project_id: string }; Returns: string }
+      project_storage_bytes: {
+        Args: { check_project_id: string }
+        Returns: number
+      }
       shares_project_with: {
         Args: { target_user_id: string }
         Returns: boolean
+      }
+      user_storage_bytes: {
+        Args: { target_user_id: string }
+        Returns: {
+          row_count: number
+          total_bytes: number
+        }[]
       }
     }
     Enums: {
