@@ -990,8 +990,11 @@
 		font-size: 0.8rem;
 	}
 
+	/* Pinned for the same reason as BomTable's copy — see the note there. */
 	.sr-only {
 		position: absolute;
+		top: 0;
+		left: 0;
 		width: 1px;
 		height: 1px;
 		overflow: hidden;

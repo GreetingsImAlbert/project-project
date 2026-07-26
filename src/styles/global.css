@@ -223,7 +223,18 @@ thead th {
 	font-variant-numeric: tabular-nums;
 }
 
+/* position: relative is load-bearing, not decoration. Overflow clipping doesn't apply
+   to an absolutely positioned descendant whose containing block is an ancestor of the
+   scroll container — so without a positioned ancestor here, the `Actions` .sr-only span
+   in each table's last <th> resolved against the initial containing block and escaped
+   this scroller entirely. It kept its static position (~850px in, at the far edge of a
+   950px-wide table) but was measured against the page, so on a phone it planted a 1px
+   box hundreds of pixels past the viewport and gave the whole document a horizontal
+   scrollbar with nothing visible out there. Making this the containing block puts it
+   back inside the scroller, where the table's own width already reaches. Anything
+   absolutely positioned inside a money table from here on is contained the same way. */
 .money-table {
+	position: relative;
 	overflow-x: auto;
 	-webkit-overflow-scrolling: touch;
 	border: 1px solid var(--color-border-strong);

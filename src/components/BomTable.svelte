@@ -522,8 +522,15 @@
 		font-size: 0.8rem;
 	}
 
+	/* top/left pinned rather than left at their static position: this span sits in the
+	   table's last <th>, ~950px in, and an unpinned absolute box is measured there
+	   against whatever its containing block turns out to be. global.css positions
+	   .money-table so that's the scroller now, but pinning means it can't reach past
+	   its own container even if it's pasted somewhere that isn't positioned. */
 	.sr-only {
 		position: absolute;
+		top: 0;
+		left: 0;
 		width: 1px;
 		height: 1px;
 		overflow: hidden;
