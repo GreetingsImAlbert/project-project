@@ -31,7 +31,7 @@ Give the user the commit message text — do not run `git commit` yourself. Form
 - Fix ...
 ```
 
-Never use `"` (double quotes) anywhere in a commit message — use single quotes or backticks instead.
+Never use `"` (double quotes) or backticks anywhere in a commit message — both are shell-active, and backticks run as command substitution. Use single quotes, or nothing.
 
 ## Development
 

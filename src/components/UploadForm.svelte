@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { formatBytes } from '../lib/format-bytes';
+	import { toastError, toastSuccess } from '../lib/toast.svelte';
 
 	interface FileRow {
 		id: string;
@@ -12,16 +12,20 @@
 	let {
 		projectId,
 		currentFolderId,
-		availableBytes,
+		onStatus,
 		onUploaded,
 	}: {
 		projectId: string;
 		currentFolderId: string | null;
-		availableBytes: number | null;
+		onStatus: (status: string) => void;
 		onUploaded: (file: FileRow) => void;
 	} = $props();
 
-	let status = $state('');
+	// This panel is one row and stays one row. In-flight stage text goes up to
+	// FileBrowser, which shows it on the meta row in place of the Available: figure —
+	// rendering it here would grow the panel mid-upload and shove the file list down.
+	// Kept to one short word each: it shares that row with the create icons, and a long
+	// label would wrap the row in two, which is the same shift by another route.
 	let uploading = $state(false);
 	let dragging = $state(false);
 	let selectedFile: File | null = $state(null);
@@ -69,13 +73,22 @@
 		if (fileInput) fileInput.value = '';
 	}
 
+	// Upload stays clickable with nothing picked — saying why it can't run beats a
+	// greyed-out button that gives no reason. onStatus carries only in-flight progress;
+	// the outcome (either way) goes to a toast.
 	async function handleSubmit(e: SubmitEvent) {
 		e.preventDefault();
 		const file = selectedFile;
-		if (!file) return;
+
+		if (!file) {
+			toastError('Choose a file to upload first.');
+			return;
+		}
+
+		if (uploading) return;
 
 		uploading = true;
-		status = 'Requesting upload URL...';
+		onStatus('Preparing…');
 
 		const urlRes = await fetch(`/api/projects/${projectId}/files/upload-url`, {
 			method: 'POST',
@@ -84,14 +97,15 @@
 		});
 
 		if (!urlRes.ok) {
-			status = await urlRes.text();
+			toastError(await urlRes.text());
+			onStatus('');
 			uploading = false;
 			return;
 		}
 
 		const { uploadUrl, r2Key } = await urlRes.json();
 
-		status = 'Uploading...';
+		onStatus('Uploading…');
 
 		const putRes = await fetch(uploadUrl, {
 			method: 'PUT',
@@ -99,12 +113,13 @@
 		});
 
 		if (!putRes.ok) {
-			status = 'Upload to R2 failed';
+			toastError('Upload to R2 failed');
+			onStatus('');
 			uploading = false;
 			return;
 		}
 
-		status = 'Saving file record...';
+		onStatus('Saving…');
 
 		const confirmRes = await fetch(`/api/projects/${projectId}/files/confirm`, {
 			method: 'POST',
@@ -121,21 +136,24 @@
 		if (confirmRes.ok) {
 			const created: FileRow = await confirmRes.json();
 			onUploaded(created);
-			status = 'Upload complete!';
+			toastSuccess(`File ${created.filename} uploaded`);
 			selectedFile = null;
 			if (fileInput) fileInput.value = '';
 		} else {
 			const bodyText = await confirmRes.text();
 			try {
 				const result: { cleanedUp: boolean; error: string } = JSON.parse(bodyText);
-				status = result.cleanedUp
-					? `Upload failed (cleaned up): ${result.error}`
-					: `Upload failed AND cleanup failed: ${result.error}`;
+				toastError(
+					result.cleanedUp
+						? `Upload failed (cleaned up): ${result.error}`
+						: `Upload failed AND cleanup failed: ${result.error}`
+				);
 			} catch {
-				status = bodyText;
+				toastError(bodyText);
 			}
 		}
 
+		onStatus('');
 		uploading = false;
 	}
 </script>
@@ -162,24 +180,21 @@
 				<button type="button" class="clear-btn" aria-label="Remove selected file" onclick={clearSelectedFile} disabled={uploading}>×</button>
 			{/if}
 		</div>
-		<div class="upload-row">
-			<button type="submit" disabled={uploading || !selectedFile}>Upload</button>
-			<!-- Below the dropzone, not floated above it: the dropzone has to start on the
-			     same line as the breadcrumbs, so there's no room overhead any more. -->
-			{#if availableBytes === null}
-				<span class="available-space storage-error">
-					Available: unavailable
-					<button type="button" class="reload-btn" onclick={() => location.reload()}>⟳ Reload</button>
-				</span>
-			{:else}
-				<span class="muted available-space">Available: {formatBytes(Math.max(availableBytes, 0))}</span>
-			{/if}
-		</div>
+		<button type="submit">{uploading ? 'Uploading…' : 'Upload'}</button>
 	</form>
-	{#if status}<p class="muted">{status}</p>{/if}
 </div>
 
 <style>
+	/* Same shape as FileBrowser's .create-form so the dropzone + Upload button line up
+	   exactly the way the New folder / New file panels' input + button do. */
+	.upload-form form {
+		margin: 0;
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--space-2);
+	}
+
 	.visually-hidden {
 		position: absolute;
 		width: 1px;
@@ -189,6 +204,11 @@
 		white-space: nowrap;
 	}
 
+	/* Matches a text input exactly: same width, border and padding, and — the part that
+	   isn't obvious — the same content height. An <input> keeps the UA's
+	   `line-height: normal`, while this div inherits body's 1.6, which made the dropzone
+	   several px taller than the New folder / New file inputs and dragged the whole row
+	   out of line with them. */
 	.dropzone {
 		display: flex;
 		align-items: center;
@@ -199,6 +219,7 @@
 		background: var(--color-bg);
 		border: 1px solid var(--color-border);
 		padding: var(--space-2) var(--space-3);
+		line-height: normal;
 		color: var(--color-muted);
 		cursor: pointer;
 	}
@@ -239,31 +260,4 @@
 		color: var(--color-danger);
 	}
 
-	.upload-row {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: var(--space-2);
-		margin-top: var(--space-2);
-	}
-
-	.available-space {
-		font-size: 0.8rem;
-		white-space: nowrap;
-	}
-
-	.storage-error {
-		color: var(--color-danger);
-	}
-
-	.reload-btn {
-		background: none;
-		border: none;
-		padding: 0;
-		margin-left: var(--space-1);
-		color: var(--color-danger);
-		text-decoration: underline;
-		cursor: pointer;
-		font-size: inherit;
-	}
 </style>

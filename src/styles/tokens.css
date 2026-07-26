@@ -7,6 +7,7 @@
 	--color-border: #e0e0e0;
 	--color-border-strong: #111111;
 	--color-danger: #b3261e;
+	--color-success: #2e7d4f;
 	--color-highlight: rgba(17, 17, 17, 0.035);
 	/* Conventional link blue. Reserved for links that have to advertise themselves in
 	   a dense grid of text (supplier links in the money tables) — the site's default
@@ -36,6 +37,7 @@
 	--color-border: #38444d;
 	--color-border-strong: #d7dbdc;
 	--color-danger: #ff6259;
+	--color-success: #7bd9a5;
 	--color-highlight: rgba(255, 255, 255, 0.05);
 	--color-link: #6ab0f3;
 
@@ -52,6 +54,7 @@
 	--color-border: #2f3336;
 	--color-border-strong: #e7e9ea;
 	--color-danger: #ff6259;
+	--color-success: #7bd9a5;
 	--color-highlight: rgba(255, 255, 255, 0.06);
 	--color-link: #6ab0f3;
 
