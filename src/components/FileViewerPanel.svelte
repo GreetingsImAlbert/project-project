@@ -1,8 +1,11 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 	import { fly } from 'svelte/transition';
-	import { fileKind, splitFilename } from '../lib/file-kind';
+	import { fileKind, languageFor, splitFilename } from '../lib/file-kind';
 	import { renderMarkdown } from '../lib/markdown';
+	// Type-only, so it doesn't drag the highlighter into this component's bundle — the
+	// grammars stay behind the dynamic imports below.
+	import type { RootContent } from 'hast';
 
 	interface ViewerFile {
 		id: string;
@@ -87,6 +90,23 @@
 	let kind = $derived(file ? fileKind(file.filename) : 'unsupported');
 	let html = $derived(kind === 'markdown' && content !== null ? renderMarkdown(content) : '');
 	let dirty = $derived(editing && draft !== (content ?? ''));
+
+	// Syntax-highlighted tokens for the read-only view, or null for "render it plainly" —
+	// which covers a file type with no grammar, a chunk that hasn't downloaded yet, and a
+	// grammar that failed. All three are fine outcomes, so none of them surface as errors.
+	let tokens = $state<RootContent[] | null>(null);
+	let language = $derived(file ? languageFor(file.filename) : null);
+	let mdBodyEl = $state<HTMLElement | null>(null);
+	// Same job as `requestSeq` does for content: a highlight resolving after the user has
+	// moved on must not paint itself over the file that's on screen now.
+	let highlightSeq = 0;
+
+	// refractor gives every token node a className array (`['token', 'keyword']`). Pulled
+	// out of the snippet below only because that has to stay on one line.
+	function tokenClass(node: Extract<RootContent, { type: 'element' }>): string {
+		const value = node.properties?.className;
+		return Array.isArray(value) ? value.join(' ') : '';
+	}
 
 	// Bumped per open so a slow response for a file the user already navigated away
 	// from can't paint itself into the panel.
@@ -191,6 +211,64 @@
 		resetEditor();
 		autoEditPending = editOnOpen;
 		loadContent(current);
+	});
+
+	// Highlighting is driven off `content` rather than hooked into loadContent(), so every
+	// way the text can change is covered by one path — first load, a save writing the
+	// buffer back, and a post-conflict reload.
+	$effect(() => {
+		const source = content;
+		const lang = language;
+		const highlightable = kind === 'text' && source !== null && lang !== null;
+
+		// Cleared synchronously: the plain <pre> renders immediately and is upgraded when
+		// the chunk lands, so a slow download delays the highlight, never the preview.
+		tokens = null;
+		if (!highlightable) return;
+
+		const seq = ++highlightSeq;
+		import('../lib/highlight')
+			.then(({ highlightCode }) => {
+				if (seq !== highlightSeq) return;
+				tokens = highlightCode(source, lang);
+			})
+			.catch(() => {
+				// Offline, or the chunk failed to load. The plain text is already on screen.
+			});
+	});
+
+	// Fenced code inside rendered Markdown. It arrives through {@html}, so it isn't part of
+	// any component template and the snippet below can't reach it — this is the one place
+	// the tokens have to be turned into real DOM nodes and put in by hand.
+	$effect(() => {
+		const el = mdBodyEl;
+		if (!el || !html) return;
+
+		const blocks = Array.from(el.querySelectorAll('pre > code[class*="language-"]'));
+		if (blocks.length === 0) return;
+
+		let cancelled = false;
+
+		import('../lib/highlight')
+			.then(({ highlightCode, hastToDom }) => {
+				if (cancelled) return;
+
+				for (const block of blocks) {
+					// The rendered Markdown may have been replaced while the chunk downloaded.
+					if (!block.isConnected) continue;
+
+					const match = /(?:^|\s)language-([\w.+-]+)/.exec(block.className);
+					if (!match) continue;
+
+					const nodes = highlightCode(block.textContent ?? '', match[1]);
+					if (nodes) block.replaceChildren(hastToDom(nodes));
+				}
+			})
+			.catch(() => {});
+
+		return () => {
+			cancelled = true;
+		};
 	});
 
 	$effect(() => {
@@ -423,6 +501,13 @@
 	onbeforeunload={onBeforeUnload}
 />
 
+<!-- The highlighter's token tree, rendered as ordinary markup. Text goes through Svelte's
+     own interpolation, so the file's contents are escaped by the framework and nothing here
+     needs {@html} or a sanitizer beside it. Deliberately written on one line: this renders
+     inside a <pre>, where any newline or indentation between these tags would become a real
+     text node and corrupt the code's own whitespace. -->
+{#snippet syntax(nodes: RootContent[])}{#each nodes as node}{#if node.type === 'text'}{node.value}{:else if node.type === 'element'}<span class={tokenClass(node)}>{@render syntax(node.children)}</span>{/if}{/each}{/snippet}
+
 {#if file}
 	{@const parts = splitFilename(file.filename)}
 	<aside
@@ -511,9 +596,9 @@
 				{#if kind === 'markdown'}
 					<!-- renderMarkdown escapes the whole source and only emits tags it built
 					     itself, so an uploaded .md can't inject markup here. -->
-					<div class="md-body">{@html html}</div>
+					<div class="md-body" bind:this={mdBodyEl}>{@html html}</div>
 				{:else}
-					<pre class="text-body">{content}</pre>
+					<pre class="text-body">{#if tokens}{@render syntax(tokens)}{:else}{content}{/if}</pre>
 				{/if}
 			{/if}
 		</div>
@@ -656,6 +741,88 @@
 		white-space: pre-wrap;
 		overflow-wrap: anywhere;
 		tab-size: 4;
+	}
+
+	/* Prism's token classes onto this project's theme tokens, for both the plain <pre> and
+	   fenced code inside rendered Markdown. :global because neither set of spans exists in
+	   this component's template at compile time — one comes from a snippet with a dynamic
+	   class, the other is built as DOM nodes — and Svelte would prune the rules otherwise.
+	   Kept under .text-body/.md-body so they can't leak out of the panel.
+
+	   Only the six groups the tokens define, with the many Prism classes that fall into
+	   each aliased on. Anything unlisted just inherits the body colour, which is the same
+	   thing the viewer did before highlighting existed. */
+	.text-body :global(.token.comment),
+	.text-body :global(.token.prolog),
+	.text-body :global(.token.doctype),
+	.text-body :global(.token.cdata),
+	.md-body :global(.token.comment),
+	.md-body :global(.token.prolog),
+	.md-body :global(.token.doctype),
+	.md-body :global(.token.cdata) {
+		color: var(--color-syntax-comment);
+		font-style: italic;
+	}
+
+	.text-body :global(.token.keyword),
+	.text-body :global(.token.atrule),
+	.text-body :global(.token.important),
+	.text-body :global(.token.rule),
+	.text-body :global(.token.tag),
+	.text-body :global(.token.selector),
+	.md-body :global(.token.keyword),
+	.md-body :global(.token.atrule),
+	.md-body :global(.token.important),
+	.md-body :global(.token.rule),
+	.md-body :global(.token.tag),
+	.md-body :global(.token.selector) {
+		color: var(--color-syntax-keyword);
+	}
+
+	.text-body :global(.token.string),
+	.text-body :global(.token.char),
+	.text-body :global(.token.attr-value),
+	.text-body :global(.token.regex),
+	.text-body :global(.token.inserted),
+	.md-body :global(.token.string),
+	.md-body :global(.token.char),
+	.md-body :global(.token.attr-value),
+	.md-body :global(.token.regex),
+	.md-body :global(.token.inserted) {
+		color: var(--color-syntax-string);
+	}
+
+	.text-body :global(.token.number),
+	.text-body :global(.token.boolean),
+	.text-body :global(.token.constant),
+	.text-body :global(.token.symbol),
+	.text-body :global(.token.deleted),
+	.md-body :global(.token.number),
+	.md-body :global(.token.boolean),
+	.md-body :global(.token.constant),
+	.md-body :global(.token.symbol),
+	.md-body :global(.token.deleted) {
+		color: var(--color-syntax-number);
+	}
+
+	.text-body :global(.token.function),
+	.text-body :global(.token.class-name),
+	.text-body :global(.token.attr-name),
+	.text-body :global(.token.property),
+	.text-body :global(.token.variable),
+	.md-body :global(.token.function),
+	.md-body :global(.token.class-name),
+	.md-body :global(.token.attr-name),
+	.md-body :global(.token.property),
+	.md-body :global(.token.variable) {
+		color: var(--color-syntax-function);
+	}
+
+	.text-body :global(.token.punctuation),
+	.text-body :global(.token.operator),
+	.md-body :global(.token.punctuation),
+	.md-body :global(.token.operator) {
+		color: var(--color-syntax-punct);
 	}
 
 	/* Markdown output goes in via {@html}, which Svelte's scoping never touches — every

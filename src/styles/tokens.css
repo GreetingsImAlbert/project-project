@@ -19,6 +19,18 @@
 	--color-role-viewer: #3f7d52;
 	--color-role-auditor: #6a3fb5;
 
+	/* Syntax highlighting in the file viewer's read-only view. Defined per theme rather
+	   than taken from an off-the-shelf highlighter stylesheet, which would be hardcoded
+	   hex and leave code coloured for the wrong palette after a theme switch. Kept
+	   deliberately restrained — the rest of the design is flat monochrome, so this is
+	   about six hues doing the minimum, not a full editor theme. */
+	--color-syntax-comment: #8a8a8a;
+	--color-syntax-keyword: #8d3fb5;
+	--color-syntax-string: #2e7d4f;
+	--color-syntax-number: #b3261e;
+	--color-syntax-function: #1a5fb4;
+	--color-syntax-punct: #666666;
+
 	--space-1: 4px;
 	--space-2: 8px;
 	--space-3: 12px;
@@ -45,6 +57,13 @@
 	--color-role-editor: #6ab0f3;
 	--color-role-viewer: #7bd9a5;
 	--color-role-auditor: #c6a4ff;
+
+	--color-syntax-comment: #8b98a5;
+	--color-syntax-keyword: #c6a4ff;
+	--color-syntax-string: #7bd9a5;
+	--color-syntax-number: #ff8a80;
+	--color-syntax-function: #6ab0f3;
+	--color-syntax-punct: #8b98a5;
 }
 
 :root[data-theme='dark'] {
@@ -62,4 +81,11 @@
 	--color-role-editor: #6ab0f3;
 	--color-role-viewer: #7bd9a5;
 	--color-role-auditor: #c6a4ff;
+
+	--color-syntax-comment: #71767b;
+	--color-syntax-keyword: #c6a4ff;
+	--color-syntax-string: #7bd9a5;
+	--color-syntax-number: #ff8a80;
+	--color-syntax-function: #6ab0f3;
+	--color-syntax-punct: #71767b;
 }
