@@ -39,7 +39,12 @@ function isActive(href: string) {
 			{user && (
 				<Fragment>
 					<span class="site-user" title={user.email}>{user.displayName ?? user.email}</span>
-					<form method="POST" action="/api/auth/logout">
+					<!-- data-astro-reload: the ClientRouter otherwise submits this with fetch and
+					     swaps in whatever comes back, which leaves the URL on /api/auth/logout
+					     (a GET there is a 404) and keeps every module-scoped island store from
+					     the signed-in session alive. An identity change wants a real document
+					     load, so opt this form out of client-side routing. -->
+					<form method="POST" action="/api/auth/logout" data-astro-reload>
 						<button type="submit" class="btn-plain">Log out</button>
 					</form>
 				</Fragment>

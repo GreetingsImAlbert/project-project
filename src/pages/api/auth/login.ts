@@ -17,5 +17,6 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
         return new Response(`Login failed: ${error.message}`, { status: 401 });
     }
 
-    return redirect('/');
+    // 303 so the POST is followed by a GET (see logout.ts).
+    return redirect('/', 303);
 }

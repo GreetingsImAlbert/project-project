@@ -43,8 +43,9 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
 	// is usable — send the user back to login with a message instead of
 	// silently bouncing them there via the auth redirect.
 	if (!data.session) {
-		return redirect('/login?checkEmail=1');
+		return redirect('/login?checkEmail=1', 303);
 	}
 
-	return redirect('/');
+	// 303 so the POST is followed by a GET (see logout.ts).
+	return redirect('/', 303);
 };
