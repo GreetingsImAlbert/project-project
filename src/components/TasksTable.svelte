@@ -40,6 +40,7 @@
 
 	let savingId = $state<string | null>(null);
 	let deletingId = $state<string | null>(null);
+	let togglingId = $state<string | null>(null);
 	let rowError = $state<{ id: string; message: string } | null>(null);
 
 	let adding = $state(false);
@@ -136,6 +137,33 @@
 		updateTask(await res.json());
 		openId = null;
 		savingId = null;
+	}
+
+	// The update endpoint writes the whole row — an absent field clears it, and an
+	// absent `assignees` would drop every appointment — so flipping the status means
+	// resubmitting the task exactly as it stands with only that one value changed.
+	async function toggleDone(task: Task) {
+		rowError = null;
+		togglingId = task.id;
+
+		const body = new FormData();
+		body.set('name', task.name);
+		body.set('category', task.category ?? '');
+		body.set('description', task.description ?? '');
+		body.set('deadline', task.deadline ?? '');
+		body.set('status', task.status === 'done' ? 'ongoing' : 'done');
+		for (const assignee of task.assignees) body.append('assignees', assignee.user_id);
+
+		const res = await fetch(`/api/tasks/${task.id}/update`, { method: 'POST', body });
+
+		if (!res.ok) {
+			rowError = { id: task.id, message: await res.text() };
+			togglingId = null;
+			return;
+		}
+
+		updateTask(await res.json());
+		togglingId = null;
 	}
 
 	async function handleDelete(id: string) {
@@ -365,6 +393,12 @@
 
 						{#if canEdit}
 							<div class="cell cell-actions">
+								<!-- Reopen rather than a second Done: the button has to say what
+								     the click will do, and a task's status is editable from the
+								     edit form either way. -->
+								<button type="button" class="btn-plain" onclick={() => toggleDone(task)} disabled={togglingId === task.id}>
+									{togglingId === task.id ? '…' : task.status === 'done' ? 'Reopen' : 'Done'}
+								</button>
 								<button type="button" class="btn-plain" onclick={() => startEdit(task)}>Edit</button>
 								<button type="button" class="btn-danger" onclick={() => handleDelete(task.id)} disabled={deletingId === task.id}>
 									{deletingId === task.id ? '…' : 'Delete'}
@@ -508,7 +542,7 @@
 	}
 
 	.task-list.with-actions {
-		--task-cols: minmax(0, 1.5fr) minmax(0, 1.6fr) minmax(0, 1fr) 118px 84px 116px;
+		--task-cols: minmax(0, 1.5fr) minmax(0, 1.6fr) minmax(0, 1fr) 118px 84px 170px;
 	}
 
 	.list-head,
@@ -627,21 +661,10 @@
 		color: var(--color-muted);
 	}
 
-	/* Row controls stay out of the way until the row is pointed at or opened, which is
-	   what keeps the list reading as text rather than as a grid of buttons. Anything
-	   without hover gets them permanently — see the media query below. */
 	.cell-actions {
 		display: flex;
 		gap: var(--space-1);
 		justify-content: flex-end;
-		opacity: 0;
-		transition: opacity 0.12s ease;
-	}
-
-	.task-row:hover .cell-actions,
-	.task-row:focus-within .cell-actions,
-	.task-item.open .cell-actions {
-		opacity: 1;
 	}
 
 	.cell-actions button {
@@ -786,12 +809,6 @@
 		margin: var(--space-2) 0 0;
 	}
 
-	@media (hover: none) {
-		.cell-actions {
-			opacity: 1;
-		}
-	}
-
 	/* Below this the columns stop fitting, so each row becomes a small block: the name
 	   heads it, then description, appointment and deadline stacked under it, controls
 	   last. */
@@ -825,7 +842,6 @@
 		.cell-actions {
 			grid-column: 1 / -1;
 			justify-content: flex-start;
-			opacity: 1;
 			margin-top: var(--space-1);
 		}
 	}
