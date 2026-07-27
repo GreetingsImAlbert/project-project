@@ -1,3 +1,5 @@
+import { currentEpoch } from './nav-epoch';
+
 // 'bulk' is the parent row of a multi-item purchase — it carries the money and the
 // label, its lines carry the breakdown. Lines themselves are never 'bulk'.
 export type TransactionType = 'item' | 'shipping' | 'discount' | 'refund' | 'payment' | 'bulk';
@@ -26,16 +28,20 @@ export interface Transaction {
 // reached the other's derived totals (net total, dues, contribution amounts).
 export const transactionsState = $state<{ items: Transaction[] }>({ items: [] });
 
-let initialized = false;
+let initializedEpoch = -1;
 
 // The once-only guard is a client-side concern (keep the first island's data, don't
 // let a later island's props clobber it). On the server the module lives for the
 // whole Worker isolate, not one request, so honouring the guard there would render
 // the *previous* request's transactions into this request's HTML — always reassign.
+//
+// On the client it's scoped to one navigation rather than to the module's lifetime:
+// under <ClientRouter /> the module outlives the page, so a bare boolean would carry
+// project A's transactions into project B's Money page. See nav-epoch.ts.
 export function initTransactions(initial: Transaction[]) {
-	if (initialized && !import.meta.env.SSR) return;
+	if (initializedEpoch === currentEpoch() && !import.meta.env.SSR) return;
 	transactionsState.items = initial;
-	initialized = true;
+	initializedEpoch = currentEpoch();
 }
 
 export function addTransaction(t: Transaction) {

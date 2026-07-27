@@ -13,6 +13,19 @@ html {
 	scrollbar-gutter: stable;
 }
 
+/* Pages swap instantly under <ClientRouter />, with no cross-fade. The fade isn't
+   Astro's — a browser that supports view transitions applies its own default animation to
+   the root snapshots, and there's no flag to decline it, so it gets cancelled here.
+   `mix-blend-mode: normal` goes with it: the default `plus-lighter` is only there to keep
+   a cross-fade from dipping in brightness through the middle, and on stacked opaque
+   snapshots it washes the colours out instead. Browsers without view transitions never
+   reach this rule; ClientRouter's `fallback="swap"` is what keeps them un-animated. */
+::view-transition-old(root),
+::view-transition-new(root) {
+	animation: none;
+	mix-blend-mode: normal;
+}
+
 html,
 body {
 	margin: 0;

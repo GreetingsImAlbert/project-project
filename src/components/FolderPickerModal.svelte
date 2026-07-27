@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { onSwapOrDestroy } from '../lib/island-teardown';
 
 	interface Folder {
 		id: string;
@@ -54,7 +55,7 @@
 			if (e.key === 'Escape') onCancel();
 		}
 		window.addEventListener('keydown', onKeydown);
-		return () => window.removeEventListener('keydown', onKeydown);
+		return onSwapOrDestroy(() => window.removeEventListener('keydown', onKeydown));
 	});
 </script>
 

@@ -3,6 +3,7 @@
 	import FileViewerPanel from './FileViewerPanel.svelte';
 	import { splitFilename } from '../lib/file-kind';
 	import { adjustStorageUsage } from '../lib/storage-usage.svelte';
+	import { onSwapOrDestroy } from '../lib/island-teardown';
 
 	interface MyFile {
 		id: string;
@@ -100,7 +101,7 @@
 			else closeModal();
 		}
 		window.addEventListener('keydown', onKeydown);
-		return () => window.removeEventListener('keydown', onKeydown);
+		return onSwapOrDestroy(() => window.removeEventListener('keydown', onKeydown));
 	});
 </script>
 

@@ -1,8 +1,9 @@
 <script lang="ts">
-	import { tick } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { fly } from 'svelte/transition';
 	import { fileKind, languageFor, splitFilename } from '../lib/file-kind';
 	import { renderMarkdown } from '../lib/markdown';
+	import { onSwapOrDestroy } from '../lib/island-teardown';
 	// Type-only, so it doesn't drag the highlighter into this component's bundle — the
 	// grammars stay behind the dynamic imports below.
 	import type { RootContent } from 'hast';
@@ -491,15 +492,26 @@
 	function onWindowResize() {
 		if (width !== null) width = clampWidth(width);
 	}
-</script>
 
-<svelte:window
-	onkeydown={onWindowKeydown}
-	onresize={onWindowResize}
-	onpointerdown={onWindowPointerDown}
-	onclick={onWindowClick}
-	onbeforeunload={onBeforeUnload}
-/>
+	// Bound by hand rather than through <svelte:window>, which only unbinds when Svelte
+	// destroys the component — and Astro's ClientRouter discards an island's DOM without
+	// ever destroying it. A leaked onbeforeunload is the one that shows: it would keep
+	// warning about a buffer whose editor is long gone. See lib/island-teardown.ts.
+	onMount(() => {
+		window.addEventListener('keydown', onWindowKeydown);
+		window.addEventListener('resize', onWindowResize);
+		window.addEventListener('pointerdown', onWindowPointerDown);
+		window.addEventListener('click', onWindowClick);
+		window.addEventListener('beforeunload', onBeforeUnload);
+		return onSwapOrDestroy(() => {
+			window.removeEventListener('keydown', onWindowKeydown);
+			window.removeEventListener('resize', onWindowResize);
+			window.removeEventListener('pointerdown', onWindowPointerDown);
+			window.removeEventListener('click', onWindowClick);
+			window.removeEventListener('beforeunload', onBeforeUnload);
+		});
+	});
+</script>
 
 <!-- The highlighter's token tree, rendered as ordinary markup. Text goes through Svelte's
      own interpolation, so the file's contents are escaped by the framework and nothing here

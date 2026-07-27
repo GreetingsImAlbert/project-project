@@ -9,6 +9,7 @@
 	import { adjustProjectStorage } from '../lib/project-storage.svelte';
 	import { toastError, toastSuccess } from '../lib/toast.svelte';
 	import { formatBytes } from '../lib/format-bytes';
+	import { onSwapOrDestroy } from '../lib/island-teardown';
 	import { fileKind } from '../lib/file-kind';
 
 	interface Folder {
@@ -171,10 +172,20 @@
 		currentFolderId = folderId;
 		loading = false;
 
+		// A *null* history state, deliberately. Astro's ClientRouter listens on popstate too,
+		// and treats any entry carrying state as one of its own — it reads `state.index` and
+		// runs a full document swap. Its handler returns immediately when `ev.state` is null,
+		// which is the escape hatch for exactly this: history entries owned by the page rather
+		// than by the router. Folder browsing stays a single JSON fetch, and Back on a folder
+		// entry reaches only the handler below (which reads the URL, never ev.state), while
+		// Back off the *first* folder entry lands on Astro's own entry and correctly leaves
+		// the Files page. Don't put a state object back here.
 		if (historyMode === 'push') {
-			history.pushState({ folderId }, '', hrefFor(folderId));
+			history.pushState(null, '', hrefFor(folderId));
 		} else if (historyMode === 'replace') {
-			history.replaceState({ folderId }, '', hrefFor(folderId));
+			// Preserves whatever the current entry already holds rather than nulling it — an
+			// in-app Back that landed on an Astro-owned entry must not strip its index.
+			history.replaceState(history.state, '', hrefFor(folderId));
 		}
 	}
 
@@ -378,17 +389,23 @@
 		openFolderActionsId = null;
 	}
 
+	// Bound by hand rather than through <svelte:window> for the click handler too: Astro's
+	// ClientRouter discards an island's DOM on navigation without destroying the component,
+	// so Svelte never unbinds and a second copy accumulates on every visit to this page.
+	// See lib/island-teardown.ts.
 	onMount(() => {
 		const onPopState = () => {
 			const folderId = new URLSearchParams(location.search).get('folder');
 			navigate(folderId, 'none');
 		};
 		window.addEventListener('popstate', onPopState);
-		return () => window.removeEventListener('popstate', onPopState);
+		window.addEventListener('click', handleWindowClick);
+		return onSwapOrDestroy(() => {
+			window.removeEventListener('popstate', onPopState);
+			window.removeEventListener('click', handleWindowClick);
+		});
 	});
 </script>
-
-<svelte:window onclick={handleWindowClick} />
 
 <div class="browser-meta">
 	<!-- Figure + its icons are grouped so that below 640px each pair collapses to one
