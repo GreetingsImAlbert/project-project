@@ -69,6 +69,7 @@ const serverToday = new Date().toISOString().slice(0, 10);
 			initialTasks={tasks}
 			members={memberOptions}
 			canEdit={canEdit}
+			currentUserId={user.id}
 			serverToday={serverToday}
 		/>
 	</ProjectShell>

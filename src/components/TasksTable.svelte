@@ -15,12 +15,14 @@
 		initialTasks,
 		members,
 		canEdit,
+		currentUserId,
 		serverToday,
 	}: {
 		projectId: string;
 		initialTasks: Task[];
 		members: { id: string; displayName: string }[];
 		canEdit: boolean;
+		currentUserId: string;
 		serverToday: string;
 	} = $props();
 
@@ -59,9 +61,12 @@
 	let editAssignees = $state<string[]>([]);
 
 	const NEW_CATEGORY_VALUE = '__new__';
+	const UNCATEGORIZED = 'Uncategorized';
 
 	// Same derivation as BomTable's: the dropdown offers whatever categories the
 	// current tasks already use, so the backend still only ever stores free text.
+	// Derived from every task, not the visible ones — a filter that hides a category
+	// shouldn't take it out of the dropdown.
 	let existingCategories = $derived(
 		[...new Set(tasksState.tasks.map((task) => task.category?.trim()).filter((c): c is string => !!c))].sort((a, b) =>
 			a.localeCompare(b),
@@ -71,7 +76,54 @@
 	let addCategoryEffective = $derived(addCategorySelect === NEW_CATEGORY_VALUE ? addCategoryNew : addCategorySelect);
 	let editCategoryEffective = $derived(editCategorySelect === NEW_CATEGORY_VALUE ? editCategoryNew : editCategorySelect);
 
-	let openCount = $derived(tasksState.tasks.filter((task) => task.status !== 'done').length);
+	let onlyMine = $state(false);
+
+	let visibleTasks = $derived(
+		onlyMine
+			? tasksState.tasks.filter((task) => task.assignees.some((a) => a.user_id === currentUserId))
+			: tasksState.tasks,
+	);
+
+	// Same grouping as BomTable's, including 'Uncategorized' sorting last rather than
+	// alphabetically. Tasks keep their deadline order inside a group, since the store
+	// sorts the whole list and this only partitions it.
+	let groups = $derived.by(() => {
+		const map = new Map<string, Task[]>();
+		for (const task of visibleTasks) {
+			const key = task.category?.trim() || UNCATEGORIZED;
+			if (!map.has(key)) map.set(key, []);
+			map.get(key)!.push(task);
+		}
+		const keys = [...map.keys()].sort((a, b) => {
+			if (a === UNCATEGORIZED) return 1;
+			if (b === UNCATEGORIZED) return -1;
+			return a.localeCompare(b);
+		});
+		return keys.map((category) => ({ category, tasks: map.get(category)! }));
+	});
+
+	// Nothing to fold when every task is uncategorized: the one band would say
+	// 'Uncategorized' over the whole list and fold it away entirely.
+	let showGroupHeaders = $derived(groups.length > 1 || groups[0]?.category !== UNCATEGORIZED);
+
+	// A plain array rather than a Set: $state doesn't proxy Sets, and the category
+	// count here is small enough that includes() is the cheaper thing to reason about.
+	// Entries for categories that later disappear are inert, so nothing prunes them.
+	let collapsed = $state<string[]>([]);
+
+	function isCollapsed(category: string): boolean {
+		return collapsed.includes(category);
+	}
+
+	function toggleGroup(category: string) {
+		collapsed = isCollapsed(category) ? collapsed.filter((c) => c !== category) : [...collapsed, category];
+	}
+
+	function openIn(tasks: Task[]): number {
+		return tasks.filter((task) => task.status !== 'done').length;
+	}
+
+	let openCount = $derived(openIn(visibleTasks));
 
 	// Plain functions, not $derived: they're called from the template, so the `today`
 	// read happens inside the render effect and still re-runs when onMount moves it to
@@ -275,9 +327,22 @@
 <section class="tasks-section">
 	<div class="tasks-head">
 		<h2>Tasks</h2>
+		<!-- Counts follow the filter: a meta line reading the project total over a list
+		     showing a subset of it would just look wrong. -->
 		<span class="tasks-meta">
-			{tasksState.tasks.length} task{tasksState.tasks.length === 1 ? '' : 's'} · <strong>{openCount}</strong> open
+			{#if onlyMine}
+				{visibleTasks.length} of {tasksState.tasks.length} task{tasksState.tasks.length === 1 ? '' : 's'}
+			{:else}
+				{visibleTasks.length} task{visibleTasks.length === 1 ? '' : 's'}
+			{/if}
+			· <strong>{openCount}</strong> open
 		</span>
+
+		<label class="mine-toggle">
+			<input type="checkbox" bind:checked={onlyMine} />
+			<span>Just my tasks</span>
+		</label>
+
 		{#if canEdit && !showAddForm}
 			<button type="button" class="btn-plain add-toggle" onclick={openAddForm}>Add task</button>
 		{/if}
@@ -339,6 +404,8 @@
 
 	{#if tasksState.tasks.length === 0}
 		<p class="muted empty">No tasks yet.</p>
+	{:else if visibleTasks.length === 0}
+		<p class="muted empty">No tasks are appointed to you.</p>
 	{:else}
 		<!-- A list, not a table: no outer frame, no vertical rules and no scroller of its
 		     own, so it stays open and grows with the page. The columns are still a grid
@@ -354,136 +421,152 @@
 				{#if canEdit}<span></span>{/if}
 			</div>
 
-			{#each tasksState.tasks as task (task.id)}
-				{@const status = statusOf(task)}
-				<div class="task-item" class:open={openId === task.id}>
-					<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-					<div class="task-row" onclick={(e) => handleRowClick(e, task.id)}>
-						<div class="cell cell-task">
-							<button type="button" class="task-name" class:done={status === 'done'} onclick={(e) => {
-								e.stopPropagation();
-								toggleDetail(task.id);
-							}}>{task.name}</button>
-							{#if task.category?.trim()}
-								<span class="task-sub">{task.category.trim()}</span>
-							{/if}
-						</div>
+			{#each groups as group (group.category)}
+				<!-- The band is a real button spanning the row, so a category folds from
+				     the keyboard as well as the pointer. -->
+				{#if showGroupHeaders}
+					<button
+						type="button"
+						class="group-row"
+						aria-expanded={!isCollapsed(group.category)}
+						onclick={() => toggleGroup(group.category)}
+					>
+						<span class="group-caret" aria-hidden="true">{isCollapsed(group.category) ? '▸' : '▾'}</span>
+						<span class="group-name">{group.category}</span>
+						<span class="group-count">{openIn(group.tasks)} of {group.tasks.length} open</span>
+					</button>
+				{/if}
 
-						<!-- One line only, truncated: the full text is a click away in the
-						     detail panel, and letting it wrap here would break the row grid's
-						     baseline alignment. -->
-						<div class="cell cell-description" title={task.description?.trim() || ''}>
-							{task.description?.trim() || '—'}
-						</div>
+				{#if !isCollapsed(group.category)}
+					{#each group.tasks as task (task.id)}
+						{@const status = statusOf(task)}
+						<div class="task-item" class:open={openId === task.id}>
+							<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+							<div class="task-row" onclick={(e) => handleRowClick(e, task.id)}>
+								<div class="cell cell-task">
+									<button type="button" class="task-name" class:done={status === 'done'} onclick={(e) => {
+										e.stopPropagation();
+										toggleDetail(task.id);
+									}}>{task.name}</button>
+								</div>
 
-						<div class="cell cell-people">{assigneeNames(task) || '—'}</div>
+								<!-- One line only, truncated: the full text is a click away in the
+								     detail panel, and letting it wrap here would break the row grid's
+								     baseline alignment. -->
+								<div class="cell cell-description" title={task.description?.trim() || ''}>
+									{task.description?.trim() || '—'}
+								</div>
 
-						<div class="cell cell-deadline">
-							{#if task.deadline}
-								<span class="deadline-date">{task.deadline}</span>
-								<span class="task-sub">{relativeDeadline(task.deadline, today)}</span>
-							{:else}
-								<span class="task-sub">no deadline</span>
-							{/if}
-						</div>
+								<div class="cell cell-people">{assigneeNames(task) || '—'}</div>
 
-						<div class="cell cell-status">
-							<span class="status status-{status}">{TASK_STATUS_LABELS[status]}</span>
-						</div>
-
-						{#if canEdit}
-							<div class="cell cell-actions">
-								<!-- Reopen rather than a second Done: the button has to say what
-								     the click will do, and a task's status is editable from the
-								     edit form either way. -->
-								<button type="button" class="btn-plain" onclick={() => toggleDone(task)} disabled={togglingId === task.id}>
-									{togglingId === task.id ? '…' : task.status === 'done' ? 'Reopen' : 'Done'}
-								</button>
-								<button type="button" class="btn-plain" onclick={() => startEdit(task)}>Edit</button>
-								<button type="button" class="btn-danger" onclick={() => handleDelete(task.id)} disabled={deletingId === task.id}>
-									{deletingId === task.id ? '…' : 'Delete'}
-								</button>
-							</div>
-						{/if}
-					</div>
-
-					{#if openId === task.id && openMode === 'detail'}
-						<div class="task-panel" transition:slide={{ duration: 150 }}>
-							<dl class="detail">
-								<dt>Category</dt>
-								<dd>{task.category?.trim() || '—'}</dd>
-								<dt>Appointed</dt>
-								<dd>{assigneeNames(task) || '—'}</dd>
-								<dt>Deadline</dt>
-								<dd>
+								<div class="cell cell-deadline">
 									{#if task.deadline}
-										{task.deadline} <span class="muted">({relativeDeadline(task.deadline, today)})</span>
+										<span class="deadline-date">{task.deadline}</span>
+										<span class="task-sub">{relativeDeadline(task.deadline, today)}</span>
 									{:else}
-										—
+										<span class="task-sub">no deadline</span>
 									{/if}
-								</dd>
-								<dt>Description</dt>
-								<dd>{task.description || '—'}</dd>
-							</dl>
-						</div>
-					{/if}
-
-					{#if canEdit && openId === task.id && openMode === 'edit'}
-						<div class="task-panel" transition:slide={{ duration: 150 }}>
-							<form method="POST" action={`/api/tasks/${task.id}/update`} onsubmit={(e) => handleSave(e, task.id)}>
-								<div class="panel-grid">
-									<label class="field">
-										<span class="field-label">Task name</span>
-										<input type="text" name="name" value={task.name} maxlength="200" required />
-									</label>
-
-									{@render categoryField(
-										editCategorySelect,
-										editCategoryNew,
-										(v) => (editCategorySelect = v),
-										(v) => (editCategoryNew = v),
-									)}
-									<input type="hidden" name="category" value={editCategoryEffective} />
-
-									<label class="field">
-										<span class="field-label">Deadline</span>
-										<input type="date" name="deadline" value={task.deadline ?? ''} />
-									</label>
-
-									<!-- Only the two storable states. Overdue is derived from the
-									     deadline, so it is never something to pick here. -->
-									<label class="field">
-										<span class="field-label">Status</span>
-										<select name="status" value={task.status}>
-											<option value="ongoing">Ongoing</option>
-											<option value="done">Done</option>
-										</select>
-									</label>
-
-									{@render assigneeField(editAssignees, (id, on) => {
-										editAssignees = on ? [...editAssignees, id] : editAssignees.filter((a) => a !== id);
-									})}
-
-									<label class="field field-wide">
-										<span class="field-label">Description</span>
-										<input type="text" name="description" value={task.description ?? ''} maxlength="1000" />
-									</label>
 								</div>
 
-								{#if rowError?.id === task.id}<p class="panel-error">{rowError.message}</p>{/if}
-
-								<div class="panel-actions">
-									<button type="submit" disabled={savingId === task.id}>{savingId === task.id ? 'Saving…' : 'Save'}</button>
-									<button type="button" class="btn-plain" onclick={cancelEdit}>Cancel</button>
+								<div class="cell cell-status">
+									<span class="status status-{status}">{TASK_STATUS_LABELS[status]}</span>
 								</div>
-							</form>
-						</div>
-					{/if}
 
-					{#if rowError?.id === task.id && !(openId === task.id && openMode === 'edit')}
-						<p class="row-error">{rowError.message}</p>
-					{/if}
-				</div>
+								{#if canEdit}
+									<div class="cell cell-actions">
+										<!-- Reopen rather than a second Done: the button has to say what
+										     the click will do, and a task's status is editable from the
+										     edit form either way. -->
+										<button type="button" class="btn-plain" onclick={() => toggleDone(task)} disabled={togglingId === task.id}>
+											{togglingId === task.id ? '…' : task.status === 'done' ? 'Reopen' : 'Done'}
+										</button>
+										<button type="button" class="btn-plain" onclick={() => startEdit(task)}>Edit</button>
+										<button type="button" class="btn-danger" onclick={() => handleDelete(task.id)} disabled={deletingId === task.id}>
+											{deletingId === task.id ? '…' : 'Delete'}
+										</button>
+									</div>
+								{/if}
+							</div>
+
+							{#if openId === task.id && openMode === 'detail'}
+								<div class="task-panel" transition:slide={{ duration: 150 }}>
+									<dl class="detail">
+										<dt>Category</dt>
+										<dd>{task.category?.trim() || '—'}</dd>
+										<dt>Appointed</dt>
+										<dd>{assigneeNames(task) || '—'}</dd>
+										<dt>Deadline</dt>
+										<dd>
+											{#if task.deadline}
+												{task.deadline} <span class="muted">({relativeDeadline(task.deadline, today)})</span>
+											{:else}
+												—
+											{/if}
+										</dd>
+										<dt>Description</dt>
+										<dd>{task.description || '—'}</dd>
+									</dl>
+								</div>
+							{/if}
+
+							{#if canEdit && openId === task.id && openMode === 'edit'}
+								<div class="task-panel" transition:slide={{ duration: 150 }}>
+									<form method="POST" action={`/api/tasks/${task.id}/update`} onsubmit={(e) => handleSave(e, task.id)}>
+										<div class="panel-grid">
+											<label class="field">
+												<span class="field-label">Task name</span>
+												<input type="text" name="name" value={task.name} maxlength="200" required />
+											</label>
+
+											{@render categoryField(
+												editCategorySelect,
+												editCategoryNew,
+												(v) => (editCategorySelect = v),
+												(v) => (editCategoryNew = v),
+											)}
+											<input type="hidden" name="category" value={editCategoryEffective} />
+
+											<label class="field">
+												<span class="field-label">Deadline</span>
+												<input type="date" name="deadline" value={task.deadline ?? ''} />
+											</label>
+
+											<!-- Only the two storable states. Overdue is derived from the
+											     deadline, so it is never something to pick here. -->
+											<label class="field">
+												<span class="field-label">Status</span>
+												<select name="status" value={task.status}>
+													<option value="ongoing">Ongoing</option>
+													<option value="done">Done</option>
+												</select>
+											</label>
+
+											{@render assigneeField(editAssignees, (id, on) => {
+												editAssignees = on ? [...editAssignees, id] : editAssignees.filter((a) => a !== id);
+											})}
+
+											<label class="field field-wide">
+												<span class="field-label">Description</span>
+												<input type="text" name="description" value={task.description ?? ''} maxlength="1000" />
+											</label>
+										</div>
+
+										{#if rowError?.id === task.id}<p class="panel-error">{rowError.message}</p>{/if}
+
+										<div class="panel-actions">
+											<button type="submit" disabled={savingId === task.id}>{savingId === task.id ? 'Saving…' : 'Save'}</button>
+											<button type="button" class="btn-plain" onclick={cancelEdit}>Cancel</button>
+										</div>
+									</form>
+								</div>
+							{/if}
+
+							{#if rowError?.id === task.id && !(openId === task.id && openMode === 'edit')}
+								<p class="row-error">{rowError.message}</p>
+							{/if}
+						</div>
+					{/each}
+				{/if}
 			{/each}
 		</div>
 	{/if}
@@ -524,8 +607,25 @@
 		font-variant-numeric: tabular-nums;
 	}
 
-	.add-toggle {
+	/* The filter, not the Add button, carries the margin that pushes the right-hand
+	   controls over — it's the one that renders for every role. */
+	.mine-toggle {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-1);
 		margin-left: auto;
+		font-size: 0.78rem;
+		color: var(--color-muted);
+		white-space: nowrap;
+		cursor: pointer;
+	}
+
+	.mine-toggle input {
+		margin: 0;
+		cursor: pointer;
+	}
+
+	.add-toggle {
 		padding: var(--space-1) var(--space-3);
 		font-size: 0.8rem;
 	}
@@ -565,6 +665,49 @@
 
 	.task-item + .task-item {
 		border-top: 1px solid var(--color-border);
+	}
+
+	/* Banded like the BOM's category rows, but a button — it folds its group. No rule
+	   above it: the band's own background is separation enough, and a hard line there
+	   read as a heavy black edge across the list. */
+	.group-row {
+		display: flex;
+		align-items: baseline;
+		gap: var(--space-2);
+		width: 100%;
+		padding: var(--space-2);
+		background: var(--color-highlight);
+		border: none;
+		color: var(--color-fg);
+		font: inherit;
+		font-size: 0.7rem;
+		font-weight: 700;
+		letter-spacing: 0.05em;
+		text-transform: uppercase;
+		text-align: left;
+		cursor: pointer;
+	}
+
+	.group-caret {
+		flex-shrink: 0;
+		font-size: 0.6rem;
+		color: var(--color-muted);
+	}
+
+	.group-name {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.group-count {
+		margin-left: auto;
+		flex-shrink: 0;
+		color: var(--color-muted);
+		font-weight: 400;
+		letter-spacing: 0.04em;
+		font-variant-numeric: tabular-nums;
 	}
 
 	.task-row {
