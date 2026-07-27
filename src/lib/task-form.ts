@@ -1,0 +1,65 @@
+import { calendarDateError } from './calendar-date';
+import { isTaskStatus, type TaskStatus } from './task-status';
+
+// Parsing + validation for the task create and update endpoints. Shared for the
+// same reason TASK_COLUMNS is: two endpoints writing the same row must agree on
+// what they'll accept, or a rule tightened on one silently stays loose on the other.
+
+export interface TaskFormValues {
+	name: string;
+	category: string | null;
+	description: string | null;
+	deadline: string | null;
+	status: TaskStatus;
+	assignees: string[];
+}
+
+export type TaskFormResult = { values: TaskFormValues } | { error: string };
+
+// `memberIds` is the project's membership. Appointing someone is a client-supplied
+// id landing in a row keyed to this project, so it gets the same treatment as a
+// client-supplied parent folder id: verified against the project before it's used,
+// never trusted because it arrived in the form.
+export function parseTaskForm(formData: FormData, memberIds: Set<string>): TaskFormResult {
+	const name = formData.get('name')?.toString().trim();
+	const category = formData.get('category')?.toString().trim() || null;
+	const description = formData.get('description')?.toString().trim() || null;
+	const deadline = formData.get('deadline')?.toString().trim() || null;
+	const statusRaw = formData.get('status')?.toString().trim() || 'ongoing';
+
+	if (!name) {
+		return { error: 'Task name is required' };
+	}
+	if (name.length > 200) {
+		return { error: 'Task name: max 200 characters' };
+	}
+	if (category && category.length > 100) {
+		return { error: 'Category: max 100 characters' };
+	}
+	if (description && description.length > 1000) {
+		return { error: 'Description: max 1000 characters' };
+	}
+
+	if (deadline) {
+		const dateError = calendarDateError(deadline);
+		if (dateError) {
+			return { error: `Deadline: ${dateError.charAt(0).toLowerCase()}${dateError.slice(1)}` };
+		}
+	}
+
+	// 'overdue' is deliberately not a storable status — it's derived from the
+	// deadline (see task-status.ts), so accepting it here would let a task claim a
+	// state the rest of the app computes for itself.
+	if (!isTaskStatus(statusRaw)) {
+		return { error: 'Status must be Ongoing or Done' };
+	}
+
+	const assignees = [...new Set(formData.getAll('assignees').map((v) => v.toString()))];
+	for (const id of assignees) {
+		if (!memberIds.has(id)) {
+			return { error: 'Only project members can be appointed to a task' };
+		}
+	}
+
+	return { values: { name, category, description, deadline, status: statusRaw, assignees } };
+}

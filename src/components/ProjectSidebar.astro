@@ -13,7 +13,7 @@ interface Props {
 	project: { id: string; name: string; description: string | null };
 	members: Member[];
 	userRole: string | undefined;
-	activePage: 'overview' | 'files' | 'money';
+	activePage: 'overview' | 'tasks' | 'files' | 'money';
 }
 
 const { project, members, userRole, activePage } = Astro.props;
@@ -82,6 +82,7 @@ const returnTo = Astro.url.pathname;
 
 	<nav class="sidebar-nav">
 		<a href={`/projects/${project.id}`} class={activePage === 'overview' ? 'active' : ''}>Overview</a>
+		<a href={`/projects/${project.id}/tasks`} class={activePage === 'tasks' ? 'active' : ''}>Tasks</a>
 		<a href={`/projects/${project.id}/files`} class={activePage === 'files' ? 'active' : ''}>Files</a>
 		<a href={`/projects/${project.id}/money`} class={activePage === 'money' ? 'active' : ''}>Money</a>
 	</nav>

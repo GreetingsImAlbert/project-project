@@ -1,0 +1,75 @@
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import ProjectShell from '../../../components/ProjectShell.astro';
+import TasksSummary from '../../../components/TasksSummary.svelte';
+import TasksTable from '../../../components/TasksTable.svelte';
+import { TASK_COLUMNS, normalizeTask, type RawTaskRow } from '../../../lib/task-columns';
+
+export const prerender = false;
+
+const user = Astro.locals.user;
+if (!user) {
+	return Astro.redirect('/login');
+}
+
+const { id } = Astro.params;
+
+// All three go out at once: the Worker is a long trip from Postgres and none of
+// them depend on the one before it (RLS scopes each to the caller independently),
+// so the 404 check just moves below the await.
+const [{ data: project, error }, { data: members }, { data: taskRows }] = await Promise.all([
+	Astro.locals.supabase.from('projects').select('id, name, description, owner_id').eq('id', id).single(),
+	Astro.locals.supabase
+		.from('project_members')
+		.select('role, is_auditor, user_id, profiles(display_name, email)')
+		.eq('project_id', id)
+		.overrideTypes<
+			{ role: string; is_auditor: boolean; user_id: string; profiles: { display_name: string; email: string } }[]
+		>(),
+	// Soonest deadline first, undated tasks last (Postgres would put nulls last on an
+	// ascending order anyway — stated explicitly so it can't drift), name as the
+	// tiebreak. sortTasks in the store applies the same order to later edits.
+	Astro.locals.supabase
+		.from('tasks')
+		.select(TASK_COLUMNS)
+		.eq('project_id', id)
+		.order('deadline', { ascending: true, nullsFirst: false })
+		.order('name', { ascending: true })
+		.overrideTypes<RawTaskRow[]>(),
+]);
+
+if (error || !project) {
+	return new Response('Project not found', { status: 404 });
+}
+
+const currentMember = members?.find((member) => member.user_id === user.id);
+const userRole = currentMember?.role;
+// Tasks follow base editor rights, not Money's owner-or-auditor rule.
+const canEdit = userRole === 'owner' || userRole === 'editor';
+
+const memberOptions = (members ?? []).map((member) => ({
+	id: member.user_id,
+	displayName: member.profiles.display_name,
+}));
+
+const tasks = (taskRows ?? []).map(normalizeTask);
+
+// The Worker's clock is UTC and the reader's calendar day may not be. Both islands
+// start from this value so SSR and hydration derive identical statuses, then move to
+// the local date on mount — see the note at the top of lib/task-status.ts.
+const serverToday = new Date().toISOString().slice(0, 10);
+---
+
+<BaseLayout title={`${project.name} — Tasks`}>
+	<ProjectShell project={project} members={members ?? []} userRole={userRole} activePage="tasks">
+		<TasksSummary client:load initialTasks={tasks} serverToday={serverToday} />
+		<TasksTable
+			client:load
+			projectId={project.id}
+			initialTasks={tasks}
+			members={memberOptions}
+			canEdit={canEdit}
+			serverToday={serverToday}
+		/>
+	</ProjectShell>
+</BaseLayout>

@@ -12,7 +12,7 @@ interface Props {
 	project: { id: string; name: string; description: string | null };
 	members: Member[];
 	userRole: string | undefined;
-	activePage: 'overview' | 'files' | 'money';
+	activePage: 'overview' | 'tasks' | 'files' | 'money';
 }
 
 const { project, members, userRole, activePage } = Astro.props;

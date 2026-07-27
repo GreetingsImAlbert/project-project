@@ -268,6 +268,77 @@ export type Database = {
           },
         ]
       }
+      task_assignees: {
+        Row: {
+          task_id: string
+          user_id: string
+        }
+        Insert: {
+          task_id: string
+          user_id: string
+        }
+        Update: {
+          task_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_assignees_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_assignees_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tasks: {
+        Row: {
+          category: string | null
+          created_at: string | null
+          deadline: string | null
+          description: string | null
+          id: string
+          name: string
+          project_id: string
+          status: string
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string | null
+          deadline?: string | null
+          description?: string | null
+          id?: string
+          name: string
+          project_id: string
+          status?: string
+        }
+        Update: {
+          category?: string | null
+          created_at?: string | null
+          deadline?: string | null
+          description?: string | null
+          id?: string
+          name?: string
+          project_id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tasks_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       transactions: {
         Row: {
           created_at: string | null
@@ -378,6 +449,7 @@ export type Database = {
         Args: { target_user_id: string }
         Returns: boolean
       }
+      task_project_id: { Args: { check_task_id: string }; Returns: string }
       user_storage_bytes: {
         Args: { target_user_id: string }
         Returns: {
