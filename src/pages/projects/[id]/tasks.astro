@@ -4,6 +4,7 @@ import ProjectShell from '../../../components/ProjectShell.astro';
 import TasksSummary from '../../../components/TasksSummary.svelte';
 import TasksTable from '../../../components/TasksTable.svelte';
 import { TASK_COLUMNS, normalizeTask, type RawTaskRow } from '../../../lib/task-columns';
+import { isCategoryColorIndex, type CategoryColors } from '../../../lib/category-color';
 
 export const prerender = false;
 
@@ -14,10 +15,10 @@ if (!user) {
 
 const { id } = Astro.params;
 
-// All three go out at once: the Worker is a long trip from Postgres and none of
+// All four go out at once: the Worker is a long trip from Postgres and none of
 // them depend on the one before it (RLS scopes each to the caller independently),
 // so the 404 check just moves below the await.
-const [{ data: project, error }, { data: members }, { data: taskRows }] = await Promise.all([
+const [{ data: project, error }, { data: members }, { data: taskRows }, { data: categoryRows }] = await Promise.all([
 	Astro.locals.supabase.from('projects').select('id, name, description, owner_id').eq('id', id).single(),
 	Astro.locals.supabase
 		.from('project_members')
@@ -36,6 +37,14 @@ const [{ data: project, error }, { data: members }, { data: taskRows }] = await 
 		.order('deadline', { ascending: true, nullsFirst: false })
 		.order('name', { ascending: true })
 		.overrideTypes<RawTaskRow[]>(),
+	// Only the categories somebody has picked a colour for. Everything else falls back
+	// to a hash of the category name in category-color.ts, so this coming back empty
+	// still renders a fully coloured page.
+	Astro.locals.supabase
+		.from('task_categories')
+		.select('name, color_index')
+		.eq('project_id', id)
+		.overrideTypes<{ name: string; color_index: number }[]>(),
 ]);
 
 if (error || !project) {
@@ -54,6 +63,19 @@ const memberOptions = (members ?? []).map((member) => ({
 
 const tasks = (taskRows ?? []).map(normalizeTask);
 
+// A row whose index is outside the palette is dropped rather than clamped: it can
+// only mean the column drifted from the ten slots tokens.css defines, and falling
+// back to the name hash is a real colour where a clamp would be a guess.
+const categoryColors: CategoryColors = {};
+for (const row of categoryRows ?? []) {
+	if (isCategoryColorIndex(row.color_index)) categoryColors[row.name] = row.color_index;
+}
+
+// Read from a cookie rather than left to the client: localStorage is only readable
+// after hydration, so the page would render the list and then swap to the calendar.
+const storedTaskView = Astro.cookies.get('p2-task-view-mode')?.value;
+const initialViewMode = storedTaskView === 'calendar' ? 'calendar' : 'list';
+
 // The Worker's clock is UTC and the reader's calendar day may not be. Both islands
 // start from this value so SSR and hydration derive identical statuses, then move to
 // the local date on mount — see the note at the top of lib/task-status.ts.
@@ -67,6 +89,8 @@ const serverToday = new Date().toISOString().slice(0, 10);
 			client:load
 			projectId={project.id}
 			initialTasks={tasks}
+			initialCategoryColors={categoryColors}
+			initialViewMode={initialViewMode}
 			members={memberOptions}
 			canEdit={canEdit}
 			currentUserId={user.id}

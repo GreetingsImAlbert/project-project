@@ -1,7 +1,15 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { slide } from 'svelte/transition';
+	import TasksCalendar from './TasksCalendar.svelte';
 	import { tasksState, initTasks, addTask, updateTask, removeTask, type Task } from '../lib/tasks-store.svelte';
+	import {
+		CATEGORY_COLOR_SLOTS,
+		categoryColorIndex,
+		categoryColorStyle,
+		categoryStyle,
+		type CategoryColors,
+	} from '../lib/category-color';
 	import {
 		displayStatus,
 		localToday,
@@ -13,6 +21,8 @@
 	let {
 		projectId,
 		initialTasks,
+		initialCategoryColors,
+		initialViewMode,
 		members,
 		canEdit,
 		currentUserId,
@@ -20,6 +30,8 @@
 	}: {
 		projectId: string;
 		initialTasks: Task[];
+		initialCategoryColors: CategoryColors;
+		initialViewMode: 'list' | 'calendar';
 		members: { id: string; displayName: string }[];
 		canEdit: boolean;
 		currentUserId: string;
@@ -35,6 +47,24 @@
 	onMount(() => {
 		today = localToday();
 	});
+
+	// List or Calendar, in the Grid/List picker's styling. The initial value comes down
+	// as a prop read from a cookie rather than from localStorage at init, for the same
+	// reason FileBrowser's does: reading storage on the client only would render the
+	// list during SSR and swap to the calendar on hydrate, which is a visible flash.
+	let viewMode = $state<'list' | 'calendar'>(initialViewMode);
+
+	function setViewMode(mode: 'list' | 'calendar') {
+		viewMode = mode;
+		localStorage.setItem('p2-task-view-mode', mode);
+		document.cookie = `p2-task-view-mode=${mode}; path=/; max-age=31536000; samesite=lax`;
+	}
+
+	// Only the categories somebody has picked a colour for; everything else falls back
+	// to a hash of the name inside categoryStyle. Not a shared store — the summary
+	// island doesn't render categories, so this component and its calendar child are
+	// the whole audience.
+	let categoryColors = $state<CategoryColors>({ ...initialCategoryColors });
 
 	// One panel is open at a time: either a task's read-only detail or its edit form.
 	let openId = $state<string | null>(null);
@@ -60,6 +90,9 @@
 	let editCategoryNew = $state('');
 	let editAssignees = $state<string[]>([]);
 
+	let savingColor = $state<string | null>(null);
+	let colorError = $state<string | null>(null);
+
 	const NEW_CATEGORY_VALUE = '__new__';
 	const UNCATEGORIZED = 'Uncategorized';
 
@@ -83,6 +116,10 @@
 			? tasksState.tasks.filter((task) => task.assignees.some((a) => a.user_id === currentUserId))
 			: tasksState.tasks,
 	);
+
+	// The calendar has no rows to hang a panel off, so the open task is looked up here
+	// and its panel rendered under the grid.
+	let selectedTask = $derived(visibleTasks.find((task) => task.id === openId) ?? null);
 
 	// Same grouping as BomTable's, including 'Uncategorized' sorting last rather than
 	// alphabetically. Tasks keep their deadline order inside a group, since the store
@@ -127,9 +164,21 @@
 
 	// Plain functions, not $derived: they're called from the template, so the `today`
 	// read happens inside the render effect and still re-runs when onMount moves it to
-	// the local date.
+	// the local date. The colour ones read `categoryColors` the same way, so a swatch
+	// click repaints every band and popsicle in that category at once.
 	function statusOf(task: Task): TaskDisplayStatus {
 		return displayStatus(task, today);
+	}
+
+	function styleFor(category: string | null): string {
+		return categoryStyle(category, categoryColors);
+	}
+
+	// The calendar's uncategorized tasks have to fall back to the neutral chip, and the
+	// list's 'Uncategorized' band likewise — both get '' from categoryStyle, which is
+	// what leaves the var() fallbacks in the CSS to do it.
+	function styleForTask(task: Task): string {
+		return styleFor(task.category);
 	}
 
 	function assigneeNames(task: Task): string {
@@ -164,11 +213,41 @@
 		editCategoryNew = '';
 		editAssignees = task.assignees.map((a) => a.user_id);
 		rowError = null;
+		colorError = null;
 	}
 
 	function cancelEdit() {
 		openId = null;
 		rowError = null;
+	}
+
+	// A category's colour belongs to the project, not to the task being edited, so it
+	// saves on the click rather than waiting for the form — Cancel shouldn't undo a
+	// colour, and a colour change shouldn't need a task edit to carry it. The swatches
+	// stay disabled until the category has a name, which is also what keeps a
+	// half-typed '+ Add category' from writing a row under a partial name.
+	async function setCategoryColor(category: string, index: number) {
+		const name = category.trim();
+		if (!name || savingColor) return;
+
+		colorError = null;
+		savingColor = name;
+
+		const body = new FormData();
+		body.set('name', name);
+		body.set('color_index', String(index));
+
+		const res = await fetch(`/api/projects/${projectId}/task-categories/color`, { method: 'POST', body });
+
+		if (!res.ok) {
+			colorError = await res.text();
+			savingColor = null;
+			return;
+		}
+
+		const saved = await res.json();
+		categoryColors = { ...categoryColors, [saved.name]: saved.color_index };
+		savingColor = null;
 	}
 
 	async function handleSave(e: SubmitEvent, id: string) {
@@ -243,6 +322,7 @@
 	function openAddForm() {
 		showAddForm = true;
 		addError = null;
+		colorError = null;
 	}
 
 	function closeAddForm() {
@@ -278,10 +358,22 @@
 	}
 </script>
 
-{#snippet categoryField(select: string, newValue: string, onSelect: (v: string) => void, onNew: (v: string) => void)}
-	<label class="field">
+<!-- A div rather than a label, unlike the other fields: the colour swatches are real
+     buttons, and a button inside a label activates the label's control on click. -->
+{#snippet categoryField(
+	select: string,
+	newValue: string,
+	effective: string,
+	onSelect: (v: string) => void,
+	onNew: (v: string) => void,
+)}
+	<div class="field">
 		<span class="field-label">Category</span>
-		<select value={select} onchange={(e) => onSelect((e.currentTarget as HTMLSelectElement).value)}>
+		<select
+			aria-label="Category"
+			value={select}
+			onchange={(e) => onSelect((e.currentTarget as HTMLSelectElement).value)}
+		>
 			<option value="">None</option>
 			{#each existingCategories as cat (cat)}
 				<option value={cat}>{cat}</option>
@@ -297,7 +389,26 @@
 				oninput={(e) => onNew((e.currentTarget as HTMLInputElement).value)}
 			/>
 		{/if}
-	</label>
+
+		<!-- Ten fixed slots. The active one is whichever the category resolves to right
+		     now, picked or hashed, so the row always shows the colour the list and the
+		     calendar are actually painting rather than 'nothing chosen'. -->
+		<div class="swatches" role="group" aria-label="Category colour">
+			{#each CATEGORY_COLOR_SLOTS as slot (slot)}
+				<button
+					type="button"
+					class="swatch"
+					class:active={effective.trim() !== '' && categoryColorIndex(effective, categoryColors) === slot}
+					style={categoryColorStyle(slot)}
+					disabled={effective.trim() === '' || savingColor !== null}
+					aria-label={`Colour ${slot + 1}`}
+					title={effective.trim() === '' ? 'Pick a category first' : `Colour ${slot + 1}`}
+					onclick={() => setCategoryColor(effective, slot)}
+				></button>
+			{/each}
+		</div>
+		{#if colorError}<span class="swatch-error">{colorError}</span>{/if}
+	</div>
 {/snippet}
 
 {#snippet assigneeField(selected: string[], onToggle: (id: string, on: boolean) => void)}
@@ -324,6 +435,99 @@
 	</div>
 {/snippet}
 
+<!-- The three below are shared by the list rows and the calendar's selected-task
+     panel: the calendar has no row of its own to hang them off, and two copies of an
+     edit form is exactly how the two views would drift apart. -->
+{#snippet taskActions(task: Task)}
+	<div class="cell-actions">
+		<!-- Reopen rather than a second Done: the button has to say what the click will
+		     do, and a task's status is editable from the edit form either way. -->
+		<button type="button" class="btn-plain" onclick={() => toggleDone(task)} disabled={togglingId === task.id}>
+			{togglingId === task.id ? '…' : task.status === 'done' ? 'Reopen' : 'Done'}
+		</button>
+		<button type="button" class="btn-plain" onclick={() => startEdit(task)}>Edit</button>
+		<button type="button" class="btn-danger" onclick={() => handleDelete(task.id)} disabled={deletingId === task.id}>
+			{deletingId === task.id ? '…' : 'Delete'}
+		</button>
+	</div>
+{/snippet}
+
+{#snippet detailBody(task: Task)}
+	<dl class="detail">
+		<dt>Category</dt>
+		<dd>
+			{#if task.category?.trim()}
+				<span class="category-chip" style={styleFor(task.category)}>{task.category.trim()}</span>
+			{:else}
+				—
+			{/if}
+		</dd>
+		<dt>Appointed</dt>
+		<dd>{assigneeNames(task) || '—'}</dd>
+		<dt>Deadline</dt>
+		<dd>
+			{#if task.deadline}
+				{task.deadline} <span class="muted">({relativeDeadline(task.deadline, today)})</span>
+			{:else}
+				—
+			{/if}
+		</dd>
+		<dt>Description</dt>
+		<dd>{task.description || '—'}</dd>
+	</dl>
+{/snippet}
+
+{#snippet editForm(task: Task)}
+	<form method="POST" action={`/api/tasks/${task.id}/update`} onsubmit={(e) => handleSave(e, task.id)}>
+		<div class="panel-grid">
+			<label class="field">
+				<span class="field-label">Task name</span>
+				<input type="text" name="name" value={task.name} maxlength="200" required />
+			</label>
+
+			{@render categoryField(
+				editCategorySelect,
+				editCategoryNew,
+				editCategoryEffective,
+				(v) => (editCategorySelect = v),
+				(v) => (editCategoryNew = v),
+			)}
+			<input type="hidden" name="category" value={editCategoryEffective} />
+
+			<label class="field">
+				<span class="field-label">Deadline</span>
+				<input type="date" name="deadline" value={task.deadline ?? ''} />
+			</label>
+
+			<!-- Only the two storable states. Overdue is derived from the deadline, so it
+			     is never something to pick here. -->
+			<label class="field">
+				<span class="field-label">Status</span>
+				<select name="status" value={task.status}>
+					<option value="ongoing">Ongoing</option>
+					<option value="done">Done</option>
+				</select>
+			</label>
+
+			{@render assigneeField(editAssignees, (id, on) => {
+				editAssignees = on ? [...editAssignees, id] : editAssignees.filter((a) => a !== id);
+			})}
+
+			<label class="field field-wide">
+				<span class="field-label">Description</span>
+				<input type="text" name="description" value={task.description ?? ''} maxlength="1000" />
+			</label>
+		</div>
+
+		{#if rowError?.id === task.id}<p class="panel-error">{rowError.message}</p>{/if}
+
+		<div class="panel-actions">
+			<button type="submit" disabled={savingId === task.id}>{savingId === task.id ? 'Saving…' : 'Save'}</button>
+			<button type="button" class="btn-plain" onclick={cancelEdit}>Cancel</button>
+		</div>
+	</form>
+{/snippet}
+
 <section class="tasks-section">
 	<div class="tasks-head">
 		<h2>Tasks</h2>
@@ -342,6 +546,48 @@
 			<input type="checkbox" bind:checked={onlyMine} />
 			<span>Just my tasks</span>
 		</label>
+
+		<!-- Same square icon boxes and inverted active state as the Files page's
+		     Grid/List picker. -->
+		<div class="view-toggle">
+			<button
+				type="button"
+				class="btn-plain"
+				class:active={viewMode === 'list'}
+				aria-pressed={viewMode === 'list'}
+				aria-label="List view"
+				title="List view"
+				onclick={() => setViewMode('list')}
+			>
+				<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+					<rect x="1" y="2" width="2" height="2" rx="0.5" />
+					<rect x="5" y="2" width="10" height="2" rx="1" />
+					<rect x="1" y="7" width="2" height="2" rx="0.5" />
+					<rect x="5" y="7" width="10" height="2" rx="1" />
+					<rect x="1" y="12" width="2" height="2" rx="0.5" />
+					<rect x="5" y="12" width="10" height="2" rx="1" />
+				</svg>
+			</button>
+			<button
+				type="button"
+				class="btn-plain"
+				class:active={viewMode === 'calendar'}
+				aria-pressed={viewMode === 'calendar'}
+				aria-label="Calendar view"
+				title="Calendar view"
+				onclick={() => setViewMode('calendar')}
+			>
+				<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+					<rect x="1" y="1" width="14" height="3" rx="1" />
+					<rect x="1" y="6" width="3" height="3" rx="0.5" />
+					<rect x="6.5" y="6" width="3" height="3" rx="0.5" />
+					<rect x="12" y="6" width="3" height="3" rx="0.5" />
+					<rect x="1" y="11" width="3" height="3" rx="0.5" />
+					<rect x="6.5" y="11" width="3" height="3" rx="0.5" />
+					<rect x="12" y="11" width="3" height="3" rx="0.5" />
+				</svg>
+			</button>
+		</div>
 
 		{#if canEdit && !showAddForm}
 			<button type="button" class="btn-plain add-toggle" onclick={openAddForm}>Add task</button>
@@ -365,6 +611,7 @@
 				{@render categoryField(
 					addCategorySelect,
 					addCategoryNew,
+					addCategoryEffective,
 					(v) => (addCategorySelect = v),
 					(v) => (addCategoryNew = v),
 				)}
@@ -402,7 +649,29 @@
 		</form>
 	{/if}
 
-	{#if tasksState.tasks.length === 0}
+	{#if viewMode === 'calendar'}
+		<TasksCalendar tasks={visibleTasks} today={today} colorFor={styleForTask} onSelect={toggleDetail} selectedId={openId} />
+
+		<!-- The grid has no rows, so the open task's panel lands under it — with the
+		     row controls it would otherwise have nowhere to live. -->
+		{#if selectedTask}
+			{#if openMode === 'edit' && canEdit}
+				<div class="task-panel calendar-panel" transition:slide={{ duration: 150 }}>
+					{@render editForm(selectedTask)}
+				</div>
+			{:else}
+				<div class="task-panel calendar-panel" transition:slide={{ duration: 150 }}>
+					<div class="panel-head">
+						<strong class="panel-title" class:done={statusOf(selectedTask) === 'done'}>{selectedTask.name}</strong>
+						<span class="status status-{statusOf(selectedTask)}">{TASK_STATUS_LABELS[statusOf(selectedTask)]}</span>
+						{#if canEdit}{@render taskActions(selectedTask)}{/if}
+					</div>
+					{@render detailBody(selectedTask)}
+					{#if rowError?.id === selectedTask.id}<p class="panel-error">{rowError.message}</p>{/if}
+				</div>
+			{/if}
+		{/if}
+	{:else if tasksState.tasks.length === 0}
 		<p class="muted empty">No tasks yet.</p>
 	{:else if visibleTasks.length === 0}
 		<p class="muted empty">No tasks are appointed to you.</p>
@@ -423,11 +692,14 @@
 
 			{#each groups as group (group.category)}
 				<!-- The band is a real button spanning the row, so a category folds from
-				     the keyboard as well as the pointer. -->
+				     the keyboard as well as the pointer. It's also where the category's
+				     colour shows in List mode — the same colour its popsicles take in
+				     Calendar mode. -->
 				{#if showGroupHeaders}
 					<button
 						type="button"
 						class="group-row"
+						style={group.category === UNCATEGORIZED ? '' : styleFor(group.category)}
 						aria-expanded={!isCollapsed(group.category)}
 						onclick={() => toggleGroup(group.category)}
 					>
@@ -473,91 +745,19 @@
 								</div>
 
 								{#if canEdit}
-									<div class="cell cell-actions">
-										<!-- Reopen rather than a second Done: the button has to say what
-										     the click will do, and a task's status is editable from the
-										     edit form either way. -->
-										<button type="button" class="btn-plain" onclick={() => toggleDone(task)} disabled={togglingId === task.id}>
-											{togglingId === task.id ? '…' : task.status === 'done' ? 'Reopen' : 'Done'}
-										</button>
-										<button type="button" class="btn-plain" onclick={() => startEdit(task)}>Edit</button>
-										<button type="button" class="btn-danger" onclick={() => handleDelete(task.id)} disabled={deletingId === task.id}>
-											{deletingId === task.id ? '…' : 'Delete'}
-										</button>
-									</div>
+									<div class="cell cell-actions-wrap">{@render taskActions(task)}</div>
 								{/if}
 							</div>
 
 							{#if openId === task.id && openMode === 'detail'}
 								<div class="task-panel" transition:slide={{ duration: 150 }}>
-									<dl class="detail">
-										<dt>Category</dt>
-										<dd>{task.category?.trim() || '—'}</dd>
-										<dt>Appointed</dt>
-										<dd>{assigneeNames(task) || '—'}</dd>
-										<dt>Deadline</dt>
-										<dd>
-											{#if task.deadline}
-												{task.deadline} <span class="muted">({relativeDeadline(task.deadline, today)})</span>
-											{:else}
-												—
-											{/if}
-										</dd>
-										<dt>Description</dt>
-										<dd>{task.description || '—'}</dd>
-									</dl>
+									{@render detailBody(task)}
 								</div>
 							{/if}
 
 							{#if canEdit && openId === task.id && openMode === 'edit'}
 								<div class="task-panel" transition:slide={{ duration: 150 }}>
-									<form method="POST" action={`/api/tasks/${task.id}/update`} onsubmit={(e) => handleSave(e, task.id)}>
-										<div class="panel-grid">
-											<label class="field">
-												<span class="field-label">Task name</span>
-												<input type="text" name="name" value={task.name} maxlength="200" required />
-											</label>
-
-											{@render categoryField(
-												editCategorySelect,
-												editCategoryNew,
-												(v) => (editCategorySelect = v),
-												(v) => (editCategoryNew = v),
-											)}
-											<input type="hidden" name="category" value={editCategoryEffective} />
-
-											<label class="field">
-												<span class="field-label">Deadline</span>
-												<input type="date" name="deadline" value={task.deadline ?? ''} />
-											</label>
-
-											<!-- Only the two storable states. Overdue is derived from the
-											     deadline, so it is never something to pick here. -->
-											<label class="field">
-												<span class="field-label">Status</span>
-												<select name="status" value={task.status}>
-													<option value="ongoing">Ongoing</option>
-													<option value="done">Done</option>
-												</select>
-											</label>
-
-											{@render assigneeField(editAssignees, (id, on) => {
-												editAssignees = on ? [...editAssignees, id] : editAssignees.filter((a) => a !== id);
-											})}
-
-											<label class="field field-wide">
-												<span class="field-label">Description</span>
-												<input type="text" name="description" value={task.description ?? ''} maxlength="1000" />
-											</label>
-										</div>
-
-										{#if rowError?.id === task.id}<p class="panel-error">{rowError.message}</p>{/if}
-
-										<div class="panel-actions">
-											<button type="submit" disabled={savingId === task.id}>{savingId === task.id ? 'Saving…' : 'Save'}</button>
-											<button type="button" class="btn-plain" onclick={cancelEdit}>Cancel</button>
-										</div>
-									</form>
+									{@render editForm(task)}
 								</div>
 							{/if}
 
@@ -608,7 +808,7 @@
 	}
 
 	/* The filter, not the Add button, carries the margin that pushes the right-hand
-	   controls over — it's the one that renders for every role. */
+	   controls over — it's the first one that renders for every role. */
 	.mine-toggle {
 		display: inline-flex;
 		align-items: center;
@@ -623,6 +823,34 @@
 	.mine-toggle input {
 		margin: 0;
 		cursor: pointer;
+	}
+
+	/* align-self, because the head is baseline-aligned and these boxes hold nothing
+	   with a baseline to align on. */
+	.view-toggle {
+		display: flex;
+		gap: var(--space-2);
+		flex: 0 0 auto;
+		align-self: center;
+	}
+
+	.view-toggle button {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		padding: var(--space-1);
+		line-height: 0;
+	}
+
+	.view-toggle svg {
+		width: 14px;
+		height: 14px;
+		fill: currentColor;
+	}
+
+	.view-toggle button.active {
+		background: var(--color-fg);
+		color: var(--color-bg);
 	}
 
 	.add-toggle {
@@ -669,16 +897,18 @@
 
 	/* Banded like the BOM's category rows, but a button — it folds its group. No rule
 	   above it: the band's own background is separation enough, and a hard line there
-	   read as a heavy black edge across the list. */
+	   read as a heavy black edge across the list. The fill is the category's own colour
+	   where it has one; 'Uncategorized' is passed no style at all and falls back to the
+	   neutral highlight, so a colour never implies a category that isn't there. */
 	.group-row {
 		display: flex;
 		align-items: baseline;
 		gap: var(--space-2);
 		width: 100%;
 		padding: var(--space-2);
-		background: var(--color-highlight);
+		background: var(--cat-bg, var(--color-highlight));
 		border: none;
-		color: var(--color-fg);
+		color: var(--cat-fg, var(--color-fg));
 		font: inherit;
 		font-size: 0.7rem;
 		font-weight: 700;
@@ -688,10 +918,13 @@
 		cursor: pointer;
 	}
 
+	/* Inherit rather than --color-muted: a fixed grey doesn't stay readable across ten
+	   fills, and the fill's own foreground already does. */
 	.group-caret {
 		flex-shrink: 0;
 		font-size: 0.6rem;
-		color: var(--color-muted);
+		color: inherit;
+		opacity: 0.7;
 	}
 
 	.group-name {
@@ -704,7 +937,8 @@
 	.group-count {
 		margin-left: auto;
 		flex-shrink: 0;
-		color: var(--color-muted);
+		color: inherit;
+		opacity: 0.7;
 		font-weight: 400;
 		letter-spacing: 0.04em;
 		font-variant-numeric: tabular-nums;
@@ -841,6 +1075,34 @@
 		margin: 0 0 var(--space-4);
 	}
 
+	/* The calendar's panel is a block on open space rather than a slot between rows, so
+	   it carries the rule the row above it would have drawn. */
+	.calendar-panel {
+		padding-top: var(--space-3);
+	}
+
+	.panel-head {
+		display: flex;
+		align-items: baseline;
+		gap: var(--space-3);
+		flex-wrap: wrap;
+		margin-bottom: var(--space-3);
+	}
+
+	.panel-title {
+		font-size: 0.9rem;
+		overflow-wrap: anywhere;
+	}
+
+	.panel-title.done {
+		color: var(--color-muted);
+		text-decoration: line-through;
+	}
+
+	.panel-head .cell-actions {
+		margin-left: auto;
+	}
+
 	/* Undo the global flex-row form styling — in a panel the form is just a block
 	   wrapper around its grid and action row. */
 	.task-panel form {
@@ -870,6 +1132,16 @@
 		font-size: 0.82rem;
 		overflow-wrap: break-word;
 		word-break: break-word;
+	}
+
+	/* The detail panel is the one place the category is named in full, so it carries
+	   the colour there too — the same fill as the band and the popsicle. */
+	.category-chip {
+		display: inline-block;
+		padding: 0 var(--space-2);
+		background: var(--cat-bg, var(--color-border));
+		color: var(--cat-fg, var(--color-fg));
+		font-size: 0.75rem;
 	}
 
 	.panel-grid {
@@ -908,6 +1180,42 @@
 
 	.field-wide {
 		grid-column: 1 / -1;
+	}
+
+	/* Ten swatches on one row under the category select. They wrap rather than shrink,
+	   so the field can narrow to the panel grid's 180px track without them turning into
+	   slivers. */
+	.swatches {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-1);
+		margin-top: 2px;
+	}
+
+	.swatch {
+		width: 18px;
+		height: 18px;
+		flex: 0 0 auto;
+		padding: 0;
+		border: 1px solid var(--color-border);
+		background: var(--cat-bg);
+		cursor: pointer;
+	}
+
+	.swatch.active {
+		border-color: var(--color-border-strong);
+		outline: 1px solid var(--color-border-strong);
+		outline-offset: -3px;
+	}
+
+	.swatch:disabled {
+		opacity: 0.45;
+		cursor: not-allowed;
+	}
+
+	.swatch-error {
+		color: var(--color-danger);
+		font-size: 0.7rem;
 	}
 
 	.assignee-picker {
@@ -982,10 +1290,13 @@
 			gap: var(--space-2);
 		}
 
-		.cell-actions {
+		.cell-actions-wrap {
 			grid-column: 1 / -1;
-			justify-content: flex-start;
 			margin-top: var(--space-1);
+		}
+
+		.cell-actions-wrap .cell-actions {
+			justify-content: flex-start;
 		}
 	}
 </style>

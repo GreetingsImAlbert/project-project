@@ -298,6 +298,32 @@ export type Database = {
           },
         ]
       }
+      task_categories: {
+        Row: {
+          color_index: number
+          name: string
+          project_id: string
+        }
+        Insert: {
+          color_index: number
+          name: string
+          project_id: string
+        }
+        Update: {
+          color_index?: number
+          name?: string
+          project_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_categories_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tasks: {
         Row: {
           category: string | null

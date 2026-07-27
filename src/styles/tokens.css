@@ -31,6 +31,35 @@
 	--color-syntax-function: #1a5fb4;
 	--color-syntax-punct: #666666;
 
+	/* Task category colours: ten fixed slots, picked per category and stored as an
+	   index in `task_categories.color_index` — never as a hex value, which is exactly
+	   what would leave a category coloured for the wrong palette after a theme switch
+	   (the same reason the syntax colours above are tokens). Each slot is a fill plus
+	   the foreground that reads on it, since the pair has to be chosen together: a
+	   light tint with dark text here, a dark tint with light text in the two dark
+	   themes. Restrained on purpose — these are the only hues on a flat monochrome
+	   page, so they're wide apart in hue but low in chroma. */
+	--color-cat-0: #f7d9d6;
+	--color-cat-0-fg: #7a2119;
+	--color-cat-1: #f8e3c9;
+	--color-cat-1-fg: #7a4a10;
+	--color-cat-2: #f2ecc0;
+	--color-cat-2-fg: #665a0c;
+	--color-cat-3: #d6ecd8;
+	--color-cat-3-fg: #24603a;
+	--color-cat-4: #cfe9e5;
+	--color-cat-4-fg: #14564f;
+	--color-cat-5: #d5e3f6;
+	--color-cat-5-fg: #17457e;
+	--color-cat-6: #dedef5;
+	--color-cat-6-fg: #33357e;
+	--color-cat-7: #e8daf3;
+	--color-cat-7-fg: #59307f;
+	--color-cat-8: #f7dae7;
+	--color-cat-8-fg: #7c2451;
+	--color-cat-9: #dee1e6;
+	--color-cat-9-fg: #3a424b;
+
 	--space-1: 4px;
 	--space-2: 8px;
 	--space-3: 12px;
@@ -64,6 +93,27 @@
 	--color-syntax-number: #ff8a80;
 	--color-syntax-function: #6ab0f3;
 	--color-syntax-punct: #8b98a5;
+
+	--color-cat-0: #5a2b28;
+	--color-cat-0-fg: #ffb4ae;
+	--color-cat-1: #5c4023;
+	--color-cat-1-fg: #ffcf9b;
+	--color-cat-2: #545020;
+	--color-cat-2-fg: #ecdf90;
+	--color-cat-3: #234730;
+	--color-cat-3-fg: #9fe0b7;
+	--color-cat-4: #1e4745;
+	--color-cat-4-fg: #92dbd4;
+	--color-cat-5: #26415f;
+	--color-cat-5-fg: #a8cbf2;
+	--color-cat-6: #34365d;
+	--color-cat-6-fg: #b8bbf0;
+	--color-cat-7: #43305d;
+	--color-cat-7-fg: #d3b8f0;
+	--color-cat-8: #542c42;
+	--color-cat-8-fg: #f2b3ce;
+	--color-cat-9: #343d46;
+	--color-cat-9-fg: #c2ccd4;
 }
 
 /* Neutral dark gray in the VS Code Dark+ range rather than pure black — easier on the
@@ -92,4 +142,25 @@
 	--color-syntax-number: #ff8a80;
 	--color-syntax-function: #79b8ff;
 	--color-syntax-punct: #8c8c8c;
+
+	--color-cat-0: #4e2b29;
+	--color-cat-0-fg: #ffb4ae;
+	--color-cat-1: #513c24;
+	--color-cat-1-fg: #ffcf9b;
+	--color-cat-2: #4b4723;
+	--color-cat-2-fg: #ecdf90;
+	--color-cat-3: #254430;
+	--color-cat-3-fg: #9fe0b7;
+	--color-cat-4: #204442;
+	--color-cat-4-fg: #92dbd4;
+	--color-cat-5: #273f57;
+	--color-cat-5-fg: #a8cbf2;
+	--color-cat-6: #343556;
+	--color-cat-6-fg: #b8bbf0;
+	--color-cat-7: #403156;
+	--color-cat-7-fg: #d3b8f0;
+	--color-cat-8: #4c2d3d;
+	--color-cat-8-fg: #f2b3ce;
+	--color-cat-9: #3b3b3b;
+	--color-cat-9-fg: #cacaca;
 }
