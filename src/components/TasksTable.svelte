@@ -34,8 +34,7 @@
 		today = localToday();
 	});
 
-	// One row panel is open at a time: either its read-only detail or its edit form,
-	// exactly as the Money tables do it.
+	// One panel is open at a time: either a task's read-only detail or its edit form.
 	let openId = $state<string | null>(null);
 	let openMode = $state<'detail' | 'edit'>('detail');
 
@@ -46,7 +45,6 @@
 	let adding = $state(false);
 	let addError = $state<string | null>(null);
 	let showAddForm = $state(false);
-	let addButtonVisible = $state(true);
 	let addName = $state('');
 	let addCategorySelect = $state('');
 	let addCategoryNew = $state('');
@@ -60,8 +58,6 @@
 	let editAssignees = $state<string[]>([]);
 
 	const NEW_CATEGORY_VALUE = '__new__';
-
-	let colCount = $derived(canEdit ? 6 : 5);
 
 	// Same derivation as BomTable's: the dropdown offers whatever categories the
 	// current tasks already use, so the backend still only ever stores free text.
@@ -87,14 +83,21 @@
 		return task.assignees.map((a) => a.display_name).join(', ');
 	}
 
-	function handleRowClick(e: MouseEvent, id: string) {
-		if ((e.target as HTMLElement).closest('.row-actions, a')) return;
+	function toggleDetail(id: string) {
 		if (openId === id && openMode === 'detail') {
 			openId = null;
 			return;
 		}
 		openId = id;
 		openMode = 'detail';
+	}
+
+	// The whole row is clickable for convenience, but the name is a real button so the
+	// panel is reachable from the keyboard too — that button stops propagation rather
+	// than letting this handler toggle a second time on the same click.
+	function handleRowClick(e: MouseEvent, id: string) {
+		if ((e.target as HTMLElement).closest('button, a, input, select, label')) return;
+		toggleDetail(id);
 	}
 
 	function startEdit(task: Task) {
@@ -159,7 +162,6 @@
 	// with it.
 	function openAddForm() {
 		showAddForm = true;
-		addButtonVisible = false;
 		addError = null;
 	}
 
@@ -218,274 +220,389 @@
 	</label>
 {/snippet}
 
-<section class="money-section">
-	<div class="money-section-head">
+{#snippet assigneeField(selected: string[], onToggle: (id: string, on: boolean) => void)}
+	<div class="field field-wide">
+		<span class="field-label">Appointed members</span>
+		{#if members.length === 0}
+			<span class="field-value muted">No members to appoint.</span>
+		{:else}
+			<div class="assignee-picker">
+				{#each members as member (member.id)}
+					<label class="assignee-option">
+						<input
+							type="checkbox"
+							name="assignees"
+							value={member.id}
+							checked={selected.includes(member.id)}
+							onchange={(e) => onToggle(member.id, (e.currentTarget as HTMLInputElement).checked)}
+						/>
+						<span>{member.displayName}</span>
+					</label>
+				{/each}
+			</div>
+		{/if}
+	</div>
+{/snippet}
+
+<section class="tasks-section">
+	<div class="tasks-head">
 		<h2>Tasks</h2>
-		<span class="section-meta">
+		<span class="tasks-meta">
 			{tasksState.tasks.length} task{tasksState.tasks.length === 1 ? '' : 's'} · <strong>{openCount}</strong> open
 		</span>
+		{#if canEdit && !showAddForm}
+			<button type="button" class="btn-plain add-toggle" onclick={openAddForm}>Add task</button>
+		{/if}
 	</div>
+
+	{#if canEdit && showAddForm}
+		<form
+			method="POST"
+			action={`/api/projects/${projectId}/tasks/create`}
+			onsubmit={handleAddSubmit}
+			class="task-panel add-panel"
+			transition:slide={{ duration: 150 }}
+		>
+			<div class="panel-grid">
+				<label class="field">
+					<span class="field-label">Task name</span>
+					<input type="text" name="name" placeholder="Task name" maxlength="200" required bind:value={addName} />
+				</label>
+
+				{@render categoryField(
+					addCategorySelect,
+					addCategoryNew,
+					(v) => (addCategorySelect = v),
+					(v) => (addCategoryNew = v),
+				)}
+				<input type="hidden" name="category" value={addCategoryEffective} />
+
+				<label class="field">
+					<span class="field-label">Deadline</span>
+					<input type="date" name="deadline" bind:value={addDeadline} />
+				</label>
+
+				<label class="field">
+					<span class="field-label">Status</span>
+					<select name="status" bind:value={addStatus}>
+						<option value="ongoing">Ongoing</option>
+						<option value="done">Done</option>
+					</select>
+				</label>
+
+				{@render assigneeField(addAssignees, (id, on) => {
+					addAssignees = on ? [...addAssignees, id] : addAssignees.filter((a) => a !== id);
+				})}
+
+				<label class="field field-wide">
+					<span class="field-label">Description</span>
+					<input type="text" name="description" placeholder="Description" maxlength="1000" bind:value={addDescription} />
+				</label>
+			</div>
+
+			{#if addError}<p class="panel-error">{addError}</p>{/if}
+
+			<div class="panel-actions">
+				<button type="submit" disabled={adding}>{adding ? 'Adding…' : 'Add task'}</button>
+				<button type="button" class="btn-plain" onclick={closeAddForm}>Cancel</button>
+			</div>
+		</form>
+	{/if}
 
 	{#if tasksState.tasks.length === 0}
 		<p class="muted empty">No tasks yet.</p>
 	{:else}
-		<!-- Capped height rather than a table that grows the page without bound: the
-		     list scrolls inside itself and the header band stays pinned to the top of
-		     the scroller. -->
-		<div class="money-table tasks-scroll">
-			<table>
-				<colgroup>
-					<col style="width:220px" />
-					<col style="width:130px" />
-					<col style="width:180px" />
-					<col style="width:110px" />
-					<col style="width:90px" />
-					{#if canEdit}<col style="width:130px" />{/if}
-				</colgroup>
-				<thead>
-					<tr>
-						<th>Task</th>
-						<th>Category</th>
-						<th>Appointed</th>
-						<th>Deadline</th>
-						<th>Status</th>
-						{#if canEdit}<th><span class="sr-only">Actions</span></th>{/if}
-					</tr>
-				</thead>
-				<tbody>
-					{#each tasksState.tasks as task (task.id)}
-						<tr class="data-row clickable" class:open={openId === task.id} onclick={(e) => handleRowClick(e, task.id)}>
-							<td>{task.name}</td>
-							<td>{task.category?.trim() || ''}</td>
-							<td>{assigneeNames(task) || ''}</td>
-							<td>{task.deadline ?? ''}</td>
-							<td>
-								<span class="status-badge status-{statusOf(task)}">{TASK_STATUS_LABELS[statusOf(task)]}</span>
-							</td>
-							{#if canEdit}
-								<td class="actions-cell">
-									<div class="row-actions">
-										<button type="button" class="btn-plain" onclick={() => startEdit(task)}>Edit</button>
-										<button type="button" class="btn-danger" onclick={() => handleDelete(task.id)} disabled={deletingId === task.id}>
-											{deletingId === task.id ? '…' : 'Delete'}
-										</button>
-									</div>
-								</td>
-							{/if}
-						</tr>
+		<!-- A list, not a table: no outer frame, no vertical rules and no scroller of its
+		     own, so it stays open and grows with the page. The columns are still a grid
+		     with fixed fractions, so every row lines up even though nothing is drawn
+		     around them. -->
+		<div class="task-list" class:with-actions={canEdit}>
+			<div class="list-head">
+				<span>Task</span>
+				<span>Appointed</span>
+				<span>Deadline</span>
+				<span>Status</span>
+				{#if canEdit}<span></span>{/if}
+			</div>
 
-						{#if openId === task.id && openMode === 'detail'}
-							<tr class="panel-row">
-								<td colspan={colCount}>
-									<div class="money-panel" transition:slide={{ duration: 150 }}>
-										<div class="panel-grid">
-											<div class="field">
-												<span class="field-label">Task</span>
-												<span class="field-value">{task.name}</span>
-											</div>
-											<div class="field">
-												<span class="field-label">Category</span>
-												<span class="field-value">{task.category?.trim() || '—'}</span>
-											</div>
-											<div class="field">
-												<span class="field-label">Status</span>
-												<span class="field-value">{TASK_STATUS_LABELS[statusOf(task)]}</span>
-											</div>
-											<div class="field">
-												<span class="field-label">Deadline</span>
-												<span class="field-value">
-													{#if task.deadline}
-														{task.deadline} <span class="muted">({relativeDeadline(task.deadline, today)})</span>
-													{:else}
-														—
-													{/if}
-												</span>
-											</div>
-											<div class="field field-wide">
-												<span class="field-label">Appointed members</span>
-												<span class="field-value">{assigneeNames(task) || '—'}</span>
-											</div>
-											<div class="field field-wide">
-												<span class="field-label">Description</span>
-												<span class="field-value">{task.description || '—'}</span>
-											</div>
-										</div>
-									</div>
-								</td>
-							</tr>
-						{/if}
-
-						{#if canEdit && openId === task.id && openMode === 'edit'}
-							<tr class="panel-row">
-								<td colspan={colCount}>
-									<div class="money-panel" transition:slide={{ duration: 150 }}>
-										<form method="POST" action={`/api/tasks/${task.id}/update`} onsubmit={(e) => handleSave(e, task.id)}>
-											<div class="panel-grid">
-												<label class="field">
-													<span class="field-label">Task name</span>
-													<input type="text" name="name" value={task.name} maxlength="200" required />
-												</label>
-
-												{@render categoryField(
-													editCategorySelect,
-													editCategoryNew,
-													(v) => (editCategorySelect = v),
-													(v) => (editCategoryNew = v),
-												)}
-												<input type="hidden" name="category" value={editCategoryEffective} />
-
-												<label class="field">
-													<span class="field-label">Deadline</span>
-													<input type="date" name="deadline" value={task.deadline ?? ''} />
-												</label>
-
-												<!-- Only the two storable states. Overdue is derived from the
-												     deadline, so it is never something to pick here. -->
-												<label class="field">
-													<span class="field-label">Status</span>
-													<select name="status" value={task.status}>
-														<option value="ongoing">Ongoing</option>
-														<option value="done">Done</option>
-													</select>
-												</label>
-
-												<div class="field field-wide">
-													<span class="field-label">Appointed members</span>
-													{#if members.length === 0}
-														<span class="field-value muted">No members to appoint.</span>
-													{:else}
-														<div class="assignee-picker">
-															{#each members as member (member.id)}
-																<label class="assignee-option">
-																	<input type="checkbox" name="assignees" value={member.id} bind:group={editAssignees} />
-																	<span>{member.displayName}</span>
-																</label>
-															{/each}
-														</div>
-													{/if}
-												</div>
-
-												<label class="field field-wide">
-													<span class="field-label">Description</span>
-													<input type="text" name="description" value={task.description ?? ''} maxlength="1000" />
-												</label>
-											</div>
-
-											{#if rowError?.id === task.id}<p class="panel-error">{rowError.message}</p>{/if}
-
-											<div class="panel-actions">
-												<button type="submit" disabled={savingId === task.id}>{savingId === task.id ? 'Saving…' : 'Save'}</button>
-												<button type="button" class="btn-plain" onclick={cancelEdit}>Cancel</button>
-											</div>
-										</form>
-									</div>
-								</td>
-							</tr>
-						{/if}
-
-						{#if rowError?.id === task.id && !(openId === task.id && openMode === 'edit')}
-							<tr class="row-error">
-								<td colspan={colCount}>{rowError.message}</td>
-							</tr>
-						{/if}
-					{/each}
-				</tbody>
-			</table>
-		</div>
-	{/if}
-
-	{#if canEdit}
-		<form method="POST" action={`/api/projects/${projectId}/tasks/create`} onsubmit={handleAddSubmit} class="add-form">
-			{#if showAddForm}
-				<div class="money-panel add-panel" transition:slide={{ duration: 150 }} onoutroend={() => (addButtonVisible = true)}>
-					<div class="panel-grid">
-						<label class="field">
-							<span class="field-label">Task name</span>
-							<input type="text" name="name" placeholder="Task name" maxlength="200" required bind:value={addName} />
-						</label>
-
-						{@render categoryField(
-							addCategorySelect,
-							addCategoryNew,
-							(v) => (addCategorySelect = v),
-							(v) => (addCategoryNew = v),
-						)}
-						<input type="hidden" name="category" value={addCategoryEffective} />
-
-						<label class="field">
-							<span class="field-label">Deadline</span>
-							<input type="date" name="deadline" bind:value={addDeadline} />
-						</label>
-
-						<label class="field">
-							<span class="field-label">Status</span>
-							<select name="status" bind:value={addStatus}>
-								<option value="ongoing">Ongoing</option>
-								<option value="done">Done</option>
-							</select>
-						</label>
-
-						<div class="field field-wide">
-							<span class="field-label">Appointed members</span>
-							{#if members.length === 0}
-								<span class="field-value muted">No members to appoint.</span>
-							{:else}
-								<div class="assignee-picker">
-									{#each members as member (member.id)}
-										<label class="assignee-option">
-											<input type="checkbox" name="assignees" value={member.id} bind:group={addAssignees} />
-											<span>{member.displayName}</span>
-										</label>
-									{/each}
-								</div>
+			{#each tasksState.tasks as task (task.id)}
+				{@const status = statusOf(task)}
+				<div class="task-item" class:open={openId === task.id}>
+					<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+					<div class="task-row" onclick={(e) => handleRowClick(e, task.id)}>
+						<div class="cell cell-task">
+							<button type="button" class="task-name" class:done={status === 'done'} onclick={(e) => {
+								e.stopPropagation();
+								toggleDetail(task.id);
+							}}>{task.name}</button>
+							{#if task.category?.trim()}
+								<span class="task-sub">{task.category.trim()}</span>
 							{/if}
 						</div>
 
-						<label class="field field-wide">
-							<span class="field-label">Description</span>
-							<input type="text" name="description" placeholder="Description" maxlength="1000" bind:value={addDescription} />
-						</label>
+						<div class="cell cell-people">{assigneeNames(task) || '—'}</div>
+
+						<div class="cell cell-deadline">
+							{#if task.deadline}
+								<span class="deadline-date">{task.deadline}</span>
+								<span class="task-sub">{relativeDeadline(task.deadline, today)}</span>
+							{:else}
+								<span class="task-sub">no deadline</span>
+							{/if}
+						</div>
+
+						<div class="cell cell-status">
+							<span class="status status-{status}">{TASK_STATUS_LABELS[status]}</span>
+						</div>
+
+						{#if canEdit}
+							<div class="cell cell-actions">
+								<button type="button" class="btn-plain" onclick={() => startEdit(task)}>Edit</button>
+								<button type="button" class="btn-danger" onclick={() => handleDelete(task.id)} disabled={deletingId === task.id}>
+									{deletingId === task.id ? '…' : 'Delete'}
+								</button>
+							</div>
+						{/if}
 					</div>
 
-					{#if addError}<p class="panel-error">{addError}</p>{/if}
-				</div>
-			{/if}
+					{#if openId === task.id && openMode === 'detail'}
+						<div class="task-panel" transition:slide={{ duration: 150 }}>
+							<dl class="detail">
+								<dt>Category</dt>
+								<dd>{task.category?.trim() || '—'}</dd>
+								<dt>Appointed</dt>
+								<dd>{assigneeNames(task) || '—'}</dd>
+								<dt>Deadline</dt>
+								<dd>
+									{#if task.deadline}
+										{task.deadline} <span class="muted">({relativeDeadline(task.deadline, today)})</span>
+									{:else}
+										—
+									{/if}
+								</dd>
+								<dt>Description</dt>
+								<dd>{task.description || '—'}</dd>
+							</dl>
+						</div>
+					{/if}
 
-			<div class="add-form-actions">
-				{#if addButtonVisible}
-					<button type="button" class="btn-plain" onclick={openAddForm}>Add task</button>
-				{:else}
-					<button type="submit" disabled={adding}>{adding ? 'Adding…' : 'Add task'}</button>
-					<button type="button" class="btn-plain" onclick={closeAddForm}>Cancel</button>
-				{/if}
-			</div>
-		</form>
+					{#if canEdit && openId === task.id && openMode === 'edit'}
+						<div class="task-panel" transition:slide={{ duration: 150 }}>
+							<form method="POST" action={`/api/tasks/${task.id}/update`} onsubmit={(e) => handleSave(e, task.id)}>
+								<div class="panel-grid">
+									<label class="field">
+										<span class="field-label">Task name</span>
+										<input type="text" name="name" value={task.name} maxlength="200" required />
+									</label>
+
+									{@render categoryField(
+										editCategorySelect,
+										editCategoryNew,
+										(v) => (editCategorySelect = v),
+										(v) => (editCategoryNew = v),
+									)}
+									<input type="hidden" name="category" value={editCategoryEffective} />
+
+									<label class="field">
+										<span class="field-label">Deadline</span>
+										<input type="date" name="deadline" value={task.deadline ?? ''} />
+									</label>
+
+									<!-- Only the two storable states. Overdue is derived from the
+									     deadline, so it is never something to pick here. -->
+									<label class="field">
+										<span class="field-label">Status</span>
+										<select name="status" value={task.status}>
+											<option value="ongoing">Ongoing</option>
+											<option value="done">Done</option>
+										</select>
+									</label>
+
+									{@render assigneeField(editAssignees, (id, on) => {
+										editAssignees = on ? [...editAssignees, id] : editAssignees.filter((a) => a !== id);
+									})}
+
+									<label class="field field-wide">
+										<span class="field-label">Description</span>
+										<input type="text" name="description" value={task.description ?? ''} maxlength="1000" />
+									</label>
+								</div>
+
+								{#if rowError?.id === task.id}<p class="panel-error">{rowError.message}</p>{/if}
+
+								<div class="panel-actions">
+									<button type="submit" disabled={savingId === task.id}>{savingId === task.id ? 'Saving…' : 'Save'}</button>
+									<button type="button" class="btn-plain" onclick={cancelEdit}>Cancel</button>
+								</div>
+							</form>
+						</div>
+					{/if}
+
+					{#if rowError?.id === task.id && !(openId === task.id && openMode === 'edit')}
+						<p class="row-error">{rowError.message}</p>
+					{/if}
+				</div>
+			{/each}
+		</div>
 	{/if}
 </section>
 
 <style>
-	/* The list scrolls inside itself instead of growing the page: 60vh keeps the
-	   table shorter than the viewport however many tasks a project accumulates, so
-	   the Add form below it stays reachable without scrolling past the whole list. */
-	.tasks-scroll {
-		max-height: 60vh;
-		overflow-y: auto;
+	/* Deliberately lighter than the Money page's sections: no rule above the heading,
+	   since the summary strip already ends in one. */
+	.tasks-section {
+		margin-top: var(--space-5);
 	}
 
-	/* border-collapse: collapse (global.css) drops a sticky cell's own borders once
-	   it detaches from the flow, so the header band's bottom rule is drawn as an
-	   inset shadow instead — it rides along with the element either way. */
-	.tasks-scroll thead th {
-		position: sticky;
-		top: 0;
-		z-index: 1;
-		box-shadow: inset 0 -1px 0 var(--color-border-strong);
+	/* h2's default divider styling is zeroed here rather than by global.css's
+	   .money-section-head rule — an Astro :global() selector can't reach through the
+	   astro-island wrapper, so an island's first heading has to do this itself. */
+	.tasks-head {
+		display: flex;
+		align-items: baseline;
+		gap: var(--space-3);
+		flex-wrap: wrap;
+		margin-bottom: var(--space-3);
 	}
 
-	.status-badge {
-		font-size: 0.68rem;
+	.tasks-head h2 {
+		margin: 0;
+		padding-top: 0;
+		border-top: none;
+	}
+
+	.tasks-meta {
+		font-size: 0.78rem;
+		color: var(--color-muted);
+		white-space: nowrap;
+	}
+
+	.tasks-meta strong {
+		color: var(--color-fg);
+		font-variant-numeric: tabular-nums;
+	}
+
+	.add-toggle {
+		margin-left: auto;
+		padding: var(--space-1) var(--space-3);
+		font-size: 0.8rem;
+	}
+
+	.empty {
+		font-size: 0.85rem;
+	}
+
+	/* List */
+
+	.task-list {
+		--task-cols: minmax(0, 2fr) minmax(0, 1.2fr) 118px 84px;
+		border-top: 1px solid var(--color-border);
+	}
+
+	.task-list.with-actions {
+		--task-cols: minmax(0, 2fr) minmax(0, 1.2fr) 118px 84px 116px;
+	}
+
+	.list-head,
+	.task-row {
+		display: grid;
+		grid-template-columns: var(--task-cols);
+		gap: var(--space-3);
+		align-items: baseline;
+	}
+
+	.list-head {
+		padding: var(--space-2) var(--space-2);
+		border-bottom: 1px solid var(--color-border);
+		color: var(--color-muted);
+		font-size: 0.64rem;
 		font-weight: 700;
-		letter-spacing: 0.04em;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+	}
+
+	.task-item + .task-item {
+		border-top: 1px solid var(--color-border);
+	}
+
+	.task-row {
+		padding: var(--space-3) var(--space-2);
+		cursor: pointer;
+		transition: background 0.12s ease;
+	}
+
+	.task-row:hover,
+	.task-item.open .task-row {
+		background: var(--color-highlight);
+	}
+
+	.cell {
+		min-width: 0;
+		font-size: 0.82rem;
+	}
+
+	.cell-task {
+		display: flex;
+		flex-direction: column;
+		gap: 1px;
+	}
+
+	/* A real button so the panel opens from the keyboard, styled back down to plain
+	   text — the row around it is only a convenience target. */
+	.task-name {
+		align-self: flex-start;
+		max-width: 100%;
+		background: none;
+		border: none;
+		padding: 0;
+		margin: 0;
+		color: inherit;
+		font: inherit;
+		text-align: left;
+		cursor: pointer;
+		overflow-wrap: anywhere;
+	}
+
+	.task-name:hover {
+		opacity: 1;
+		text-decoration: underline;
+		text-underline-offset: 3px;
+	}
+
+	.task-name.done {
+		color: var(--color-muted);
+		text-decoration: line-through;
+	}
+
+	.task-sub {
+		color: var(--color-muted);
+		font-size: 0.7rem;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.cell-people {
+		color: var(--color-muted);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.cell-deadline {
+		display: flex;
+		flex-direction: column;
+		gap: 1px;
+	}
+
+	.deadline-date {
+		font-variant-numeric: tabular-nums;
+	}
+
+	.status {
+		font-size: 0.66rem;
+		font-weight: 700;
+		letter-spacing: 0.05em;
 		text-transform: uppercase;
 	}
 
@@ -499,6 +616,123 @@
 
 	.status-ongoing {
 		color: var(--color-muted);
+	}
+
+	/* Row controls stay out of the way until the row is pointed at or opened, which is
+	   what keeps the list reading as text rather than as a grid of buttons. Anything
+	   without hover gets them permanently — see the media query below. */
+	.cell-actions {
+		display: flex;
+		gap: var(--space-1);
+		justify-content: flex-end;
+		opacity: 0;
+		transition: opacity 0.12s ease;
+	}
+
+	.task-row:hover .cell-actions,
+	.task-row:focus-within .cell-actions,
+	.task-item.open .cell-actions {
+		opacity: 1;
+	}
+
+	.cell-actions button {
+		flex-shrink: 0;
+		white-space: nowrap;
+		padding: 0 var(--space-2);
+		font-size: 0.7rem;
+		line-height: 1.8;
+	}
+
+	.row-error {
+		margin: 0;
+		padding: 0 var(--space-2) var(--space-3);
+		color: var(--color-danger);
+		font-size: 0.78rem;
+	}
+
+	/* Panels */
+
+	.task-panel {
+		padding: var(--space-1) var(--space-2) var(--space-4);
+	}
+
+	/* The add form is itself the panel, so it also has to undo the global flex-row
+	   form styling that .task-panel form undoes for the nested edit forms. */
+	.add-panel {
+		display: block;
+		padding: var(--space-3) var(--space-2) var(--space-4);
+		border-top: 1px solid var(--color-border);
+		border-bottom: 1px solid var(--color-border);
+		margin: 0 0 var(--space-4);
+	}
+
+	/* Undo the global flex-row form styling — in a panel the form is just a block
+	   wrapper around its grid and action row. */
+	.task-panel form {
+		display: block;
+		margin: 0;
+	}
+
+	.detail {
+		display: grid;
+		grid-template-columns: max-content minmax(0, 1fr);
+		gap: var(--space-1) var(--space-4);
+		margin: 0;
+		max-width: 720px;
+	}
+
+	.detail dt {
+		color: var(--color-muted);
+		font-size: 0.68rem;
+		font-weight: 700;
+		letter-spacing: 0.05em;
+		text-transform: uppercase;
+		line-height: 1.9;
+	}
+
+	.detail dd {
+		margin: 0;
+		font-size: 0.82rem;
+		overflow-wrap: break-word;
+		word-break: break-word;
+	}
+
+	.panel-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+		gap: var(--space-3);
+		align-items: start;
+	}
+
+	.field {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-1);
+		min-width: 0;
+	}
+
+	.field-label {
+		color: var(--color-muted);
+		font-size: 0.68rem;
+		font-weight: 700;
+		letter-spacing: 0.05em;
+		text-transform: uppercase;
+	}
+
+	.field input,
+	.field select {
+		width: 100%;
+		min-width: 0;
+		padding: var(--space-1) var(--space-2);
+		font-size: 0.82rem;
+	}
+
+	.field .field-value {
+		font-size: 0.82rem;
+	}
+
+	.field-wide {
+		grid-column: 1 / -1;
 	}
 
 	.assignee-picker {
@@ -515,52 +749,73 @@
 		min-width: 0;
 	}
 
-	/* Three classes deep on purpose: global.css's `.money-panel .field input` sets
-	   width: 100% for text fields, which would stretch each checkbox across its row.
-	   Svelte scopes with :where(), so it adds no specificity of its own and the
-	   selector has to out-rank that rule on its own merits. */
-	.money-panel .field .assignee-option input {
+	/* Out-ranks `.field input { width: 100% }` above, which would otherwise stretch each
+	   checkbox across its row. Svelte scopes with :where(), so the selector has to win
+	   on its own specificity. */
+	.field .assignee-option input {
 		width: auto;
 		min-width: 0;
 		padding: 0;
 		margin: 0;
 	}
 
-	.empty {
-		font-size: 0.85rem;
-	}
-
-	.add-form {
-		display: block;
-		margin: 0;
-	}
-
-	.add-panel {
-		border: 1px solid var(--color-border-strong);
-		margin-bottom: var(--space-2);
-	}
-
-	.add-form-actions {
+	.panel-actions {
 		display: flex;
 		gap: var(--space-2);
 		align-items: center;
+		margin-top: var(--space-3);
 	}
 
-	.add-form-actions button {
+	.panel-actions button {
 		padding: var(--space-1) var(--space-3);
 		font-size: 0.8rem;
 	}
 
-	/* top/left pinned rather than left at their static position — see BomTable for
-	   the horizontal-overflow bug an unpinned one caused on mobile. */
-	.sr-only {
-		position: absolute;
-		top: 0;
-		left: 0;
-		width: 1px;
-		height: 1px;
-		overflow: hidden;
-		clip: rect(0 0 0 0);
-		white-space: nowrap;
+	.panel-error {
+		color: var(--color-danger);
+		font-size: 0.78rem;
+		margin: var(--space-2) 0 0;
+	}
+
+	@media (hover: none) {
+		.cell-actions {
+			opacity: 1;
+		}
+	}
+
+	/* Below this the five columns stop fitting, so each row becomes a small block:
+	   name and status on one line, appointment and deadline under it, controls last. */
+	@media (max-width: 760px) {
+		.list-head {
+			display: none;
+		}
+
+		.task-list,
+		.task-list.with-actions {
+			--task-cols: minmax(0, 1fr) auto;
+		}
+
+		.task-row {
+			row-gap: var(--space-1);
+			align-items: start;
+		}
+
+		.cell-people,
+		.cell-deadline {
+			grid-column: 1 / -1;
+			font-size: 0.76rem;
+		}
+
+		.cell-deadline {
+			flex-direction: row;
+			gap: var(--space-2);
+		}
+
+		.cell-actions {
+			grid-column: 1 / -1;
+			justify-content: flex-start;
+			opacity: 1;
+			margin-top: var(--space-1);
+		}
 	}
 </style>

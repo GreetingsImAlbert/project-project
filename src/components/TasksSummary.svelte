@@ -68,12 +68,15 @@
 </div>
 
 <style>
+	/* No box and no cell rules: the Tasks page reads as an open list, so the figures
+	   above it are laid out on the same open space and only the hairline underneath
+	   separates them from it. */
 	.summary {
 		display: grid;
-		grid-template-columns: repeat(4, 1fr);
-		gap: 0;
-		border: 1px solid var(--color-border-strong);
-		margin-bottom: var(--space-2);
+		grid-template-columns: repeat(4, minmax(0, 1fr));
+		gap: var(--space-5);
+		padding-bottom: var(--space-4);
+		border-bottom: 1px solid var(--color-border);
 	}
 
 	.tile {
@@ -81,12 +84,6 @@
 		flex-direction: column;
 		gap: 2px;
 		min-width: 0;
-		padding: var(--space-3);
-		border-right: 1px solid var(--color-border);
-	}
-
-	.tile:last-child {
-		border-right: none;
 	}
 
 	.tile-label {
@@ -101,7 +98,7 @@
 	}
 
 	.tile-value {
-		font-size: 1.15rem;
+		font-size: 1.35rem;
 		font-weight: 700;
 		font-variant-numeric: tabular-nums;
 		line-height: 1.3;
@@ -125,29 +122,18 @@
 
 	@media (max-width: 900px) {
 		.summary {
-			grid-template-columns: repeat(2, 1fr);
-		}
-
-		.tile:nth-child(2n) {
-			border-right: none;
-		}
-
-		.tile:nth-child(n + 3) {
-			border-top: 1px solid var(--color-border);
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+			gap: var(--space-4) var(--space-5);
 		}
 	}
 
 	@media (max-width: 480px) {
 		.summary {
-			grid-template-columns: 1fr;
+			grid-template-columns: repeat(2, minmax(0, 1fr));
 		}
 
-		.tile {
-			border-right: none;
-		}
-
-		.tile:not(:first-child) {
-			border-top: 1px solid var(--color-border);
+		.tile-value {
+			font-size: 1.15rem;
 		}
 	}
 </style>
