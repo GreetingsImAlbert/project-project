@@ -11,6 +11,10 @@ export const GET: APIRoute = async ({ locals }) => {
 		.from('files')
 		.select('id, filename, size_bytes, mime_type, created_at, project_id, projects(name)')
 		.eq('uploaded_by', locals.user.id)
+		// The modal groups by project and shows the biggest file first; a `desc` order in
+		// Postgres puts nulls first, which would float a file with no recorded size to the
+		// top of its group. `created_at` only breaks ties between equal sizes.
+		.order('size_bytes', { ascending: false, nullsFirst: false })
 		.order('created_at', { ascending: false })
 		.overrideTypes<{ id: string; filename: string; size_bytes: number | null; mime_type: string | null; created_at: string; project_id: string; projects: { name: string } }[]>();
 

@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import FileViewerPanel from './FileViewerPanel.svelte';
 	import { splitFilename } from '../lib/file-kind';
+	import { formatFileSize } from '../lib/format-bytes';
 	import { adjustStorageUsage } from '../lib/storage-usage.svelte';
 	import { onSwapOrDestroy } from '../lib/island-teardown';
 
@@ -27,6 +28,28 @@
 	// Also reported by the panel: true while its editor holds unsaved changes. The modal
 	// closes the panel by unmounting it, so every close path here has to ask first.
 	let previewDirty = $state(false);
+
+	// One group per project, biggest project first, biggest file first inside it. The
+	// endpoint already orders by size, but grouping has to happen somewhere and doing
+	// it here keeps the order right after a delete or an edit changes a size.
+	const groups = $derived.by(() => {
+		const byProject = new Map<string, { projectId: string; name: string; files: MyFile[]; totalBytes: number }>();
+
+		for (const file of files) {
+			let group = byProject.get(file.project_id);
+			if (!group) {
+				group = { projectId: file.project_id, name: file.projects?.name ?? 'Untitled project', files: [], totalBytes: 0 };
+				byProject.set(file.project_id, group);
+			}
+			group.files.push(file);
+			group.totalBytes += file.size_bytes ?? 0;
+		}
+
+		const list = [...byProject.values()];
+		for (const group of list) group.files.sort((a, b) => (b.size_bytes ?? 0) - (a.size_bytes ?? 0));
+		list.sort((a, b) => b.totalBytes - a.totalBytes);
+		return list;
+	});
 
 	async function openModal() {
 		open = true;
@@ -126,52 +149,63 @@
 			{:else if files.length === 0}
 				<p class="muted">You haven't uploaded any files yet.</p>
 			{:else}
-				<ul class={viewMode === 'grid' ? 'grid-view' : 'file-list'}>
-					{#each files as file (file.id)}
-						{@const parts = splitFilename(file.filename)}
-						{#if viewMode === 'grid'}
-							<li class="grid-item" class:open={viewingFile?.id === file.id}>
-								<button type="button" class="grid-download" onclick={() => (viewingFile = file)}>
-									<span class="grid-icon">📄</span>
-									<span class="grid-name">{parts.base}</span>
-									{#if parts.ext}<span class="grid-ext muted">{parts.ext}</span>{/if}
-								</button>
-								<span class="grid-project muted">{file.projects?.name}</span>
-								<button
-									type="button"
-									class="trash-btn"
-									aria-label="Delete file"
-									onclick={() => handleDelete(file.id)}
-									disabled={deletingId === file.id}
-								>
-									🗑
-								</button>
-								{#if rowError?.id === file.id}<p class="row-error">{rowError.message}</p>{/if}
-							</li>
-						{:else}
-							<li class="file-row" class:open={viewingFile?.id === file.id}>
-								<button type="button" class="btn-plain file-download" onclick={() => (viewingFile = file)}>
-									<span class="file-name">{parts.base}</span>
-									{#if parts.ext}<span class="file-ext muted">{parts.ext}</span>{/if}
-								</button>
-								<span class="muted file-meta">
-									{file.size_bytes != null ? `${Math.round(file.size_bytes).toLocaleString()} B` : ''}
-									— {file.projects?.name}
-								</span>
-								<button
-									type="button"
-									class="trash-btn"
-									aria-label="Delete file"
-									onclick={() => handleDelete(file.id)}
-									disabled={deletingId === file.id}
-								>
-									🗑
-								</button>
-								{#if rowError?.id === file.id}<p class="row-error">{rowError.message}</p>{/if}
-							</li>
-						{/if}
-					{/each}
-				</ul>
+				{#each groups as group (group.projectId)}
+					<section class="file-group">
+						<div class="group-head">
+							<span class="group-name">{group.name}</span>
+							<span class="muted group-meta">
+								{group.files.length} file{group.files.length === 1 ? '' : 's'} — {formatFileSize(group.totalBytes)}
+							</span>
+						</div>
+						<ul class={viewMode === 'grid' ? 'grid-view' : 'file-list'}>
+							{#each group.files as file (file.id)}
+								{@const parts = splitFilename(file.filename)}
+								{#if viewMode === 'grid'}
+									<li class="grid-item" class:open={viewingFile?.id === file.id}>
+										<button type="button" class="grid-download" onclick={() => (viewingFile = file)}>
+											<span class="grid-icon">📄</span>
+											<span class="grid-name">{parts.base}</span>
+											{#if parts.ext}<span class="grid-ext muted">{parts.ext}</span>{/if}
+										</button>
+										<span class="grid-size muted">
+											{file.size_bytes != null ? formatFileSize(file.size_bytes) : ''}
+										</span>
+										<button
+											type="button"
+											class="trash-btn"
+											aria-label="Delete file"
+											onclick={() => handleDelete(file.id)}
+											disabled={deletingId === file.id}
+										>
+											🗑
+										</button>
+										{#if rowError?.id === file.id}<p class="row-error">{rowError.message}</p>{/if}
+									</li>
+								{:else}
+									<li class="file-row" class:open={viewingFile?.id === file.id}>
+										<button type="button" class="btn-plain file-download" onclick={() => (viewingFile = file)}>
+											<span class="file-name">{parts.base}</span>
+											{#if parts.ext}<span class="file-ext muted">{parts.ext}</span>{/if}
+										</button>
+										<span class="muted file-meta">
+											{file.size_bytes != null ? formatFileSize(file.size_bytes) : ''}
+										</span>
+										<button
+											type="button"
+											class="trash-btn"
+											aria-label="Delete file"
+											onclick={() => handleDelete(file.id)}
+											disabled={deletingId === file.id}
+										>
+											🗑
+										</button>
+										{#if rowError?.id === file.id}<p class="row-error">{rowError.message}</p>{/if}
+									</li>
+								{/if}
+							{/each}
+						</ul>
+					</section>
+				{/each}
 			{/if}
 		</div>
 	</div>
@@ -262,6 +296,39 @@
 
 	.trash-btn:hover {
 		color: var(--color-danger);
+	}
+
+	/* Project groups */
+
+	/* On top of .modal-box's own gap — a group's files sit directly under the previous
+	   group's last row otherwise, with only the heading rule to separate them. */
+	.file-group + .file-group {
+		margin-top: var(--space-2);
+	}
+
+	.group-head {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: space-between;
+		align-items: baseline;
+		gap: var(--space-2);
+		border-bottom: 1px solid var(--color-border-strong);
+		padding-bottom: var(--space-1);
+		margin-bottom: var(--space-2);
+	}
+
+	.group-name {
+		font-size: 0.8rem;
+		/* The project name is user text — it can be long, and the count/total beside it
+		   is the part that must stay readable. */
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+	}
+
+	.group-meta {
+		font-size: 0.75rem;
+		white-space: nowrap;
 	}
 
 	/* List view */
@@ -367,11 +434,7 @@
 		font-size: 0.7rem;
 	}
 
-	.grid-project {
+	.grid-size {
 		font-size: 0.7rem;
-		max-width: 100%;
-		overflow: hidden;
-		white-space: nowrap;
-		text-overflow: ellipsis;
 	}
 </style>

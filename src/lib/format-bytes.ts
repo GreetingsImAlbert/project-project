@@ -6,3 +6,11 @@ export function formatBytes(bytes: number): string {
 	const mb = bytes / 1_000_000;
 	return `${mb.toFixed(1)} MB`;
 }
+
+// Same units, but keeps small sizes readable — a text file is 0.0 MB under
+// formatBytes, which is the wrong answer for a per-file or per-folder figure.
+export function formatFileSize(bytes: number): string {
+	if (bytes < 1_000) return `${Math.round(bytes)} B`;
+	if (bytes < 1_000_000) return `${(bytes / 1_000).toFixed(1)} KB`;
+	return formatBytes(bytes);
+}
