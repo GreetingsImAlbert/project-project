@@ -21,15 +21,21 @@ if (!(await isAdminUser(Astro.locals.supabase, user.id))) {
 
 const admin = getSupabaseAdmin(env);
 
-const [{ count: userCount }, { count: projectCount }, { count: fileCount }, { count: folderCount }] = await Promise.all([
+const [
+	{ count: userCount },
+	{ count: projectCount },
+	{ count: fileCount },
+	{ count: folderCount },
+	{ data: profiles },
+	{ totalBytes, byUser, failed },
+] = await Promise.all([
 	admin.from('profiles').select('id', { count: 'exact', head: true }),
 	admin.from('projects').select('id', { count: 'exact', head: true }),
 	admin.from('files').select('id', { count: 'exact', head: true }),
 	admin.from('folders').select('id', { count: 'exact', head: true }),
+	admin.from('profiles').select('id, display_name, email'),
+	getGlobalStorageBreakdown(admin),
 ]);
-
-const { data: profiles } = await admin.from('profiles').select('id, display_name, email');
-const { totalBytes, byUser, truncated } = await getGlobalStorageBreakdown(admin);
 
 const userRows = (profiles ?? [])
 	.map((profile) => {
@@ -51,9 +57,9 @@ const globalCapBytes = MAX_USERS * MAX_USER_STORAGE_BYTES;
 	<h1>Admin Dashboard</h1>
 	<p><a href="/admin/projects">View all projects →</a></p>
 
-	{truncated && (
+	{failed && (
 		<p class="storage-error">
-			Storage totals below are unavailable (a usage page failed to load).
+			Storage totals below are unavailable (the usage read failed).
 			<a class="reload-link" href={Astro.url.pathname}>⟳ Reload</a>
 		</p>
 	)}
@@ -76,7 +82,7 @@ const globalCapBytes = MAX_USERS * MAX_USER_STORAGE_BYTES;
 			<span class="stat-label">Folders</span>
 		</div>
 		<div class="stat">
-			<span class="stat-value">{truncated ? '—' : formatBytes(totalBytes)}</span>
+			<span class="stat-value">{failed ? '—' : formatBytes(totalBytes)}</span>
 			<span class="stat-label">Storage used (of {formatBytes(globalCapBytes)})</span>
 		</div>
 	</div>
@@ -94,11 +100,11 @@ const globalCapBytes = MAX_USERS * MAX_USER_STORAGE_BYTES;
 			</thead>
 			<tbody>
 				{userRows.map((row) => (
-					<tr class={!truncated && row.percent >= 90 ? 'over-quota' : ''}>
+					<tr class={!failed && row.percent >= 90 ? 'over-quota' : ''}>
 						<td>{row.displayName}</td>
 						<td>{row.email}</td>
-						<td>{truncated ? '—' : formatBytes(row.bytes)}</td>
-						<td>{truncated ? '—' : `${row.percent.toFixed(1)}%`}</td>
+						<td>{failed ? '—' : formatBytes(row.bytes)}</td>
+						<td>{failed ? '—' : `${row.percent.toFixed(1)}%`}</td>
 					</tr>
 				))}
 			</tbody>

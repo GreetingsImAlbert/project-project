@@ -357,6 +357,14 @@ export type Database = {
     }
     Functions: {
       can_edit_money: { Args: { check_project_id: string }; Returns: boolean }
+      global_storage_breakdown: {
+        Args: never
+        Returns: {
+          project_id: string
+          total_bytes: number
+          uploaded_by: string
+        }[]
+      }
       is_project_member: {
         Args: { check_project_id: string }
         Returns: boolean

@@ -9,11 +9,9 @@ import type { Database } from './supabase/database.types';
 // bytes, not 1024*1024 (see format-bytes.ts).
 export const MAX_USER_STORAGE_BYTES = 950 * 1_000_000;
 
-const PAGE_SIZE = 1000;
-
-// Both storage sums run as Postgres aggregates behind an RPC (see SCHEMA.md):
-// one round trip returning one number, instead of dragging every file row the
-// user/project owns across the wire — 1000 at a time — to add them up in JS.
+// Every storage sum runs as a Postgres aggregate behind an RPC (see SCHEMA.md):
+// one round trip returning the totals, instead of dragging every matching file
+// row across the wire — 1000 at a time — to add them up in JS.
 
 // The generated types call both aggregates `number`, but they're bigint on the
 // wire and the quota math has to fail closed: NaN + additionalBytes > cap is
@@ -68,42 +66,49 @@ export async function getProjectStorageBytes(supabase: SupabaseClient<Database>,
 	return { totalBytes, failed: false };
 }
 
-// Admin-only: one paginated pass over every file in the bucket, bypassing RLS
-// via the caller's service-role client, broken down by both uploader and
-// project so the admin dashboard/projects pages don't each re-scan `files`.
+// Admin-only, and the third of the three sums to move into Postgres: one
+// `group by uploaded_by, project_id` aggregate instead of paging every file row
+// in the bucket to the Worker. Both admin pages want a different slice of the
+// same scan (the dashboard sums per uploader, /admin/projects per project), so
+// the RPC returns the two-key grouping once and the folds happen here — at most
+// users * projects rows, not one row per file. Bypasses RLS through the caller's
+// service-role client, same as before.
 export async function getGlobalStorageBreakdown(admin: SupabaseClient<Database>) {
+	const empty: { totalBytes: number; byUser: Record<string, number>; byProject: Record<string, number>; failed: boolean } = {
+		totalBytes: 0,
+		byUser: {},
+		byProject: {},
+		failed: true,
+	};
+
+	const { data, error } = await admin.rpc('global_storage_breakdown');
+
+	if (error) {
+		console.log(`[storage-quota] failed to read global usage breakdown: ${error.message}`);
+		return empty;
+	}
+
 	const byUser: Record<string, number> = {};
 	const byProject: Record<string, number> = {};
 	let totalBytes = 0;
-	let rowCount = 0;
-	let from = 0;
-	let truncated = false;
 
-	while (true) {
-		const { data, error } = await admin
-			.from('files')
-			.select('id, size_bytes, uploaded_by, project_id')
-			.range(from, from + PAGE_SIZE - 1);
+	for (const row of data ?? []) {
+		// The generated types call this `number`, but it's bigint on the wire —
+		// same guard the quota math needs, since a value that isn't a real number
+		// would quietly poison every total it lands in.
+		const bytes = asBytes(row?.total_bytes);
 
-		if (error) {
-			console.log(`[storage-quota] failed to read global usage page at offset ${from}: ${error.message}`);
-			truncated = true;
-			break;
+		if (bytes === null) {
+			console.log(`[storage-quota] unusable global usage row: ${JSON.stringify(row)}`);
+			return empty;
 		}
 
-		for (const row of data ?? []) {
-			const bytes = row.size_bytes ?? 0;
-			totalBytes += bytes;
-			byUser[row.uploaded_by] = (byUser[row.uploaded_by] ?? 0) + bytes;
-			byProject[row.project_id] = (byProject[row.project_id] ?? 0) + bytes;
-		}
-		rowCount += data?.length ?? 0;
-
-		if (!data || data.length < PAGE_SIZE) break;
-		from += PAGE_SIZE;
+		totalBytes += bytes;
+		byUser[row.uploaded_by] = (byUser[row.uploaded_by] ?? 0) + bytes;
+		byProject[row.project_id] = (byProject[row.project_id] ?? 0) + bytes;
 	}
 
-	return { totalBytes, byUser, byProject, rowCount, truncated };
+	return { totalBytes, byUser, byProject, failed: false };
 }
 
 export async function wouldExceedUserStorageQuota(admin: SupabaseClient<Database>, userId: string, additionalBytes: number) {

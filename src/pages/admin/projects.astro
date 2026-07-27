@@ -20,28 +20,29 @@ if (!(await isAdminUser(Astro.locals.supabase, user.id))) {
 
 const admin = getSupabaseAdmin(env);
 
-const { data: projects } = await admin
-	.from('projects')
-	.select('id, name, created_at, owner_id, profiles(display_name, email)')
-	.order('created_at', { ascending: false })
-	.overrideTypes<{ id: string; name: string; created_at: string; owner_id: string; profiles: { display_name: string; email: string } }[]>();
+const [{ data: projects }, { data: members }, { byProject, failed }] = await Promise.all([
+	admin
+		.from('projects')
+		.select('id, name, created_at, owner_id, profiles(display_name, email)')
+		.order('created_at', { ascending: false })
+		.overrideTypes<{ id: string; name: string; created_at: string; owner_id: string; profiles: { display_name: string; email: string } }[]>(),
+	admin.from('project_members').select('project_id'),
+	getGlobalStorageBreakdown(admin),
+]);
 
-const { data: members } = await admin.from('project_members').select('project_id');
 const memberCounts: Record<string, number> = {};
 for (const row of members ?? []) {
 	memberCounts[row.project_id] = (memberCounts[row.project_id] ?? 0) + 1;
 }
-
-const { byProject, truncated } = await getGlobalStorageBreakdown(admin);
 ---
 
 <BaseLayout title="Admin · Projects">
 	<h1>All Projects</h1>
 	<p><a href="/admin">← Admin Dashboard</a></p>
 
-	{truncated && (
+	{failed && (
 		<p class="storage-error">
-			Storage totals below are unavailable (a usage page failed to load).
+			Storage totals below are unavailable (the usage read failed).
 			<a class="reload-link" href={Astro.url.pathname}>⟳ Reload</a>
 		</p>
 	)}
@@ -65,7 +66,7 @@ const { byProject, truncated } = await getGlobalStorageBreakdown(admin);
 						<td>{project.name}</td>
 						<td>{project.profiles.display_name} <span class="muted">({project.profiles.email})</span></td>
 						<td>{memberCounts[project.id] ?? 0}</td>
-						<td>{truncated ? '—' : formatBytes(byProject[project.id] ?? 0)}</td>
+						<td>{failed ? '—' : formatBytes(byProject[project.id] ?? 0)}</td>
 						<td>{new Date(project.created_at).toLocaleDateString()}</td>
 					</tr>
 				))}
