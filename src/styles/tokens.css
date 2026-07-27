@@ -76,12 +76,12 @@
 	--color-muted: #8c8c8c;
 	--color-border: #3c3c3c;
 	--color-border-strong: #d4d4d4;
-	--color-danger: #f28b82;
+	--color-danger: #ff6259;
 	--color-success: #86d9a8;
 	--color-highlight: rgba(255, 255, 255, 0.055);
 	--color-link: #79b8ff;
 
-	--color-role-owner: #f28b82;
+	--color-role-owner: #ff8a80;
 	--color-role-editor: #79b8ff;
 	--color-role-viewer: #86d9a8;
 	--color-role-auditor: #c6a4ff;
@@ -89,7 +89,7 @@
 	--color-syntax-comment: #8c8c8c;
 	--color-syntax-keyword: #c6a4ff;
 	--color-syntax-string: #86d9a8;
-	--color-syntax-number: #f28b82;
+	--color-syntax-number: #ff8a80;
 	--color-syntax-function: #79b8ff;
 	--color-syntax-punct: #8c8c8c;
 }

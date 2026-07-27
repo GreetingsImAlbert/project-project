@@ -153,9 +153,12 @@ button.btn-plain {
 	border-color: var(--color-border);
 }
 
+/* Solid fill rather than an outline — the hollow version put a saturated 1px edge around
+   a transparent middle, which shimmers against both the light and the dark surface. The
+   label reads on --color-bg, so it stays legible in every theme. */
 button.btn-danger {
-	background: transparent;
-	color: var(--color-danger);
+	background: var(--color-danger);
+	color: var(--color-bg);
 	border-color: var(--color-danger);
 }
 

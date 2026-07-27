@@ -36,26 +36,31 @@
 		pointer-events: none;
 	}
 
+	/* Solid fill, same reasoning as .btn-danger in global.css: the outlined version was a
+	   saturated hairline around a page-coloured middle, which reads as a shimmer rather
+	   than a block. The kind classes set the fill; the label rides on --color-bg. */
 	.toast {
 		pointer-events: auto;
 		display: flex;
 		align-items: flex-start;
 		gap: var(--space-2);
-		background: var(--color-bg);
-		border: 1px solid currentColor;
-		border-left-width: 3px;
+		background: var(--color-fg);
+		color: var(--color-bg);
+		border: 1px solid transparent;
 		padding: var(--space-2) var(--space-3);
 		font-size: 0.85rem;
 		line-height: 1.4;
-		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
 	}
 
 	.toast-error {
-		color: var(--color-danger);
+		background: var(--color-danger);
+		border-color: var(--color-danger);
 	}
 
 	.toast-success {
-		color: var(--color-success);
+		background: var(--color-success);
+		border-color: var(--color-success);
 	}
 
 	.toast-message {

@@ -24,8 +24,8 @@
 
 <div class="theme-toggle">
 	<button type="button" class="btn-plain" class:active={theme === 'light'} onclick={() => apply('light')}>Light</button>
-	<button type="button" class="btn-plain" class:active={theme === 'dim'} onclick={() => apply('dim')}>Dim</button>
 	<button type="button" class="btn-plain" class:active={theme === 'dark'} onclick={() => apply('dark')}>Dark</button>
+	<button type="button" class="btn-plain" class:active={theme === 'dim'} onclick={() => apply('dim')}>Dim</button>
 </div>
 
 <style>
