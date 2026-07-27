@@ -4,7 +4,12 @@ import ProjectShell from '../../components/ProjectShell.astro';
 import TotalCostDisplay from '../../components/TotalCostDisplay.svelte';
 import ProjectDescriptionEditor from '../../components/ProjectDescriptionEditor.svelte';
 import ProjectStorageUsed from '../../components/ProjectStorageUsed.svelte';
+import UpcomingTasks from '../../components/UpcomingTasks.svelte';
 import { getProjectStorageBytes } from '../../lib/r2-quota';
+import { TASK_COLUMNS, normalizeTask, type RawTaskRow } from '../../lib/task-columns';
+import { isCategoryColorIndex, type CategoryColors } from '../../lib/category-color';
+import { HORIZON_COOKIE, parseHorizonDays } from '../../lib/task-horizon';
+import { projectReminders } from '../../lib/reminders';
 
 export const prerender = false;
 
@@ -18,8 +23,14 @@ const { id } = Astro.params;
 // Fired together rather than in sequence: the Worker is a long trip from
 // Postgres and none of these depend on the one before it (RLS scopes each to
 // the caller independently), so the 404 check just moves below the await.
-const [{ data: project, error }, { data: members }, { data: bomItems }, { totalBytes: projectStorageBytes, failed: projectStorageFailed }] =
-	await Promise.all([
+const [
+	{ data: project, error },
+	{ data: members },
+	{ data: bomItems },
+	{ totalBytes: projectStorageBytes, failed: projectStorageFailed },
+	{ data: taskRows },
+	{ data: categoryRows },
+] = await Promise.all([
 		Astro.locals.supabase
 			.from('projects')
 			.select('id, name, description, owner_id')
@@ -35,6 +46,25 @@ const [{ data: project, error }, { data: members }, { data: bomItems }, { totalB
 			.select('total_cost')
 			.eq('project_id', id),
 		getProjectStorageBytes(Astro.locals.supabase, id!),
+		// Only what can actually become a reminder: still open, and dated. The horizon
+		// itself isn't applied here — it's a client-side setting, and filtering by it in
+		// SQL would mean a round trip every time the reader widened the window.
+		Astro.locals.supabase
+			.from('tasks')
+			.select(TASK_COLUMNS)
+			.eq('project_id', id)
+			.neq('status', 'done')
+			.not('deadline', 'is', null)
+			.order('deadline', { ascending: true })
+			.order('name', { ascending: true })
+			.overrideTypes<RawTaskRow[]>(),
+		// Same as the Tasks page: only the categories somebody picked a colour for, with
+		// everything else falling back to a hash of the name in category-color.ts.
+		Astro.locals.supabase
+			.from('task_categories')
+			.select('name, color_index')
+			.eq('project_id', id)
+			.overrideTypes<{ name: string; color_index: number }[]>(),
 	]);
 
 if (error || !project) {
@@ -45,6 +75,22 @@ const userRole = members?.find(member => member.user_id === user.id)?.role;
 const isOwner = userRole === 'owner';
 
 const totalCost = (bomItems ?? []).reduce((sum, item) => sum + (item.total_cost ?? 0), 0);
+
+// An index outside the palette is dropped rather than clamped — see the Tasks page.
+const categoryColors: CategoryColors = {};
+for (const row of categoryRows ?? []) {
+	if (isCategoryColorIndex(row.color_index)) categoryColors[row.name] = row.color_index;
+}
+
+const reminders = projectReminders((taskRows ?? []).map(normalizeTask), id!, categoryColors, user.id);
+
+// The reader's own horizon, read server-side so the list renders at the right width
+// straight away instead of widening after hydration — see lib/task-horizon.ts.
+const horizonDays = parseHorizonDays(Astro.cookies.get(HORIZON_COOKIE)?.value);
+
+// The Worker's clock is UTC and the reader's calendar day may not be. The island
+// starts from this and moves to the local date on mount — see lib/task-status.ts.
+const serverToday = new Date().toISOString().slice(0, 10);
 ---
 <BaseLayout title={project.name}>
 	<ProjectShell project={project} members={members ?? []} userRole={userRole} activePage="overview">
@@ -55,6 +101,13 @@ const totalCost = (bomItems ?? []).reduce((sum, item) => sum + (item.total_cost 
 					projectId={project.id}
 					initialDescription={project.description}
 					canEdit={isOwner}
+				/>
+				<UpcomingTasks
+					client:load
+					reminders={reminders}
+					initialHorizonDays={horizonDays}
+					serverToday={serverToday}
+					showMineFilter={true}
 				/>
 			</div>
 			<div class="overview-stats">

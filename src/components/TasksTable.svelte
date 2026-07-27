@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { slide } from 'svelte/transition';
 	import TasksCalendar from './TasksCalendar.svelte';
 	import { tasksState, initTasks, addTask, updateTask, removeTask, type Task } from '../lib/tasks-store.svelte';
@@ -46,7 +46,38 @@
 
 	onMount(() => {
 		today = localToday();
+
+		openLinkedTask();
+		// A second reminder for a task on a page that's already open only changes the
+		// hash, which is not a navigation — without this the link would do nothing.
+		window.addEventListener('hashchange', openLinkedTask);
+		return () => window.removeEventListener('hashchange', openLinkedTask);
 	});
+
+	// `#task-<id>`, the form the Reminders list on the Dashboard and on a project's
+	// Overview links with. Opening the panel is the point of the link, so this also
+	// clears anything that would keep the task from being on screen to open: a filter
+	// that hides it, or a collapsed category it sits inside.
+	async function openLinkedTask() {
+		const hash = location.hash;
+		if (!hash.startsWith('#task-')) return;
+
+		const id = hash.slice('#task-'.length);
+		const task = tasksState.tasks.find((t) => t.id === id);
+		if (!task) return;
+
+		if (onlyMine && !task.assignees.some((a) => a.user_id === currentUserId)) onlyMine = false;
+		collapsed = collapsed.filter((c) => c !== (task.category?.trim() || UNCATEGORIZED));
+
+		openId = id;
+		openMode = 'detail';
+
+		// The row may only exist after those two land, so the scroll waits for the render
+		// rather than looking for an element that isn't there yet. In Calendar mode the
+		// panel is under the grid instead, which carries the same id.
+		await tick();
+		document.getElementById(`task-${id}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+	}
 
 	// List or Calendar, in the Grid/List picker's styling. The initial value comes down
 	// as a prop read from a cookie rather than from localStorage at init, for the same
@@ -660,7 +691,10 @@
 					{@render editForm(selectedTask)}
 				</div>
 			{:else}
-				<div class="task-panel calendar-panel" transition:slide={{ duration: 150 }}>
+				<!-- Carries the `#task-<id>` anchor in this mode: the grid has no row to put
+				     it on, and a linked task's deadline may not even be in the month on
+				     screen, but its panel always renders here. -->
+				<div class="task-panel calendar-panel" id={`task-${selectedTask.id}`} transition:slide={{ duration: 150 }}>
 					<div class="panel-head">
 						<strong class="panel-title" class:done={statusOf(selectedTask) === 'done'}>{selectedTask.name}</strong>
 						<span class="status status-{statusOf(selectedTask)}">{TASK_STATUS_LABELS[statusOf(selectedTask)]}</span>
@@ -712,7 +746,8 @@
 				{#if !isCollapsed(group.category)}
 					{#each group.tasks as task (task.id)}
 						{@const status = statusOf(task)}
-						<div class="task-item" class:open={openId === task.id}>
+						<!-- The anchor a `#task-<id>` link scrolls to — see openLinkedTask. -->
+						<div class="task-item" id={`task-${task.id}`} class:open={openId === task.id}>
 							<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 							<div class="task-row" onclick={(e) => handleRowClick(e, task.id)}>
 								<div class="cell cell-task">
