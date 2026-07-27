@@ -25,10 +25,7 @@
 
 	let ongoing = $derived(statuses.filter((s) => s === 'ongoing').length);
 	let overdue = $derived(statuses.filter((s) => s === 'overdue').length);
-	let done = $derived(statuses.filter((s) => s === 'done').length);
 	let total = $derived(tasksState.tasks.length);
-
-	let percentDone = $derived(total === 0 ? 0 : Math.round((done / total) * 100));
 
 	// Soonest deadline still ahead of us on a task that isn't done. Overdue tasks are
 	// excluded on purpose — they have their own tile, and showing a past date under
@@ -55,12 +52,6 @@
 	</div>
 
 	<div class="tile">
-		<span class="tile-label">Done</span>
-		<span class="tile-value">{done}</span>
-		<span class="tile-note">{percentDone}% complete</span>
-	</div>
-
-	<div class="tile">
 		<span class="tile-label">Next deadline</span>
 		<span class="tile-value">{nextDue ?? '—'}</span>
 		<span class="tile-note">{nextDue ? relativeDeadline(nextDue, today) : 'nothing scheduled'}</span>
@@ -73,7 +64,7 @@
 	   separates them from it. */
 	.summary {
 		display: grid;
-		grid-template-columns: repeat(4, minmax(0, 1fr));
+		grid-template-columns: repeat(3, minmax(0, 1fr));
 		gap: var(--space-5);
 		padding-bottom: var(--space-4);
 		border-bottom: 1px solid var(--color-border);

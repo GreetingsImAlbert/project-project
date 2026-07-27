@@ -319,6 +319,7 @@
 		<div class="task-list" class:with-actions={canEdit}>
 			<div class="list-head">
 				<span>Task</span>
+				<span>Description</span>
 				<span>Appointed</span>
 				<span>Deadline</span>
 				<span>Status</span>
@@ -338,6 +339,13 @@
 							{#if task.category?.trim()}
 								<span class="task-sub">{task.category.trim()}</span>
 							{/if}
+						</div>
+
+						<!-- One line only, truncated: the full text is a click away in the
+						     detail panel, and letting it wrap here would break the row grid's
+						     baseline alignment. -->
+						<div class="cell cell-description" title={task.description?.trim() || ''}>
+							{task.description?.trim() || '—'}
 						</div>
 
 						<div class="cell cell-people">{assigneeNames(task) || '—'}</div>
@@ -495,12 +503,12 @@
 	/* List */
 
 	.task-list {
-		--task-cols: minmax(0, 2fr) minmax(0, 1.2fr) 118px 84px;
+		--task-cols: minmax(0, 1.5fr) minmax(0, 1.6fr) minmax(0, 1fr) 118px 84px;
 		border-top: 1px solid var(--color-border);
 	}
 
 	.task-list.with-actions {
-		--task-cols: minmax(0, 2fr) minmax(0, 1.2fr) 118px 84px 116px;
+		--task-cols: minmax(0, 1.5fr) minmax(0, 1.6fr) minmax(0, 1fr) 118px 84px 116px;
 	}
 
 	.list-head,
@@ -582,6 +590,7 @@
 		white-space: nowrap;
 	}
 
+	.cell-description,
 	.cell-people {
 		color: var(--color-muted);
 		overflow: hidden;
@@ -783,9 +792,10 @@
 		}
 	}
 
-	/* Below this the five columns stop fitting, so each row becomes a small block:
-	   name and status on one line, appointment and deadline under it, controls last. */
-	@media (max-width: 760px) {
+	/* Below this the columns stop fitting, so each row becomes a small block: the name
+	   heads it, then description, appointment and deadline stacked under it, controls
+	   last. */
+	@media (max-width: 900px) {
 		.list-head {
 			display: none;
 		}
@@ -800,6 +810,7 @@
 			align-items: start;
 		}
 
+		.cell-description,
 		.cell-people,
 		.cell-deadline {
 			grid-column: 1 / -1;
