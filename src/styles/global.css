@@ -537,6 +537,106 @@ thead th {
 	white-space: nowrap;
 }
 
+/* Account page
+
+   Same reasoning as the money tables above: the pieces here are separate Svelte islands
+   across two pages, and no component's scoped <style> can reach the others — so the look
+   they have to share lives here. The details grid needs it most: three of its cells are
+   authored in account.astro and the fourth is AccountDisplayNameForm. */
+
+.account-details {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+	gap: var(--space-4) var(--space-5);
+	align-items: start;
+	margin: 0 0 var(--space-4);
+	max-width: 900px;
+}
+
+/* The display-name cell is an island, so the grid item is Astro's <astro-island>
+   wrapper rather than the .account-detail inside it — it needs the item styling. */
+.account-details > astro-island {
+	display: block;
+	min-width: 0;
+}
+
+.account-detail {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	min-width: 0;
+}
+
+.account-detail .detail-label {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	color: var(--color-muted);
+	font-size: 0.68rem;
+	font-weight: 700;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+}
+
+.account-detail .detail-value {
+	overflow-wrap: break-word;
+	word-break: break-word;
+}
+
+.account-form {
+	display: block;
+	max-width: 420px;
+	margin: 0 0 var(--space-4);
+}
+
+.account-form .field {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	min-width: 0;
+	margin-bottom: var(--space-3);
+}
+
+.account-form .field > label {
+	color: var(--color-muted);
+	font-size: 0.68rem;
+	font-weight: 700;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+}
+
+.account-form .field input {
+	width: 100%;
+	min-width: 0;
+}
+
+.account-form .field-hint {
+	color: var(--color-muted);
+	font-size: 0.72rem;
+	line-height: 1.4;
+}
+
+.account-form .form-actions {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+}
+
+/* Unscoped: ResetPasswordForm shows a dead-link message in place of the form, not
+   inside one. */
+.form-note {
+	font-size: 0.8rem;
+	margin: var(--space-3) 0 var(--space-2);
+}
+
+.form-note.error {
+	color: var(--color-danger);
+}
+
+.form-note.success {
+	color: var(--color-success);
+}
+
 /* Breadcrumbs */
 
 .breadcrumbs {

@@ -38,7 +38,15 @@ function isActive(href: string) {
 			<CurrencyPicker client:load />
 			{user && (
 				<Fragment>
-					<span class="site-user" title={user.email}>{user.displayName ?? user.email}</span>
+					<a
+						href="/account"
+						class:list={['site-user', { active: isActive('/account') }]}
+						title={user.email}
+						aria-label="Account settings"
+					>
+						<span class="site-user-name">{user.displayName ?? user.email}</span>
+						<span class="site-user-arrow" aria-hidden="true">↗</span>
+					</a>
 					<!-- data-astro-reload: the ClientRouter otherwise submits this with fetch and
 					     swaps in whatever comes back, which leaves the URL on /api/auth/logout
 					     (a GET there is a 404) and keeps every module-scoped island store from
@@ -115,16 +123,37 @@ function isActive(href: string) {
 		border-bottom-color: currentColor;
 	}
 
+	/* The name is the link to /account, with a ↗ to say so — the arrow sits outside the
+	   truncating span so a long name ellipsises without ever eating the affordance. */
 	.site-user {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-1);
 		flex: 0 1 auto;
 		min-width: 0;
 		max-width: 28ch;
-		overflow: hidden;
-		white-space: nowrap;
-		text-overflow: ellipsis;
 		font-size: 0.8rem;
 		line-height: 1.4;
 		color: var(--color-muted);
+		border-bottom: 1px solid transparent;
+	}
+
+	.site-user-name {
+		min-width: 0;
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+	}
+
+	.site-user-arrow {
+		flex: 0 0 auto;
+		font-size: 0.7rem;
+	}
+
+	.site-user:hover,
+	.site-user.active {
+		color: var(--color-fg);
+		border-bottom-color: currentColor;
 	}
 
 	.header-right form {

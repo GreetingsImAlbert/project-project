@@ -1,0 +1,70 @@
+---
+import { env } from 'cloudflare:workers';
+import BaseLayout from '../layouts/BaseLayout.astro';
+import StorageUsageBar from '../components/StorageUsageBar.astro';
+import AccountDisplayNameForm from '../components/AccountDisplayNameForm.svelte';
+import AccountPasswordForm from '../components/AccountPasswordForm.svelte';
+import { getSupabaseAdmin } from '../lib/supabase/admin';
+import { getUserStorageBytes, MAX_USER_STORAGE_BYTES } from '../lib/r2-quota';
+
+export const prerender = false;
+
+const user = Astro.locals.user;
+
+if (!user) {
+	return Astro.redirect('/login');
+}
+
+const [{ data: profile }, { count: projectCount }] = await Promise.all([
+	// RLS scopes this to the caller's own row, so the session client is the right one.
+	Astro.locals.supabase.from('profiles').select('display_name, email, created_at').eq('id', user.id).single(),
+	Astro.locals.supabase.from('project_members').select('project_id', { count: 'exact', head: true }).eq('user_id', user.id),
+]);
+
+const admin = getSupabaseAdmin(env);
+const { totalBytes, failed } = await getUserStorageBytes(admin, user.id);
+
+// The JWT is the fallback rather than the source: profiles is what other members read,
+// and it is the row the account page is here to edit.
+const displayName = profile?.display_name ?? user.displayName ?? '';
+const email = profile?.email ?? user.email ?? '—';
+const createdAt = profile?.created_at ? new Date(profile.created_at).toLocaleDateString() : '—';
+---
+
+<BaseLayout title="Account">
+	<h1>Account</h1>
+
+	<h2>Details</h2>
+	<!-- A plain grid rather than a <dl>: the display-name field is a Svelte island, and
+	     Astro renders one as an <astro-island> wrapper, which a <dl> can't legally hold. -->
+	<div class="account-details">
+		<AccountDisplayNameForm client:load initialDisplayName={displayName} />
+		<div class="account-detail">
+			<span class="detail-label">Email</span>
+			<span class="detail-value">{email}</span>
+		</div>
+		<div class="account-detail">
+			<span class="detail-label">Member since</span>
+			<span class="detail-value">{createdAt}</span>
+		</div>
+		<div class="account-detail">
+			<span class="detail-label">Projects</span>
+			<span class="detail-value">{projectCount ?? 0}</span>
+		</div>
+	</div>
+
+	<h2>Storage</h2>
+	<StorageUsageBar usedBytes={totalBytes} capBytes={MAX_USER_STORAGE_BYTES} failed={failed} />
+
+	<h2>Change password</h2>
+	<AccountPasswordForm client:load />
+	<p class="muted account-forgot">
+		Don't remember your current password? <a href="/forgot-password">Reset it by email →</a>
+	</p>
+</BaseLayout>
+
+<style>
+	.account-forgot {
+		font-size: 0.85rem;
+	}
+</style>

@@ -3,7 +3,11 @@ import { createSupabaseServerClient } from "./lib/supabase/server";
 
 // Prefixes for routes that actually need auth context. Everything else
 // (bot noise probing /.env, /wp-admin, etc.) skips the Supabase round trip.
-const APP_PATH_PREFIXES = ["/login", "/projects", "/api", "/admin"];
+//
+// /forgot-password and /reset-password are pointedly absent: neither has anything to
+// say to a session, and /reset-password must not so much as touch a session cookie —
+// see the comment at the top of that page.
+const APP_PATH_PREFIXES = ["/login", "/projects", "/api", "/admin", "/account"];
 
 function isAppPath(pathname: string) {
     return pathname === "/" || APP_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix));
