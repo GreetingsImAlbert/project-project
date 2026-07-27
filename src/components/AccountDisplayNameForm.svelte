@@ -25,6 +25,24 @@
 		editing = true;
 	}
 
+	// Same close-on-outside-click as the file/folder Actions popovers: match on the whole
+	// composed path rather than e.target, since a button inside the panel can already be
+	// detached by the time the click reaches the window. The marker sits on the toggle too,
+	// or the click that opens the panel would immediately close it again.
+	function handleWindowClick(e: MouseEvent) {
+		if (!editing || saving) return;
+
+		const inside = e
+			.composedPath()
+			.some((node) => node instanceof Element && node.hasAttribute('data-name-actions'));
+
+		if (!inside) editing = false;
+	}
+
+	function handleWindowKeydown(e: KeyboardEvent) {
+		if (e.key === 'Escape' && editing && !saving) editing = false;
+	}
+
 	async function save(event: SubmitEvent) {
 		event.preventDefault();
 		if (saving) return;
@@ -61,12 +79,15 @@
 	}
 </script>
 
+<svelte:window onclick={handleWindowClick} onkeydown={handleWindowKeydown} />
+
 <div class="account-detail">
 	<span class="detail-label">
 		Display name
 		<button
 			type="button"
 			class="edit-icon"
+			data-name-actions
 			aria-label="Edit display name"
 			aria-expanded={editing}
 			onclick={toggleEdit}
@@ -75,7 +96,7 @@
 	<span class="detail-value">{initialDisplayName || '—'}</span>
 
 	{#if editing}
-		<form class="edit-panel" transition:slide={{ duration: 150 }} onsubmit={save}>
+		<form class="edit-panel" data-name-actions transition:slide={{ duration: 150 }} onsubmit={save}>
 			<label class="field">
 				<span>New display name</span>
 				<input
@@ -98,6 +119,11 @@
 </div>
 
 <style>
+	/* Anchors the overlay panel below the cell. */
+	.account-detail {
+		position: relative;
+	}
+
 	.edit-icon {
 		flex: 0 0 auto;
 		background: none;
@@ -113,16 +139,27 @@
 		opacity: 0.6;
 	}
 
-	/* Overrides the global form rules: inside the panel this is a column, not the
-	   page-level flex row, and its bottom margin is the grid's gap. */
+	/* An overlay, same as the file/folder Actions popover: laying it out in flow made the
+	   details grid reflow mid-transition, which showed as a flash of half-built layout.
+	   Also overrides the global form rules — inside the panel this is a column, not the
+	   page-level flex row — and flex-wrap has to be reset along with the direction, since
+	   slide animates the height from 0 and a wrapping column container with a constrained
+	   height flows the overflow into a second column, which showed as Save/Cancel sitting
+	   to the right of the field until the transition reached auto height. */
 	.edit-panel {
+		position: absolute;
+		top: calc(100% + var(--space-1));
+		left: 0;
+		right: 0;
+		z-index: 10;
 		display: flex;
 		flex-direction: column;
+		flex-wrap: nowrap;
 		gap: var(--space-2);
-		margin: var(--space-2) 0 0;
+		margin: 0;
 		background: var(--color-bg);
 		border: 1px solid var(--color-border-strong);
-		padding: var(--space-3);
+		padding: var(--space-2);
 	}
 
 	.field {
