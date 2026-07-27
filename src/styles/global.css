@@ -583,12 +583,21 @@ thead th {
 
 	/* iOS Safari zooms the whole page in when a focused control's text is under 16px,
 	   and never zooms back out — so body's 15px turns every tap on an input into a
-	   layout that looks broken until the user pinches out again. Controls with their
-	   own smaller font-size (the money panels) keep it: those selectors carry a class
-	   and outrank this one regardless of order. */
+	   layout that looks broken until the user pinches out again. */
 	input,
 	select,
 	textarea {
+		font-size: 16px;
+	}
+
+	/* The money panels set their own 0.8rem on these, and a two-class selector outranks
+	   the one above no matter where it sits — so they need the threshold restated at
+	   matching specificity or every field in an Add/Edit panel still zooms. .field-value
+	   comes along so a row's read-only panel and its edit form stay the same size; the
+	   labels and buttons stay small, they can't be focused for text entry. */
+	.money-panel .field input,
+	.money-panel .field select,
+	.money-panel .field .field-value {
 		font-size: 16px;
 	}
 
