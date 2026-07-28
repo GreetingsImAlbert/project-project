@@ -5,6 +5,7 @@ import ProjectShell from '../../../components/ProjectShell.astro';
 import FileBrowser from '../../../components/FileBrowser.svelte';
 import { getSupabaseAdmin } from '../../../lib/supabase/admin';
 import { getUserStorageBytes, getProjectStorageBytes, MAX_USER_STORAGE_BYTES } from '../../../lib/r2-quota';
+import { listGhostMembers } from '../../../lib/ghost-members';
 
 export const prerender = false;
 
@@ -34,6 +35,7 @@ const admin = getSupabaseAdmin(env);
 const [
 	{ data: project, error },
 	{ data: members },
+	ghostMembers,
 	{ data: allFolders },
 	{ data: files },
 	{ totalBytes, failed: userStorageFailed },
@@ -49,6 +51,7 @@ const [
 		.select('role, is_auditor, user_id, profiles(display_name, email)')
 		.eq('project_id', id)
 		.overrideTypes<{ role: string; is_auditor: boolean; user_id: string; profiles: { display_name: string; email: string } }[]>(),
+	listGhostMembers(Astro.locals.supabase, id!),
 	Astro.locals.supabase
 		.from('folders')
 		.select('id, name, parent_folder_id')
@@ -79,7 +82,7 @@ const storedViewMode = Astro.cookies.get('p2-file-view-mode')?.value;
 const initialViewMode = storedViewMode === 'list' ? 'list' : 'grid';
 ---
 <BaseLayout title={`${project.name} — Files`}>
-	<ProjectShell project={project} members={members ?? []} userRole={userRole} activePage="files">
+	<ProjectShell project={project} members={members ?? []} ghostMembers={ghostMembers} userRole={userRole} activePage="files">
 		<h2>Files</h2>
 
 		<FileBrowser

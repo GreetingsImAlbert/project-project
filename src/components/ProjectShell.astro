@@ -8,20 +8,32 @@ interface Member {
 	profiles: { display_name: string; email: string };
 }
 
+interface GhostMember {
+	id: string;
+	display_name: string;
+}
+
 interface Props {
 	project: { id: string; name: string; description: string | null };
 	members: Member[];
+	ghostMembers: GhostMember[];
 	userRole: string | undefined;
 	activePage: 'overview' | 'tasks' | 'files' | 'money';
 }
 
-const { project, members, userRole, activePage } = Astro.props;
+const { project, members, ghostMembers, userRole, activePage } = Astro.props;
 ---
 
 <p><a href="/projects">← Back to projects</a></p>
 
 <div class="project-shell">
-	<ProjectSidebar project={project} members={members} userRole={userRole} activePage={activePage} />
+	<ProjectSidebar
+		project={project}
+		members={members}
+		ghostMembers={ghostMembers}
+		userRole={userRole}
+		activePage={activePage}
+	/>
 
 	<div class="project-main">
 		<slot />

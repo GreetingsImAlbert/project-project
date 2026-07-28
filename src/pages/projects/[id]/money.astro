@@ -109,7 +109,7 @@ const parties: Party[] = [
 const initialPercents = resolveContributionPercents(parties);
 ---
 <BaseLayout title={`${project.name} — Money`}>
-	<ProjectShell project={project} members={members ?? []} userRole={userRole} activePage="money">
+	<ProjectShell project={project} members={members ?? []} ghostMembers={ghostMembers} userRole={userRole} activePage="money">
 		<MoneySummary
 			client:load
 			currentUserId={user.id}

@@ -5,6 +5,7 @@ import TasksSummary from '../../../components/TasksSummary.svelte';
 import TasksTable from '../../../components/TasksTable.svelte';
 import { TASK_COLUMNS, normalizeTask, type RawTaskRow } from '../../../lib/task-columns';
 import { isCategoryColorIndex, type CategoryColors } from '../../../lib/category-color';
+import { listGhostMembers } from '../../../lib/ghost-members';
 
 export const prerender = false;
 
@@ -18,7 +19,7 @@ const { id } = Astro.params;
 // All four go out at once: the Worker is a long trip from Postgres and none of
 // them depend on the one before it (RLS scopes each to the caller independently),
 // so the 404 check just moves below the await.
-const [{ data: project, error }, { data: members }, { data: taskRows }, { data: categoryRows }] = await Promise.all([
+const [{ data: project, error }, { data: members }, ghostMembers, { data: taskRows }, { data: categoryRows }] = await Promise.all([
 	Astro.locals.supabase.from('projects').select('id, name, description, owner_id').eq('id', id).single(),
 	Astro.locals.supabase
 		.from('project_members')
@@ -27,6 +28,7 @@ const [{ data: project, error }, { data: members }, { data: taskRows }, { data: 
 		.overrideTypes<
 			{ role: string; is_auditor: boolean; user_id: string; profiles: { display_name: string; email: string } }[]
 		>(),
+	listGhostMembers(Astro.locals.supabase, id!),
 	// Soonest deadline first, undated tasks last (Postgres would put nulls last on an
 	// ascending order anyway — stated explicitly so it can't drift), name as the
 	// tiebreak. sortTasks in the store applies the same order to later edits.
@@ -83,7 +85,7 @@ const serverToday = new Date().toISOString().slice(0, 10);
 ---
 
 <BaseLayout title={`${project.name} — Tasks`}>
-	<ProjectShell project={project} members={members ?? []} userRole={userRole} activePage="tasks">
+	<ProjectShell project={project} members={members ?? []} ghostMembers={ghostMembers} userRole={userRole} activePage="tasks">
 		<TasksSummary client:load initialTasks={tasks} serverToday={serverToday} />
 		<TasksTable
 			client:load

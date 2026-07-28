@@ -153,6 +153,14 @@
 		return party.isGhost ? `${party.displayName} · ghost` : party.displayName;
 	}
 
+	// A payment has no stored item_name — its label is the current payee name, so a
+	// rename shows up on every past row instead of freezing whatever name was picked
+	// when the row was created.
+	function itemLabel(t: Transaction): string {
+		if (t.type === 'payment') return `Pay ${partyName(relatedPartyIdOf(t))}`;
+		return t.item_name ?? '';
+	}
+
 	function bomValue(bomId: string, field: BomField): string | null {
 		const item = bomState.items.find((i) => i.id === bomId);
 		if (!item) return null;
@@ -437,7 +445,7 @@
 							<td class="date-cell">{t.transaction_date}</td>
 							<td><span class={`type-tag type-${t.type}`}>{TYPE_LABELS[t.type]}</span></td>
 							<td>
-								{t.item_name ?? ''}
+								{itemLabel(t)}
 								{#if t.type === 'bulk'}
 									<span class="line-count">({lines.length})</span>
 								{/if}

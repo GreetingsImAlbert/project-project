@@ -70,7 +70,6 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 		return new Response(urlError, { status: 400 });
 	}
 
-	let payeeDisplayName: string | null = null;
 	if (type === 'payment') {
 		if (!relatedPartyId) {
 			return new Response('Payee is required', { status: 400 });
@@ -79,12 +78,9 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 			return new Response('Cannot pay yourself', { status: 400 });
 		}
 
-		const payee = await resolveParty(locals.supabase, projectId!, relatedPartyId);
-
-		if (!payee) {
+		if (!(await resolveParty(locals.supabase, projectId!, relatedPartyId))) {
 			return new Response('Invalid payee', { status: 400 });
 		}
-		payeeDisplayName = payee.displayName;
 	}
 
 	const quantity = type === 'item' ? parseNumeric(formData.get('quantity')) : 1;
@@ -108,7 +104,10 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 			...relatedPartyColumns(type === 'payment' ? relatedPartyId : null),
 			transaction_date: transactionDate,
 			type,
-			item_name: type === 'item' ? itemName : type === 'payment' ? `Pay ${payeeDisplayName ?? 'member'}` : null,
+			// A payment's label is derived from the payee's party id at display time (see
+			// TransactionsTable/MemberContributionsTable), so a renamed payee doesn't leave
+			// a stale name baked into old rows.
+			item_name: type === 'item' ? itemName : null,
 			quantity,
 			unit: type === 'item' ? unit : null,
 			unit_cost: unitCost,

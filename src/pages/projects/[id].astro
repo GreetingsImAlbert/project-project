@@ -10,6 +10,7 @@ import { TASK_COLUMNS, normalizeTask, type RawTaskRow } from '../../lib/task-col
 import { isCategoryColorIndex, type CategoryColors } from '../../lib/category-color';
 import { HORIZON_COOKIE, parseHorizonDays } from '../../lib/task-horizon';
 import { projectReminders } from '../../lib/reminders';
+import { listGhostMembers } from '../../lib/ghost-members';
 
 export const prerender = false;
 
@@ -26,6 +27,7 @@ const { id } = Astro.params;
 const [
 	{ data: project, error },
 	{ data: members },
+	ghostMembers,
 	{ data: bomItems },
 	{ totalBytes: projectStorageBytes, failed: projectStorageFailed },
 	{ data: taskRows },
@@ -41,6 +43,7 @@ const [
 			.select('role, is_auditor, user_id, profiles(display_name, email)')
 			.eq('project_id', id)
 			.overrideTypes<{ role: string; is_auditor: boolean; user_id: string; profiles: { display_name: string; email: string } }[]>(),
+		listGhostMembers(Astro.locals.supabase, id!),
 		Astro.locals.supabase
 			.from('bom_items')
 			.select('total_cost')
@@ -93,7 +96,7 @@ const horizonDays = parseHorizonDays(Astro.cookies.get(HORIZON_COOKIE)?.value);
 const serverToday = new Date().toISOString().slice(0, 10);
 ---
 <BaseLayout title={project.name}>
-	<ProjectShell project={project} members={members ?? []} userRole={userRole} activePage="overview">
+	<ProjectShell project={project} members={members ?? []} ghostMembers={ghostMembers} userRole={userRole} activePage="overview">
 		<div class="overview-layout">
 			<div class="overview-main">
 				<ProjectDescriptionEditor

@@ -9,14 +9,20 @@ interface Member {
 	profiles: { display_name: string; email: string };
 }
 
+interface GhostMember {
+	id: string;
+	display_name: string;
+}
+
 interface Props {
 	project: { id: string; name: string; description: string | null };
 	members: Member[];
+	ghostMembers: GhostMember[];
 	userRole: string | undefined;
 	activePage: 'overview' | 'tasks' | 'files' | 'money';
 }
 
-const { project, members, userRole, activePage } = Astro.props;
+const { project, members, ghostMembers, userRole, activePage } = Astro.props;
 const isOwner = userRole === 'owner';
 
 // Flat, serializable shape for the owner's editing island.
@@ -71,6 +77,19 @@ const returnTo = Astro.url.pathname;
 					</ul>
 				</div>
 			))}
+		</div>
+	)}
+
+	{ghostMembers.length > 0 && (
+		<div class="member-group">
+			<p class="group-label">Ghosts</p>
+			<ul class="member-list">
+				{ghostMembers.map((g) => (
+					<li class="member-row">
+						{g.display_name}<span class="capability"> [ghost]</span>
+					</li>
+				))}
+			</ul>
 		</div>
 	)}
 

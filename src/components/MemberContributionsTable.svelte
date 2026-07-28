@@ -131,9 +131,19 @@
 		);
 	}
 
+	// The payer's own side has no stored label — it's the current payee name, so a
+	// rename shows up on every past row instead of freezing whatever name was picked
+	// when the row was created.
+	function partyDisplayName(id: string | null): string {
+		if (!id) return 'a member';
+		return parties.find((p) => p.id === id)?.displayName ?? 'a member';
+	}
+
 	function entryLabel(t: Transaction, partyId: string): string {
 		if (t.type === 'payment') {
-			return partyIdOf(t) === partyId ? (t.item_name ?? 'Payment') : `Received from ${payerName(t)}`;
+			return partyIdOf(t) === partyId
+				? `Pay ${partyDisplayName(relatedPartyIdOf(t))}`
+				: `Received from ${payerName(t)}`;
 		}
 		return t.item_name || TYPE_LABELS[t.type];
 	}
