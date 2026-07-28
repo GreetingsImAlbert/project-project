@@ -371,7 +371,7 @@
 	}
 
 	async function handleDeleteFolder(folderId: string) {
-		if (!confirm('Delete this folder?')) return;
+		if (!confirm('Delete this folder? Any files and subfolders inside it will be deleted too.')) return;
 
 		folderError = null;
 		deletingFolderId = folderId;
