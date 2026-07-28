@@ -4,7 +4,7 @@
 	import { bomState, initBom, type BomItem } from '../lib/bom-store.svelte';
 	import { transactionsState, initTransactions, type Transaction } from '../lib/transactions-store.svelte';
 	import { contributionsState, initContributions } from '../lib/contributions-store.svelte';
-	import { netSpend, paidByMember, topLevel } from '../lib/money-math';
+	import { duesFor, netSpend, topLevel } from '../lib/money-math';
 
 	let {
 		currentUserId,
@@ -31,7 +31,7 @@
 
 	let sharePercent = $derived(contributionsState.percents[currentUserId] ?? 0);
 	let shareAmount = $derived((netTotal * sharePercent) / 100);
-	let dues = $derived(shareAmount - paidByMember(transactionsState.items, currentUserId));
+	let dues = $derived(duesFor(transactionsState.items, contributionsState.percents, currentUserId));
 
 	// Rounded before comparing so a floating-point crumb doesn't render as "You owe"
 	// alongside a displayed balance of exactly zero.

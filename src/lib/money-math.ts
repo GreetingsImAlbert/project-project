@@ -62,6 +62,19 @@ export function paidByMember(transactions: Transaction[], memberId: string): num
 	}, 0);
 }
 
+// What a member still owes the group: their share of the net spend, less what they
+// have already paid. Negative means the group owes them. Shared by the summary strip,
+// the contributions table and the payment form's "all dues" shortcut, so all three
+// can't drift apart.
+export function duesFor(
+	transactions: Transaction[],
+	percents: Record<string, number>,
+	memberId: string,
+): number {
+	const share = (netSpend(transactions) * (percents[memberId] ?? 0)) / 100;
+	return share - paidByMember(transactions, memberId);
+}
+
 // Same member_id/related_member_id split as paidByMember — from the payee's side a
 // payment is negative (it's money they received, not money they spent).
 export function entryAmount(t: Transaction, viewingMemberId: string): number {

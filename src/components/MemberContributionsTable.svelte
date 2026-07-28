@@ -107,9 +107,15 @@
 			.sort((a, b) => a.transaction_date.localeCompare(b.transaction_date));
 	}
 
+	// The embedded profile is the payer's (transactions embed member_id's profile), so it
+	// stands in for a payer who has since left the members list.
+	function payerName(t: Transaction): string {
+		return t.profiles?.display_name ?? members.find((m) => m.id === t.member_id)?.displayName ?? 'a member';
+	}
+
 	function entryLabel(t: Transaction, memberId: string): string {
 		if (t.type === 'payment') {
-			return t.member_id === memberId ? (t.item_name ?? 'Payment') : 'Payment received';
+			return t.member_id === memberId ? (t.item_name ?? 'Payment') : `Received from ${payerName(t)}`;
 		}
 		return t.item_name || TYPE_LABELS[t.type];
 	}

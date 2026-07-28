@@ -3,8 +3,9 @@
 	import { slide } from 'svelte/transition';
 	import BulkTransactionForm from './BulkTransactionForm.svelte';
 	import { formatCurrency, initCurrency } from '../lib/currency.svelte';
-	import { netSpend, topLevel } from '../lib/money-math';
+	import { duesFor, netSpend, topLevel } from '../lib/money-math';
 	import { bomState, initBom, type BomItem } from '../lib/bom-store.svelte';
+	import { contributionsState, initContributions } from '../lib/contributions-store.svelte';
 	import {
 		transactionsState,
 		initTransactions,
@@ -27,12 +28,14 @@
 		projectId,
 		initialTransactions,
 		initialBomItems,
+		initialPercents,
 		members,
 		canEdit,
 	}: {
 		projectId: string;
 		initialTransactions: Transaction[];
 		initialBomItems: BomItem[];
+		initialPercents: Record<string, number>;
 		members: Member[];
 		canEdit: boolean;
 	} = $props();
@@ -41,6 +44,9 @@
 	// Seeded here as well as in BomTable/MoneySummary so an item form can offer the BOM
 	// list no matter which island hydrates first — see initTransactions for the guard.
 	initBom(initialBomItems);
+	// Same reason: the payment form's "all dues" shortcut needs the split, and the
+	// contributions table below may not have hydrated yet.
+	initContributions(initialPercents);
 
 	// One row panel at a time — read-only detail or the edit form, never both.
 	let openId = $state<string | null>(null);
@@ -99,6 +105,22 @@
 	function unitCostPlaceholder(type: TransactionType): string {
 		return type === 'item' ? 'Unit cost' : 'Amount';
 	}
+
+	// What the payer would still owe if this transaction didn't exist, snapped to cents.
+	// The row being edited is left out on purpose: it already counts as money that member
+	// has paid, so including it would offer only the remainder *after* itself and shrink
+	// the payment a little more on every save.
+	function duesOf(memberId: string, excludeId: string | null): number {
+		const items = excludeId
+			? transactionsState.items.filter((t) => t.id !== excludeId && t.group_id !== excludeId)
+			: transactionsState.items;
+		return Math.round(duesFor(items, contributionsState.percents, memberId) * 100) / 100;
+	}
+
+	// Only offered when there's something left to settle — a member who's square with the
+	// group (or already ahead) has no "all dues" amount to fill in.
+	let addDues = $derived(addType === 'payment' && addMemberId ? duesOf(addMemberId, null) : 0);
+	let editDues = $derived(editingType === 'payment' && editingMemberId && openId ? duesOf(editingMemberId, openId) : 0);
 
 	// The payee list excludes whoever is currently the payer, so switching the payer to
 	// the member already picked as payee leaves a selection that's no longer in the list:
@@ -670,6 +692,14 @@
 															{#if editingBomId && editingType === 'item'}
 																<button type="button" class="copy-btn" onclick={() => copyToEdit('unitCost')}>copy</button>
 															{/if}
+															{#if editDues > 0}
+																<button
+																	type="button"
+																	class="copy-btn"
+																	title={`Settle ${memberName(editingMemberId)}'s remaining dues`}
+																	onclick={() => (editingUnitCost = String(editDues))}
+																>all dues</button>
+															{/if}
 														</span>
 														<input
 															type="number"
@@ -846,6 +876,14 @@
 									{addType === 'item' ? 'Unit cost' : 'Amount'}
 									{#if addBomId && addType === 'item'}
 										<button type="button" class="copy-btn" onclick={() => copyToAdd('unitCost')}>copy</button>
+									{/if}
+									{#if addDues > 0}
+										<button
+											type="button"
+											class="copy-btn"
+											title={`Settle ${memberName(addMemberId)}'s remaining dues`}
+											onclick={() => (addUnitCost = String(addDues))}
+										>all dues</button>
 									{/if}
 								</span>
 								<input
