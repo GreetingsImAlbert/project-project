@@ -1,20 +1,27 @@
-export const CURRENCIES = ['PHP', 'USD'] as const;
-export type CurrencyCode = (typeof CURRENCIES)[number];
+import { currentEpoch } from './nav-epoch';
+import { CURRENCIES, type CurrencyCode } from './currency';
+
+export { CURRENCIES, type CurrencyCode };
 
 export const currencyState = $state<{ code: CurrencyCode }>({ code: 'PHP' });
 
-const STORAGE_KEY = 'p2-currency';
+let initializedEpoch = -1;
 
-export function setCurrency(code: CurrencyCode) {
+// Currency is a project property, not a per-user preference, so it comes down
+// from the server with the rest of the project's data — same once-per-navigation
+// guard as bomState/transactionsState (see initBom in bom-store.svelte.ts):
+// whichever currency-consuming island on the page hydrates first seeds it, the
+// rest no-op.
+export function initCurrency(code: CurrencyCode) {
+	if (initializedEpoch === currentEpoch() && !import.meta.env.SSR) return;
 	currencyState.code = code;
-	localStorage.setItem(STORAGE_KEY, code);
+	initializedEpoch = currentEpoch();
 }
 
-export function initCurrency() {
-	const stored = localStorage.getItem(STORAGE_KEY);
-	if (stored && (CURRENCIES as readonly string[]).includes(stored)) {
-		currencyState.code = stored as CurrencyCode;
-	}
+// Used after a successful save in the project settings picker, to reflect the
+// new currency immediately without a full reload.
+export function setCurrency(code: CurrencyCode) {
+	currencyState.code = code;
 }
 
 export function formatCurrency(value: number): string {

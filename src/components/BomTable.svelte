@@ -1,7 +1,6 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import { slide } from 'svelte/transition';
-	import { formatCurrency, initCurrency } from '../lib/currency.svelte';
+	import { formatCurrency, initCurrency, type CurrencyCode } from '../lib/currency.svelte';
 	import {
 		bomState,
 		initBom,
@@ -15,13 +14,16 @@
 		projectId,
 		initialItems,
 		canEdit,
+		currency,
 	}: {
 		projectId: string;
 		initialItems: BomItem[];
 		canEdit: boolean;
+		currency: CurrencyCode;
 	} = $props();
 
 	initBom(initialItems);
+	initCurrency(currency);
 
 	// One row panel is open at a time: either its read-only detail or its edit form.
 	// Keeping them mutually exclusive means a row never has two things hanging off it.
@@ -85,10 +87,6 @@
 	let groupSubtotals = $derived(
 		new Map(groups.map((g) => [g.category, g.items.reduce((sum, item) => sum + (item.total_cost ?? 0), 0)])),
 	);
-
-	onMount(() => {
-		initCurrency();
-	});
 
 	function handleRowClick(e: MouseEvent, id: string) {
 		if ((e.target as HTMLElement).closest('.row-actions, a')) return;

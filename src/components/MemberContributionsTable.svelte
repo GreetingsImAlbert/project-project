@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { slide } from 'svelte/transition';
-	import { onMount } from 'svelte';
-	import { formatCurrency, initCurrency } from '../lib/currency.svelte';
+	import { formatCurrency, initCurrency, type CurrencyCode } from '../lib/currency.svelte';
 	import { transactionsState, initTransactions, type Transaction, type TransactionType } from '../lib/transactions-store.svelte';
 	import { contributionsState, initContributions, setContributionPercents } from '../lib/contributions-store.svelte';
 	import { partiesState, initParties, addParty, updateParty, removeParty, type Party } from '../lib/parties-store.svelte';
@@ -13,16 +12,19 @@
 		initialParties,
 		transactions: initialTransactions,
 		canEdit,
+		currency,
 	}: {
 		projectId: string;
 		initialParties: Party[];
 		transactions: Transaction[];
 		canEdit: boolean;
+		currency: CurrencyCode;
 	} = $props();
 
 	initTransactions(initialTransactions);
 	initParties(initialParties);
 	initContributions(resolveContributionPercents(initialParties));
+	initCurrency(currency);
 
 	// Real members and ghost members share every column of this table — a ghost is just
 	// a party the project keeps its own record of, because the person behind it (a
@@ -336,10 +338,6 @@
 		if (expandedId === party.id) expandedId = null;
 		deletingGhostId = null;
 	}
-
-	onMount(() => {
-		initCurrency();
-	});
 </script>
 
 <section class="money-section">

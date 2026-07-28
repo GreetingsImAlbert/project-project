@@ -1,7 +1,4 @@
 ---
-import MemberManager from './MemberManager.svelte';
-import AddMemberForm from './AddMemberForm.svelte';
-
 interface Member {
 	role: string;
 	is_auditor: boolean;
@@ -19,19 +16,11 @@ interface Props {
 	members: Member[];
 	ghostMembers: GhostMember[];
 	userRole: string | undefined;
-	activePage: 'overview' | 'tasks' | 'files' | 'money';
+	activePage: 'overview' | 'tasks' | 'files' | 'money' | 'settings';
 }
 
 const { project, members, ghostMembers, userRole, activePage } = Astro.props;
 const isOwner = userRole === 'owner';
-
-// Flat, serializable shape for the owner's editing island.
-const memberData = members.map((m) => ({
-	user_id: m.user_id,
-	role: m.role,
-	is_auditor: m.is_auditor,
-	display_name: m.profiles?.display_name ?? '',
-}));
 
 // Members are grouped by role instead of colour-coded — owner first, then
 // editors, then viewers. Any role the check constraint grows later still shows
@@ -50,10 +39,6 @@ const memberGroups = roles.map((role) => ({
 	label: ROLE_LABELS[role] ?? role,
 	members: members.filter((m) => m.role === role),
 }));
-
-// Bounce the add-member POST back to whichever project page it was submitted
-// from; safeReturnTo() in the endpoint re-checks it's an in-app /projects/ path.
-const returnTo = Astro.url.pathname;
 ---
 
 <aside class="project-sidebar">
@@ -61,24 +46,20 @@ const returnTo = Astro.url.pathname;
 
 	<p class="sidebar-label">Members:</p>
 
-	{isOwner ? (
-		<MemberManager client:load projectId={project.id} members={memberData} />
-	) : (
-		<div class="member-groups">
-			{memberGroups.map((group) => (
-				<div class="member-group">
-					<p class="group-label">{group.label}</p>
-					<ul class="member-list">
-						{group.members.map((m) => (
-							<li class="member-row">
-								{m.profiles?.display_name}{m.is_auditor && (<span class="capability"> [auditor]</span>)}
-							</li>
-						))}
-					</ul>
-				</div>
-			))}
-		</div>
-	)}
+	<div class="member-groups">
+		{memberGroups.map((group) => (
+			<div class="member-group">
+				<p class="group-label">{group.label}</p>
+				<ul class="member-list">
+					{group.members.map((m) => (
+						<li class="member-row">
+							{m.profiles?.display_name}{m.is_auditor && (<span class="capability"> [auditor]</span>)}
+						</li>
+					))}
+				</ul>
+			</div>
+		))}
+	</div>
 
 	{ghostMembers.length > 0 && (
 		<div class="member-group">
@@ -93,17 +74,14 @@ const returnTo = Astro.url.pathname;
 		</div>
 	)}
 
-	{/* An island, not an inline script: under <ClientRouter /> an inline script that
-	    also exists on the page being navigated *from* is marked already-executed and
-	    never re-runs, which used to leave the folded form un-wired on every
-	    client-side navigation between Overview/Files/Money. */}
-	{isOwner && <AddMemberForm client:load projectId={project.id} returnTo={returnTo} />}
-
 	<nav class="sidebar-nav">
 		<a href={`/projects/${project.id}`} class={activePage === 'overview' ? 'active' : ''}>Overview</a>
 		<a href={`/projects/${project.id}/tasks`} class={activePage === 'tasks' ? 'active' : ''}>Tasks</a>
 		<a href={`/projects/${project.id}/files`} class={activePage === 'files' ? 'active' : ''}>Files</a>
 		<a href={`/projects/${project.id}/money`} class={activePage === 'money' ? 'active' : ''}>Money</a>
+		{isOwner && (
+			<a href={`/projects/${project.id}/settings`} class={activePage === 'settings' ? 'active' : ''}>Settings</a>
+		)}
 	</nav>
 </aside>
 

@@ -1,6 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import { formatCurrency, initCurrency } from '../lib/currency.svelte';
+	import { formatCurrency, initCurrency, type CurrencyCode } from '../lib/currency.svelte';
 	import { bomState, initBom, type BomItem } from '../lib/bom-store.svelte';
 	import { transactionsState, initTransactions, type Transaction } from '../lib/transactions-store.svelte';
 	import { contributionsState, initContributions } from '../lib/contributions-store.svelte';
@@ -11,18 +10,21 @@
 		initialItems,
 		initialTransactions,
 		initialPercents,
+		currency,
 	}: {
 		currentUserId: string;
 		initialItems: BomItem[];
 		initialTransactions: Transaction[];
 		initialPercents: Record<string, number>;
+		currency: CurrencyCode;
 	} = $props();
 
-	// Every island on the page seeds the same three stores, so whichever renders
+	// Every island on the page seeds the same stores, so whichever renders
 	// first wins and the rest are no-ops — see initTransactions for why.
 	initBom(initialItems);
 	initTransactions(initialTransactions);
 	initContributions(initialPercents);
+	initCurrency(currency);
 
 	let bomTotal = $derived(bomState.items.reduce((sum, item) => sum + (item.total_cost ?? 0), 0));
 	let netTotal = $derived(netSpend(transactionsState.items));
@@ -38,10 +40,6 @@
 	let duesRounded = $derived(Math.round(dues * 100) / 100);
 
 	let duesLabel = $derived(duesRounded > 0 ? 'You owe' : duesRounded < 0 ? "You're owed" : 'Settled up');
-
-	onMount(() => {
-		initCurrency();
-	});
 </script>
 
 <div class="summary">

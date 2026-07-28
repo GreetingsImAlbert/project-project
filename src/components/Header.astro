@@ -1,6 +1,5 @@
 ---
 import ThemeToggle from './ThemeToggle.svelte';
-import CurrencyPicker from './CurrencyPicker.svelte';
 
 interface Props {
 	user: { id: string; email: string | undefined; displayName: string | undefined } | null;
@@ -35,7 +34,6 @@ function isActive(href: string) {
 				</nav>
 			)}
 			<ThemeToggle client:load />
-			<CurrencyPicker client:load />
 			{user && (
 				<Fragment>
 					<a

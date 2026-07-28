@@ -89,9 +89,29 @@
 		busy = false;
 		editingId = null;
 	}
+
+	async function remove(member: Member) {
+		if (!confirm(`Remove ${member.display_name} from this project?`)) return;
+		busy = true;
+		error = null;
+
+		const res = await fetch(`/api/projects/${projectId}/members/${member.user_id}/delete`, {
+			method: 'POST',
+		});
+
+		if (!res.ok) {
+			error = await res.text();
+			busy = false;
+			return;
+		}
+
+		members = members.filter((m) => m.user_id !== member.user_id);
+		busy = false;
+		editingId = null;
+	}
 </script>
 
-{#snippet editPanel()}
+{#snippet editPanel(member: Member)}
 	<div class="edit-panel" transition:slide={{ duration: 150 }}>
 		<label class="field">
 			<span>Role</span>
@@ -112,6 +132,9 @@
 			<button type="button" onclick={save} disabled={busy}>{busy ? 'Saving…' : 'Save'}</button>
 			<button type="button" class="btn-plain" onclick={cancelEdit} disabled={busy}>Cancel</button>
 		</div>
+		<button type="button" class="btn-danger remove-btn" onclick={() => remove(member)} disabled={busy}>
+			Remove from project
+		</button>
 	</div>
 {/snippet}
 
@@ -137,7 +160,7 @@
 						</div>
 
 						{#if editingId === m.user_id}
-							{@render editPanel()}
+							{@render editPanel(m)}
 						{/if}
 					</li>
 				{/each}
@@ -257,5 +280,9 @@
 	.row-error {
 		color: var(--color-danger);
 		margin: 0;
+	}
+
+	.remove-btn {
+		width: 100%;
 	}
 </style>

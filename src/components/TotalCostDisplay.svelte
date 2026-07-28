@@ -1,12 +1,9 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import { formatCurrency, initCurrency } from '../lib/currency.svelte';
+	import { formatCurrency, initCurrency, type CurrencyCode } from '../lib/currency.svelte';
 
-	let { totalCost }: { totalCost: number } = $props();
+	let { totalCost, currency }: { totalCost: number; currency: CurrencyCode } = $props();
 
-	onMount(() => {
-		initCurrency();
-	});
+	initCurrency(currency);
 </script>
 
 <p>Total projected cost: <strong>{formatCurrency(totalCost)}</strong></p>

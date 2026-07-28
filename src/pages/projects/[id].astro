@@ -35,7 +35,7 @@ const [
 ] = await Promise.all([
 		Astro.locals.supabase
 			.from('projects')
-			.select('id, name, description, owner_id')
+			.select('id, name, description, owner_id, currency')
 			.eq('id', id)
 			.single(),
 		Astro.locals.supabase
@@ -114,7 +114,7 @@ const serverToday = new Date().toISOString().slice(0, 10);
 				/>
 			</div>
 			<div class="overview-stats">
-				<TotalCostDisplay client:load totalCost={totalCost} />
+				<TotalCostDisplay client:load totalCost={totalCost} currency={project.currency} />
 				<ProjectStorageUsed client:load initialUsedBytes={projectStorageBytes} initialFailed={projectStorageFailed} />
 			</div>
 		</div>

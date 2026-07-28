@@ -1,0 +1,83 @@
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import ProjectShell from '../../../components/ProjectShell.astro';
+import MemberManager from '../../../components/MemberManager.svelte';
+import AddMemberForm from '../../../components/AddMemberForm.svelte';
+import DeleteProjectPanel from '../../../components/DeleteProjectPanel.svelte';
+import CurrencyPicker from '../../../components/CurrencyPicker.svelte';
+import { listGhostMembers } from '../../../lib/ghost-members';
+
+export const prerender = false;
+
+const user = Astro.locals.user;
+if (!user) {
+	return Astro.redirect('/login');
+}
+
+const { id } = Astro.params;
+
+const [{ data: project, error }, { data: members }, ghostMembers] = await Promise.all([
+	Astro.locals.supabase.from('projects').select('id, name, description, owner_id, currency').eq('id', id).single(),
+	Astro.locals.supabase
+		.from('project_members')
+		.select('role, is_auditor, user_id, profiles(display_name, email)')
+		.eq('project_id', id)
+		.overrideTypes<
+			{ role: string; is_auditor: boolean; user_id: string; profiles: { display_name: string; email: string } }[]
+		>(),
+	listGhostMembers(Astro.locals.supabase, id!),
+]);
+
+if (error || !project) {
+	return new Response('Project not found', { status: 404 });
+}
+
+const userRole = members?.find((member) => member.user_id === user.id)?.role;
+const isOwner = userRole === 'owner';
+
+// Settings is entirely owner-only actions (member removal, project deletion) —
+// unlike the other project pages, there's nothing here for a non-owner to see.
+if (!isOwner) {
+	return Astro.redirect(`/projects/${id}`);
+}
+
+const memberData = (members ?? []).map((m) => ({
+	user_id: m.user_id,
+	role: m.role,
+	is_auditor: m.is_auditor,
+	display_name: m.profiles?.display_name ?? '',
+}));
+
+const returnTo = `/projects/${id}/settings`;
+---
+<BaseLayout title={`${project.name} — Settings`}>
+	<ProjectShell project={project} members={members ?? []} ghostMembers={ghostMembers} userRole={userRole} activePage="settings">
+		<h2>Settings</h2>
+
+		<section>
+			<h3>Currency</h3>
+			<CurrencyPicker client:load projectId={project.id} currency={project.currency} />
+		</section>
+
+		<section>
+			<h3>Members</h3>
+			<MemberManager client:load projectId={project.id} members={memberData} />
+			<AddMemberForm client:load projectId={project.id} returnTo={returnTo} />
+		</section>
+
+		<section>
+			<h3>Danger zone</h3>
+			<DeleteProjectPanel client:load projectId={project.id} projectName={project.name} />
+		</section>
+	</ProjectShell>
+</BaseLayout>
+
+<style>
+	section {
+		margin-top: var(--space-6);
+	}
+
+	section h3 {
+		margin-bottom: var(--space-3);
+	}
+</style>

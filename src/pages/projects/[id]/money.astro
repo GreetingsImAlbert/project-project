@@ -46,7 +46,7 @@ interface TransactionRow {
 const [{ data: project, error }, { data: members }, ghostMembers, { data: bomItems }, { data: transactions }] = await Promise.all([
 	Astro.locals.supabase
 		.from('projects')
-		.select('id, name, description, owner_id')
+		.select('id, name, description, owner_id, currency')
 		.eq('id', id)
 		.single(),
 	Astro.locals.supabase
@@ -116,8 +116,9 @@ const initialPercents = resolveContributionPercents(parties);
 			initialItems={bomItems ?? []}
 			initialTransactions={transactionRows}
 			initialPercents={initialPercents}
+			currency={project.currency}
 		/>
-		<BomTable client:load projectId={project.id} initialItems={bomItems ?? []} canEdit={canEdit} />
+		<BomTable client:load projectId={project.id} initialItems={bomItems ?? []} canEdit={canEdit} currency={project.currency} />
 		<TransactionsTable
 			client:load
 			projectId={project.id}
@@ -126,6 +127,7 @@ const initialPercents = resolveContributionPercents(parties);
 			initialPercents={initialPercents}
 			initialParties={parties}
 			canEdit={canEdit}
+			currency={project.currency}
 		/>
 		<MemberContributionsTable
 			client:load
@@ -133,6 +135,7 @@ const initialPercents = resolveContributionPercents(parties);
 			initialParties={parties}
 			transactions={transactionRows}
 			canEdit={canEdit}
+			currency={project.currency}
 		/>
 	</ProjectShell>
 </BaseLayout>

@@ -1,8 +1,7 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import { slide } from 'svelte/transition';
 	import BulkTransactionForm from './BulkTransactionForm.svelte';
-	import { formatCurrency, initCurrency } from '../lib/currency.svelte';
+	import { formatCurrency, initCurrency, type CurrencyCode } from '../lib/currency.svelte';
 	import { duesFor, netSpend, topLevel } from '../lib/money-math';
 	import { bomState, initBom, type BomItem } from '../lib/bom-store.svelte';
 	import { contributionsState, initContributions } from '../lib/contributions-store.svelte';
@@ -28,6 +27,7 @@
 		initialPercents,
 		initialParties,
 		canEdit,
+		currency,
 	}: {
 		projectId: string;
 		initialTransactions: Transaction[];
@@ -35,6 +35,7 @@
 		initialPercents: Record<string, number>;
 		initialParties: Party[];
 		canEdit: boolean;
+		currency: CurrencyCode;
 	} = $props();
 
 	initTransactions(initialTransactions);
@@ -47,6 +48,7 @@
 	// Same reason: the payment form's "all dues" shortcut needs the split, and the
 	// contributions table below may not have hydrated yet.
 	initContributions(initialPercents);
+	initCurrency(currency);
 
 	// One row panel at a time — read-only detail or the edit form, never both.
 	let openId = $state<string | null>(null);
@@ -242,10 +244,6 @@
 	});
 
 	let netTotal = $derived(netSpend(transactionsState.items));
-
-	onMount(() => {
-		initCurrency();
-	});
 
 	function handleRowClick(e: MouseEvent, id: string) {
 		if ((e.target as HTMLElement).closest('.row-actions, a')) return;
