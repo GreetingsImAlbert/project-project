@@ -2,6 +2,7 @@ import type { APIRoute } from 'astro';
 import { env } from 'cloudflare:workers';
 import { getSupabaseAdmin } from '../../../lib/supabase/admin';
 import { wouldExceedUserLimit } from '../../../lib/user-limit';
+import { displayNameProblem } from '../../../lib/account-validation';
 
 export const prerender = false;
 
@@ -15,6 +16,12 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
 		return new Response('Missing required fields', { status: 400 });
 	}
 
+	const trimmedDisplayName = displayName.trim();
+	const nameProblem = displayNameProblem(trimmedDisplayName);
+	if (nameProblem) {
+		return new Response(nameProblem, { status: 400 });
+	}
+
 	const admin = getSupabaseAdmin(env);
 	if (await wouldExceedUserLimit(admin)) {
 		return new Response('Signups are full', { status: 403 });
@@ -24,7 +31,7 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
         email: email.trim().toLowerCase(),
         password,
         options: {
-            data: { display_name: displayName },
+            data: { display_name: trimmedDisplayName },
             emailRedirectTo: new URL('/login', request.url).toString(),
         }
     });

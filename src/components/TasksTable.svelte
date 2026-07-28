@@ -277,7 +277,7 @@
 			return;
 		}
 
-		const saved = await res.json();
+		const saved = await res.json() as { name: string; color_index: number };
 		categoryColors = { ...categoryColors, [saved.name]: saved.color_index };
 		savingColor = null;
 	}

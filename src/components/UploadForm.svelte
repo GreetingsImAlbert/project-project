@@ -103,7 +103,7 @@
 			return;
 		}
 
-		const { uploadUrl, r2Key } = await urlRes.json();
+		const { uploadUrl, r2Key } = await urlRes.json() as { uploadUrl: string; r2Key: string };
 
 		onStatus('Uploading…');
 

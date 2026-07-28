@@ -325,7 +325,7 @@
 			return;
 		}
 
-		const { uploadUrl, r2Key } = await urlRes.json();
+		const { uploadUrl, r2Key } = await urlRes.json() as { uploadUrl: string; r2Key: string };
 
 		// An empty Blob rather than '': a string body makes fetch add a Content-Type of its
 		// own, and nothing in this flow signs one.

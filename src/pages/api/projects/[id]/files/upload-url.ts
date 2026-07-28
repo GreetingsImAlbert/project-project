@@ -3,6 +3,7 @@ import { AwsClient } from 'aws4fetch';
 import { env } from 'cloudflare:workers';
 import { getSupabaseAdmin } from '../../../../../lib/supabase/admin';
 import { wouldExceedUserStorageQuota } from '../../../../../lib/r2-quota';
+import { MAX_FILENAME_LENGTH } from '../../../../../lib/file-kind';
 
 export const prerender = false;
 
@@ -41,6 +42,10 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 
     if (!filename || typeof filename !== 'string') {
         return new Response('Filename is required', { status: 400 });
+    }
+
+    if (filename.length > MAX_FILENAME_LENGTH) {
+        return new Response(`Filename: max ${MAX_FILENAME_LENGTH} characters`, { status: 400 });
     }
 
 	const r2Key = `${projectId}/${crypto.randomUUID()}-${filename}`;

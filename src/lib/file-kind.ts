@@ -8,6 +8,11 @@ export type FileKind = 'markdown' | 'text' | 'unsupported';
 // of the project's byte math (see r2-quota.ts).
 export const MAX_VIEWABLE_BYTES = 1_000_000;
 
+// R2 keys top out at 1024 bytes and already carry `${projectId}/${uuid}-`, so this
+// leaves comfortable room while still ruling out a filename absurd enough to break
+// the key or the file list's layout.
+export const MAX_FILENAME_LENGTH = 255;
+
 const MARKDOWN_EXTENSIONS = new Set(['md', 'markdown', 'mdown', 'mkd', 'mdx']);
 
 const TEXT_EXTENSIONS = new Set([

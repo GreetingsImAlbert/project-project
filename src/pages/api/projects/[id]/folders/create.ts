@@ -28,6 +28,10 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 		return new Response('Folder name is required', { status: 400 });
 	}
 
+	if (name.length > 200) {
+		return new Response('Folder name: max 200 characters', { status: 400 });
+	}
+
 	if (parentFolderId) {
 		const { data: parentFolder } = await locals.supabase
 			.from('folders')

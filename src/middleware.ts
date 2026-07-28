@@ -13,9 +13,19 @@ function isAppPath(pathname: string) {
     return pathname === "/" || APP_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 }
 
+// Applied to every response, app path or not — cheap, header-only, and there's no
+// reason a bot-probed 404 should skip them either.
+function withSecurityHeaders(response: Response): Response {
+    response.headers.set('X-Frame-Options', 'DENY');
+    response.headers.set('X-Content-Type-Options', 'nosniff');
+    response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+    response.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    return response;
+}
+
 export const onRequest = defineMiddleware(async (context, next) => {
     if (!isAppPath(context.url.pathname)) {
-        return next();
+        return withSecurityHeaders(await next());
     }
 
     const supabase = createSupabaseServerClient(context.request, context.cookies);
@@ -33,5 +43,5 @@ export const onRequest = defineMiddleware(async (context, next) => {
         displayName: typeof displayName === 'string' && displayName ? displayName : undefined,
     };
 
-    return next();
+    return withSecurityHeaders(await next());
 });

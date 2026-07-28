@@ -9,10 +9,18 @@ export const POST: APIRoute = async({ request, locals, redirect }) => {
 
     const formData = await request.formData();
     const name = formData.get('name')?.toString();
-    const description = formData.get('description')?.toString() || null;
+    const description = formData.get('description')?.toString().trim() || null;
 
     if (!name) {
         return new Response('Project name is required', { status: 400 });
+    }
+
+    if (name.length > 200) {
+        return new Response('Project name: max 200 characters', { status: 400 });
+    }
+
+    if (description && description.length > 2000) {
+        return new Response('Max 2000 characters', { status: 400 });
     }
 
     const { error } = await locals.supabase

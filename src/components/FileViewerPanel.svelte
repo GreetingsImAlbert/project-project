@@ -293,7 +293,7 @@
 			return;
 		}
 
-		const { downloadUrl } = await res.json();
+		const { downloadUrl } = await res.json() as { downloadUrl: string };
 		window.location.href = downloadUrl;
 		downloading = false;
 	}
@@ -600,7 +600,7 @@
 					class="editor"
 					spellcheck="false"
 					autocapitalize="off"
-					autocorrect="off"
+					{...{ autocorrect: 'off' }}
 					aria-label={`Edit ${file.filename}`}
 					onkeydown={editorKeydown}
 				></textarea>
