@@ -167,6 +167,41 @@ export type Database = {
           },
         ]
       }
+      ghost_members: {
+        Row: {
+          contribution_percent: number | null
+          created_at: string | null
+          display_name: string
+          id: string
+          note: string | null
+          project_id: string
+        }
+        Insert: {
+          contribution_percent?: number | null
+          created_at?: string | null
+          display_name: string
+          id?: string
+          note?: string | null
+          project_id: string
+        }
+        Update: {
+          contribution_percent?: number | null
+          created_at?: string | null
+          display_name?: string
+          id?: string
+          note?: string | null
+          project_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ghost_members_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           created_at: string | null
@@ -368,13 +403,15 @@ export type Database = {
       transactions: {
         Row: {
           created_at: string | null
+          ghost_member_id: string | null
           group_id: string | null
           id: string
           item_name: string | null
           item_url: string | null
-          member_id: string
+          member_id: string | null
           project_id: string
           quantity: number | null
+          related_ghost_member_id: string | null
           related_member_id: string | null
           supplier: string | null
           total_cost: number | null
@@ -385,13 +422,15 @@ export type Database = {
         }
         Insert: {
           created_at?: string | null
+          ghost_member_id?: string | null
           group_id?: string | null
           id?: string
           item_name?: string | null
           item_url?: string | null
-          member_id: string
+          member_id?: string | null
           project_id: string
           quantity?: number | null
+          related_ghost_member_id?: string | null
           related_member_id?: string | null
           supplier?: string | null
           total_cost?: number | null
@@ -402,13 +441,15 @@ export type Database = {
         }
         Update: {
           created_at?: string | null
+          ghost_member_id?: string | null
           group_id?: string | null
           id?: string
           item_name?: string | null
           item_url?: string | null
-          member_id?: string
+          member_id?: string | null
           project_id?: string
           quantity?: number | null
+          related_ghost_member_id?: string | null
           related_member_id?: string | null
           supplier?: string | null
           total_cost?: number | null
@@ -418,6 +459,13 @@ export type Database = {
           unit_cost?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "transactions_ghost_member_id_fkey"
+            columns: ["ghost_member_id"]
+            isOneToOne: false
+            referencedRelation: "ghost_members"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "transactions_group_id_fkey"
             columns: ["group_id"]
@@ -437,6 +485,13 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_related_ghost_member_id_fkey"
+            columns: ["related_ghost_member_id"]
+            isOneToOne: false
+            referencedRelation: "ghost_members"
             referencedColumns: ["id"]
           },
           {

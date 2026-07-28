@@ -2,16 +2,12 @@
 	import { bomState } from '../lib/bom-store.svelte';
 	import type { BomItem } from '../lib/bom-store.svelte';
 	import type { Transaction } from '../lib/transactions-store.svelte';
+	import { partiesState } from '../lib/parties-store.svelte';
+	import { partyIdOf } from '../lib/money-parties';
 	import { BULK_LINE_TYPES, type BulkLineType, type CostMode } from '../lib/bulk-transaction';
-
-	interface Member {
-		id: string;
-		displayName: string;
-	}
 
 	let {
 		action,
-		members,
 		parent = null,
 		lines: existingLines = [],
 		submitLabel = 'Add bulk transaction',
@@ -19,13 +15,17 @@
 		onCancel,
 	}: {
 		action: string;
-		members: Member[];
 		parent?: Transaction | null;
 		lines?: Transaction[];
 		submitLabel?: string;
 		onSaved: (result: { parent: Transaction; lines: Transaction[] }) => void;
 		onCancel: () => void;
 	} = $props();
+
+	// Read straight off the shared store rather than through a prop, the same way the
+	// BOM list is — a ghost member added in the contributions table has to show up here
+	// without a reload.
+	let parties = $derived(partiesState.items);
 
 	interface DraftLine {
 		key: number;
@@ -80,7 +80,7 @@
 	// blank lines, since one line would just be a plain transaction.
 	let label = $state(parent?.item_name ?? '');
 	let transactionDate = $state(parent?.transaction_date ?? '');
-	let memberId = $state(parent?.member_id ?? '');
+	let partyId = $state(parent ? partyIdOf(parent) : '');
 	let supplier = $state(parent?.supplier ?? '');
 	let itemUrl = $state(parent?.item_url ?? '');
 	// A stored group whose lines carry no cost was entered as one overall amount.
@@ -175,7 +175,7 @@
 			body: JSON.stringify({
 				label,
 				transactionDate,
-				memberId,
+				partyId,
 				supplier,
 				itemUrl,
 				costMode,
@@ -215,10 +215,10 @@
 		</label>
 		<label class="field">
 			<span class="field-label">Recorded by</span>
-			<select required bind:value={memberId}>
+			<select required bind:value={partyId}>
 				<option value="" disabled>Select member…</option>
-				{#each members as member (member.id)}
-					<option value={member.id}>{member.displayName}</option>
+				{#each parties as party (party.id)}
+					<option value={party.id}>{party.displayName}{party.isGhost ? ' · ghost' : ''}</option>
 				{/each}
 			</select>
 		</label>

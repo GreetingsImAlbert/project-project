@@ -3,6 +3,8 @@ import { canEditMoney } from '../../../../../lib/money-access';
 import { itemUrlError } from '../../../../../lib/item-url';
 import { transactionDateError } from '../../../../../lib/transaction-date';
 import { TRANSACTION_COLUMNS } from '../../../../../lib/transaction-columns';
+import { resolveParty } from '../../../../../lib/ghost-members';
+import { partyColumns, relatedPartyColumns } from '../../../../../lib/money-parties';
 
 export const prerender = false;
 
@@ -29,12 +31,14 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 	const formData = await request.formData();
 	const transactionDate = formData.get('transactionDate')?.toString().trim();
 	const type = formData.get('type')?.toString().trim();
-	const memberId = formData.get('memberId')?.toString().trim();
+	// A party id is either a member's user id or a ghost member's prefixed id — see
+	// money-parties.ts.
+	const partyId = formData.get('partyId')?.toString().trim();
 	const itemName = formData.get('itemName')?.toString().trim() || null;
 	const unit = formData.get('unit')?.toString().trim() || null;
 	const supplier = formData.get('supplier')?.toString().trim() || null;
 	const itemUrl = formData.get('itemUrl')?.toString().trim() || null;
-	const relatedMemberId = formData.get('relatedMemberId')?.toString().trim() || null;
+	const relatedPartyId = formData.get('relatedPartyId')?.toString().trim() || null;
 
 	const dateError = transactionDateError(transactionDate);
 	if (dateError) {
@@ -43,18 +47,11 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 	if (!type || !TYPES.includes(type)) {
 		return new Response('Invalid transaction type', { status: 400 });
 	}
-	if (!memberId) {
+	if (!partyId) {
 		return new Response('Member is required', { status: 400 });
 	}
 
-	const { data: memberCheck } = await locals.supabase
-		.from('project_members')
-		.select('user_id')
-		.eq('project_id', projectId)
-		.eq('user_id', memberId)
-		.single();
-
-	if (!memberCheck) {
+	if (!(await resolveParty(locals.supabase, projectId!, partyId))) {
 		return new Response('Invalid member', { status: 400 });
 	}
 
@@ -75,25 +72,19 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 
 	let payeeDisplayName: string | null = null;
 	if (type === 'payment') {
-		if (!relatedMemberId) {
+		if (!relatedPartyId) {
 			return new Response('Payee is required', { status: 400 });
 		}
-		if (relatedMemberId === memberId) {
+		if (relatedPartyId === partyId) {
 			return new Response('Cannot pay yourself', { status: 400 });
 		}
 
-		const { data: payeeCheck } = await locals.supabase
-			.from('project_members')
-			.select('user_id, profiles(display_name)')
-			.eq('project_id', projectId)
-			.eq('user_id', relatedMemberId)
-			.single()
-			.overrideTypes<{ user_id: string; profiles: { display_name: string } | null }>();
+		const payee = await resolveParty(locals.supabase, projectId!, relatedPartyId);
 
-		if (!payeeCheck) {
+		if (!payee) {
 			return new Response('Invalid payee', { status: 400 });
 		}
-		payeeDisplayName = payeeCheck.profiles?.display_name ?? null;
+		payeeDisplayName = payee.displayName;
 	}
 
 	const quantity = type === 'item' ? parseNumeric(formData.get('quantity')) : 1;
@@ -113,8 +104,8 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 		.from('transactions')
 		.insert({
 			project_id: projectId,
-			member_id: memberId,
-			related_member_id: type === 'payment' ? relatedMemberId : null,
+			...partyColumns(partyId),
+			...relatedPartyColumns(type === 'payment' ? relatedPartyId : null),
 			transaction_date: transactionDate,
 			type,
 			item_name: type === 'item' ? itemName : type === 'payment' ? `Pay ${payeeDisplayName ?? 'member'}` : null,

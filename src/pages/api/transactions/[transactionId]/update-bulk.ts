@@ -2,6 +2,7 @@ import type { APIRoute } from 'astro';
 import { canEditMoney } from '../../../../lib/money-access';
 import { buildBulkRows, lineRows } from '../../../../lib/bulk-transaction';
 import { TRANSACTION_COLUMNS } from '../../../../lib/transaction-columns';
+import { resolveParty } from '../../../../lib/ghost-members';
 
 export const prerender = false;
 
@@ -43,16 +44,7 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 		return new Response(built.error, { status: 400 });
 	}
 
-	const memberId = built.parent.member_id;
-
-	const { data: memberCheck } = await locals.supabase
-		.from('project_members')
-		.select('user_id')
-		.eq('project_id', existing.project_id)
-		.eq('user_id', memberId)
-		.single();
-
-	if (!memberCheck) {
+	if (!(await resolveParty(locals.supabase, existing.project_id, built.partyId))) {
 		return new Response('Invalid member', { status: 400 });
 	}
 
@@ -82,7 +74,7 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 
 	const { data: lines, error: linesError } = await locals.supabase
 		.from('transactions')
-		.insert(lineRows(built.lines, transactionId!, existing.project_id, memberId, built.parent.transaction_date))
+		.insert(lineRows(built.lines, transactionId!, existing.project_id, built.partyId, built.parent.transaction_date))
 		.select(TRANSACTION_COLUMNS);
 
 	if (linesError || !lines) {

@@ -7,6 +7,9 @@ import TransactionsTable from '../../../components/TransactionsTable.svelte';
 import MemberContributionsTable from '../../../components/MemberContributionsTable.svelte';
 import { TRANSACTION_COLUMNS } from '../../../lib/transaction-columns';
 import { resolveContributionPercents } from '../../../lib/money-math';
+import { ghostPartyId } from '../../../lib/money-parties';
+import { listGhostMembers } from '../../../lib/ghost-members';
+import type { Party } from '../../../lib/parties-store.svelte';
 
 export const prerender = false;
 
@@ -28,16 +31,19 @@ interface TransactionRow {
 	supplier: string | null;
 	item_url: string | null;
 	total_cost: number | null;
-	member_id: string;
+	member_id: string | null;
 	related_member_id: string | null;
+	ghost_member_id: string | null;
+	related_ghost_member_id: string | null;
 	group_id: string | null;
 	profiles: { display_name: string } | null;
+	ghost_members: { display_name: string } | null;
 }
 
-// All four go out at once: the Worker is a long trip from Postgres and none of
+// All five go out at once: the Worker is a long trip from Postgres and none of
 // them depend on the one before it (RLS scopes each to the caller independently),
 // so the 404 check just moves below the await.
-const [{ data: project, error }, { data: members }, { data: bomItems }, { data: transactions }] = await Promise.all([
+const [{ data: project, error }, { data: members }, ghostMembers, { data: bomItems }, { data: transactions }] = await Promise.all([
 	Astro.locals.supabase
 		.from('projects')
 		.select('id, name, description, owner_id')
@@ -50,6 +56,7 @@ const [{ data: project, error }, { data: members }, { data: bomItems }, { data: 
 		.overrideTypes<
 			{ role: string; is_auditor: boolean; user_id: string; contribution_percent: number | null; profiles: { display_name: string; email: string } }[]
 		>(),
+	listGhostMembers(Astro.locals.supabase, id!),
 	Astro.locals.supabase
 		.from('bom_items')
 		.select('id, part_name, category, description, quantity, unit, unit_cost, supplier, item_url, total_cost')
@@ -67,6 +74,8 @@ const [{ data: project, error }, { data: members }, { data: bomItems }, { data: 
 		.overrideTypes<TransactionRow[]>(),
 ]);
 
+const transactionRows = transactions ?? [];
+
 if (error || !project) {
 	return new Response('Project not found', { status: 404 });
 }
@@ -76,20 +85,28 @@ const userRole = currentMember?.role;
 // Money-page edit rights = owner OR auditor (a plain editor cannot edit Money).
 const canEdit = currentMember?.role === 'owner' || currentMember?.is_auditor === true;
 
-const memberOptions = (members ?? []).map((member) => ({
-	id: member.user_id,
-	displayName: member.profiles.display_name,
-}));
-
-const contributionMembers = (members ?? []).map((member) => ({
-	id: member.user_id,
-	displayName: member.profiles.display_name,
-	contributionPercent: member.contribution_percent,
-}));
+// Real members first, ghost members after — one list, because every Money-page number
+// is keyed by party id (see money-parties.ts) and the forms offer both as payers.
+const parties: Party[] = [
+	...(members ?? []).map((member) => ({
+		id: member.user_id,
+		displayName: member.profiles.display_name,
+		isGhost: false,
+		note: null,
+		contributionPercent: member.contribution_percent,
+	})),
+	...ghostMembers.map((ghost) => ({
+		id: ghostPartyId(ghost.id),
+		displayName: ghost.display_name,
+		isGhost: true,
+		note: ghost.note,
+		contributionPercent: ghost.contribution_percent,
+	})),
+];
 
 // Same resolution MemberContributionsTable applies to an unset split — computed here
 // too so the summary strip and the table agree on first paint.
-const initialPercents = resolveContributionPercents(contributionMembers);
+const initialPercents = resolveContributionPercents(parties);
 ---
 <BaseLayout title={`${project.name} — Money`}>
 	<ProjectShell project={project} members={members ?? []} userRole={userRole} activePage="money">
@@ -97,24 +114,24 @@ const initialPercents = resolveContributionPercents(contributionMembers);
 			client:load
 			currentUserId={user.id}
 			initialItems={bomItems ?? []}
-			initialTransactions={transactions ?? []}
+			initialTransactions={transactionRows}
 			initialPercents={initialPercents}
 		/>
 		<BomTable client:load projectId={project.id} initialItems={bomItems ?? []} canEdit={canEdit} />
 		<TransactionsTable
 			client:load
 			projectId={project.id}
-			initialTransactions={transactions ?? []}
+			initialTransactions={transactionRows}
 			initialBomItems={bomItems ?? []}
 			initialPercents={initialPercents}
-			members={memberOptions}
+			initialParties={parties}
 			canEdit={canEdit}
 		/>
 		<MemberContributionsTable
 			client:load
 			projectId={project.id}
-			members={contributionMembers}
-			transactions={transactions ?? []}
+			initialParties={parties}
+			transactions={transactionRows}
 			canEdit={canEdit}
 		/>
 	</ProjectShell>

@@ -15,11 +15,17 @@ export interface Transaction {
 	supplier: string | null;
 	item_url: string | null;
 	total_cost: number | null;
-	member_id: string;
+	// Exactly one of member_id / ghost_member_id is set, and at most one of the two
+	// related_* columns — a transaction's two sides are each either a real member or a
+	// ghost member. Read them through money-parties.ts rather than directly.
+	member_id: string | null;
 	related_member_id: string | null;
+	ghost_member_id: string | null;
+	related_ghost_member_id: string | null;
 	// null on a standalone transaction and on a bulk parent; the parent's id on a line.
 	group_id: string | null;
 	profiles: { display_name: string } | null;
+	ghost_members: { display_name: string } | null;
 }
 
 // Shared across TransactionsTable and MemberContributionsTable — both are independently

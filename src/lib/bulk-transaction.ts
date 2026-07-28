@@ -4,6 +4,7 @@
 
 import { itemUrlError } from './item-url';
 import { transactionDateError } from './transaction-date';
+import { partyColumns } from './money-parties';
 import type { Database } from './supabase/database.types';
 
 // The rows handed to the endpoints are typed as real transaction inserts, so a
@@ -29,7 +30,7 @@ export interface BulkLine {
 export interface BulkPayload {
 	label: string;
 	transactionDate: string;
-	memberId: string;
+	partyId: string;
 	supplier: string | null;
 	itemUrl: string | null;
 	costMode: CostMode;
@@ -60,7 +61,7 @@ function toText(value: unknown, max: number): string | null | undefined {
 export function buildBulkRows(
 	payload: unknown,
 	projectId: string,
-): { error: string } | { parent: TransactionInsert; lines: BulkLine[]; total: number } {
+): { error: string } | { parent: TransactionInsert; lines: BulkLine[]; total: number; partyId: string } {
 	if (typeof payload !== 'object' || payload === null) {
 		return { error: 'Invalid request body' };
 	}
@@ -82,8 +83,8 @@ export function buildBulkRows(
 		return { error: dateError };
 	}
 
-	const memberId = toText(body.memberId, 100);
-	if (!memberId) {
+	const partyId = toText(body.partyId, 100);
+	if (!partyId) {
 		return { error: 'Member is required' };
 	}
 
@@ -202,10 +203,12 @@ export function buildBulkRows(
 	}
 
 	return {
+		partyId,
 		parent: {
 			project_id: projectId,
-			member_id: memberId,
+			...partyColumns(partyId),
 			related_member_id: null,
+			related_ghost_member_id: null,
 			group_id: null,
 			transaction_date: transactionDate,
 			type: 'bulk',
@@ -225,13 +228,14 @@ export function lineRows(
 	lines: BulkLine[],
 	parentId: string,
 	projectId: string,
-	memberId: string,
+	partyId: string,
 	transactionDate: string,
 ): TransactionInsert[] {
 	return lines.map((line) => ({
 		project_id: projectId,
-		member_id: memberId,
+		...partyColumns(partyId),
 		related_member_id: null,
+		related_ghost_member_id: null,
 		group_id: parentId,
 		transaction_date: transactionDate,
 		type: line.type,

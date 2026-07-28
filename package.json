@@ -11,7 +11,7 @@
     "preview": "astro preview",
     "astro": "astro",
     "generate-types": "wrangler types",
-    "update-types": "npx supabase gen types typescript --project-id \"egjzxjhpwjrnhrjntqmp\" > src/lib/supabase/database.types.ts"
+    "update-types": "npx --yes supabase gen types typescript --project-id \"egjzxjhpwjrnhrjntqmp\" > src/lib/supabase/database.types.ts"
   },
   "dependencies": {
     "@astrojs/cloudflare": "^14.1.3",

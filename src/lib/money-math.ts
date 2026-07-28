@@ -1,8 +1,13 @@
 import type { Transaction } from './transactions-store.svelte';
+import { partyIdOf, relatedPartyIdOf } from './money-parties';
 
 // Shared by TransactionsTable, MemberContributionsTable and MoneySummary. These
 // rules used to be copy-pasted per component, which meant the summary strip could
 // disagree with the table directly under it if only one copy was updated.
+//
+// Everything below keys on a *party* id rather than a user id: a transaction can be
+// attributed to a ghost member as well as a real one, and the two are told apart by
+// money-parties.ts, not here.
 
 export function signedAmount(t: Transaction): number {
 	const total = t.total_cost ?? 0;
@@ -21,20 +26,20 @@ export function topLevel(transactions: Transaction[]): Transaction[] {
 	return transactions.filter((t) => !isLine(t));
 }
 
-// A member with no explicit contribution_percent means one of two things: nobody has
-// set a split yet (so everyone shares equally), or a split does exist and this member
-// joined after it was saved. Defaulting to an equal share in that second case pushes
-// the page's total past 100% — every member's "owes total" then overstates their real
-// share — so an unset percent only counts as an equal share when *no* member has one.
+// A party with no explicit contribution_percent means one of two things: nobody has
+// set a split yet (so everyone shares equally), or a split does exist and this party
+// was added after it was saved. Defaulting to an equal share in that second case pushes
+// the page's total past 100% — every party's "owes total" then overstates their real
+// share — so an unset percent only counts as an equal share when *nobody* has one.
 export function resolveContributionPercents(
-	members: { id: string; contributionPercent: number | null }[],
+	parties: { id: string; contributionPercent: number | null }[],
 ): Record<string, number> {
-	const anyExplicit = members.some((member) => member.contributionPercent != null);
+	const anyExplicit = parties.some((party) => party.contributionPercent != null);
 
 	return Object.fromEntries(
-		members.map((member) => [
-			member.id,
-			member.contributionPercent ?? (anyExplicit ? 0 : 100 / members.length),
+		parties.map((party) => [
+			party.id,
+			party.contributionPercent ?? (anyExplicit ? 0 : 100 / parties.length),
 		]),
 	);
 }
@@ -48,38 +53,38 @@ export function netSpend(transactions: Transaction[]): number {
 }
 
 // A payment isn't the payer's own project spend — it's money handed directly to
-// another member, so it counts toward the payer's "paid" (reduces what they owe)
+// another party, so it counts toward the payer's "paid" (reduces what they owe)
 // and *against* the payee's "paid" (reduces what they're owed back), rather than
-// being attributed to just one member_id like every other transaction type.
-export function paidByMember(transactions: Transaction[], memberId: string): number {
+// being attributed to just one party like every other transaction type.
+export function paidByMember(transactions: Transaction[], partyId: string): number {
 	return topLevel(transactions).reduce((sum, t) => {
 		if (t.type === 'payment') {
-			if (t.member_id === memberId) return sum + (t.total_cost ?? 0);
-			if (t.related_member_id === memberId) return sum - (t.total_cost ?? 0);
+			if (partyIdOf(t) === partyId) return sum + (t.total_cost ?? 0);
+			if (relatedPartyIdOf(t) === partyId) return sum - (t.total_cost ?? 0);
 			return sum;
 		}
-		return t.member_id === memberId ? sum + signedAmount(t) : sum;
+		return partyIdOf(t) === partyId ? sum + signedAmount(t) : sum;
 	}, 0);
 }
 
-// What a member still owes the group: their share of the net spend, less what they
+// What a party still owes the group: their share of the net spend, less what they
 // have already paid. Negative means the group owes them. Shared by the summary strip,
 // the contributions table and the payment form's "all dues" shortcut, so all three
 // can't drift apart.
 export function duesFor(
 	transactions: Transaction[],
 	percents: Record<string, number>,
-	memberId: string,
+	partyId: string,
 ): number {
-	const share = (netSpend(transactions) * (percents[memberId] ?? 0)) / 100;
-	return share - paidByMember(transactions, memberId);
+	const share = (netSpend(transactions) * (percents[partyId] ?? 0)) / 100;
+	return share - paidByMember(transactions, partyId);
 }
 
-// Same member_id/related_member_id split as paidByMember — from the payee's side a
-// payment is negative (it's money they received, not money they spent).
-export function entryAmount(t: Transaction, viewingMemberId: string): number {
+// Same payer/payee split as paidByMember — from the payee's side a payment is
+// negative (it's money they received, not money they spent).
+export function entryAmount(t: Transaction, viewingPartyId: string): number {
 	if (t.type === 'payment') {
-		return t.member_id === viewingMemberId ? (t.total_cost ?? 0) : -(t.total_cost ?? 0);
+		return partyIdOf(t) === viewingPartyId ? (t.total_cost ?? 0) : -(t.total_cost ?? 0);
 	}
 	return signedAmount(t);
 }

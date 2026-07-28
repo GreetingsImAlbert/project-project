@@ -6,6 +6,8 @@
 	import { duesFor, netSpend, topLevel } from '../lib/money-math';
 	import { bomState, initBom, type BomItem } from '../lib/bom-store.svelte';
 	import { contributionsState, initContributions } from '../lib/contributions-store.svelte';
+	import { partiesState, initParties, type Party } from '../lib/parties-store.svelte';
+	import { partyIdOf, relatedPartyIdOf } from '../lib/money-parties';
 	import {
 		transactionsState,
 		initTransactions,
@@ -19,28 +21,26 @@
 		type TransactionType,
 	} from '../lib/transactions-store.svelte';
 
-	interface Member {
-		id: string;
-		displayName: string;
-	}
-
 	let {
 		projectId,
 		initialTransactions,
 		initialBomItems,
 		initialPercents,
-		members,
+		initialParties,
 		canEdit,
 	}: {
 		projectId: string;
 		initialTransactions: Transaction[];
 		initialBomItems: BomItem[];
 		initialPercents: Record<string, number>;
-		members: Member[];
+		initialParties: Party[];
 		canEdit: boolean;
 	} = $props();
 
 	initTransactions(initialTransactions);
+	// Members and ghost members in one list — the contributions table can add, rename
+	// or remove a ghost, and these selects have to follow without a reload.
+	initParties(initialParties);
 	// Seeded here as well as in BomTable/MoneySummary so an item form can offer the BOM
 	// list no matter which island hydrates first — see initTransactions for the guard.
 	initBom(initialBomItems);
@@ -69,13 +69,13 @@
 	let addUnitCost = $state('');
 	let addSupplier = $state('');
 	let addItemUrl = $state('');
-	let addMemberId = $state('');
-	let addRelatedMemberId = $state('');
+	let addPartyId = $state('');
+	let addRelatedPartyId = $state('');
 	let addBomId = $state('');
 
 	let editingType = $state<TransactionType>('item');
-	let editingMemberId = $state('');
-	let editingRelatedMemberId = $state('');
+	let editingPartyId = $state('');
+	let editingRelatedPartyId = $state('');
 	let editingDate = $state('');
 	let editingItemName = $state('');
 	let editingQuantity = $state('');
@@ -102,43 +102,55 @@
 
 	let colCount = $derived(canEdit ? 10 : 9);
 
+	let parties = $derived(partiesState.items);
+
 	function unitCostPlaceholder(type: TransactionType): string {
 		return type === 'item' ? 'Unit cost' : 'Amount';
 	}
 
 	// What the payer would still owe if this transaction didn't exist, snapped to cents.
-	// The row being edited is left out on purpose: it already counts as money that member
+	// The row being edited is left out on purpose: it already counts as money that party
 	// has paid, so including it would offer only the remainder *after* itself and shrink
 	// the payment a little more on every save.
-	function duesOf(memberId: string, excludeId: string | null): number {
+	function duesOf(partyId: string, excludeId: string | null): number {
 		const items = excludeId
 			? transactionsState.items.filter((t) => t.id !== excludeId && t.group_id !== excludeId)
 			: transactionsState.items;
-		return Math.round(duesFor(items, contributionsState.percents, memberId) * 100) / 100;
+		return Math.round(duesFor(items, contributionsState.percents, partyId) * 100) / 100;
 	}
 
-	// Only offered when there's something left to settle — a member who's square with the
+	// Only offered when there's something left to settle — a party who's square with the
 	// group (or already ahead) has no "all dues" amount to fill in.
-	let addDues = $derived(addType === 'payment' && addMemberId ? duesOf(addMemberId, null) : 0);
-	let editDues = $derived(editingType === 'payment' && editingMemberId && openId ? duesOf(editingMemberId, openId) : 0);
+	let addDues = $derived(addType === 'payment' && addPartyId ? duesOf(addPartyId, null) : 0);
+	let editDues = $derived(editingType === 'payment' && editingPartyId && openId ? duesOf(editingPartyId, openId) : 0);
 
 	// The payee list excludes whoever is currently the payer, so switching the payer to
-	// the member already picked as payee leaves a selection that's no longer in the list:
+	// the party already picked as payee leaves a selection that's no longer in the list:
 	// the select renders blank, `required` still sees a value and lets the form through,
 	// and the server has to bounce it. Drop the payee instead, so the field asks again.
 	// Both read the new payer off the event rather than the bound state, which isn't
 	// guaranteed to have been written by the time this listener runs.
-	function onAddMemberChange(newMemberId: string) {
-		if (addRelatedMemberId === newMemberId) addRelatedMemberId = '';
+	function onAddPartyChange(newPartyId: string) {
+		if (addRelatedPartyId === newPartyId) addRelatedPartyId = '';
 	}
 
-	function onEditMemberChange(newMemberId: string) {
-		if (editingRelatedMemberId === newMemberId) editingRelatedMemberId = '';
+	function onEditPartyChange(newPartyId: string) {
+		if (editingRelatedPartyId === newPartyId) editingRelatedPartyId = '';
 	}
 
-	function memberName(id: string | null, profile: { display_name: string } | null = null): string {
+	function partyName(id: string | null): string {
 		if (!id) return '—';
-		return profile?.display_name ?? members.find((m) => m.id === id)?.displayName ?? 'Unknown';
+		return parties.find((p) => p.id === id)?.displayName ?? 'Unknown';
+	}
+
+	// The embedded name is the row's own payer — profiles for a member, ghost_members
+	// for a ghost — so it still names somebody who has since left the members list.
+	function payerName(t: Transaction): string {
+		return t.profiles?.display_name ?? t.ghost_members?.display_name ?? partyName(partyIdOf(t));
+	}
+
+	function partyOptionLabel(party: Party): string {
+		return party.isGhost ? `${party.displayName} · ghost` : party.displayName;
 	}
 
 	function bomValue(bomId: string, field: BomField): string | null {
@@ -245,8 +257,8 @@
 		openId = t.id;
 		openMode = 'edit';
 		editingType = t.type;
-		editingMemberId = t.member_id;
-		editingRelatedMemberId = t.related_member_id ?? '';
+		editingPartyId = partyIdOf(t);
+		editingRelatedPartyId = relatedPartyIdOf(t) ?? '';
 		editingDate = t.transaction_date;
 		editingItemName = t.item_name ?? '';
 		editingQuantity = t.quantity != null ? String(t.quantity) : '';
@@ -354,8 +366,8 @@
 		addUnitCost = '';
 		addSupplier = '';
 		addItemUrl = '';
-		addMemberId = '';
-		addRelatedMemberId = '';
+		addPartyId = '';
+		addRelatedPartyId = '';
 		addBomId = '';
 		showAddForm = false;
 		adding = false;
@@ -443,7 +455,7 @@
 							<td class="num" class:negative={t.type === 'discount' || t.type === 'refund'}>
 								{t.type === 'discount' || t.type === 'refund' ? '-' : ''}{t.total_cost != null ? formatCurrency(t.total_cost) : ''}
 							</td>
-							<td>{memberName(t.member_id, t.profiles)}</td>
+							<td>{payerName(t)}</td>
 							{#if canEdit}
 								<td class="actions-cell">
 									<div class="row-actions">
@@ -474,7 +486,7 @@
 													{t.type === 'payment' ? 'Paid to' : t.type === 'bulk' ? 'Name' : 'Item'}
 												</span>
 												<span class="field-value">
-													{t.type === 'payment' ? memberName(t.related_member_id) : t.item_name || '—'}
+													{t.type === 'payment' ? partyName(relatedPartyIdOf(t)) : t.item_name || '—'}
 												</span>
 											</div>
 											{#if t.type === 'item'}
@@ -509,7 +521,7 @@
 											</div>
 											<div class="field">
 												<span class="field-label">{t.type === 'payment' ? 'Paid by' : 'Recorded by'}</span>
-												<span class="field-value">{memberName(t.member_id, t.profiles)}</span>
+												<span class="field-value">{payerName(t)}</span>
 											</div>
 										</div>
 
@@ -585,7 +597,6 @@
 										{#if t.type === 'bulk'}
 											<BulkTransactionForm
 												action={`/api/transactions/${t.id}/update-bulk`}
-												members={members}
 												parent={t}
 												lines={lines}
 												submitLabel="Save"
@@ -610,12 +621,12 @@
 													<label class="field">
 														<span class="field-label">{editingType === 'payment' ? 'Paid by' : 'Recorded by'}</span>
 														<select
-															name="memberId"
-															bind:value={editingMemberId}
-															onchange={(e) => onEditMemberChange(e.currentTarget.value)}
+															name="partyId"
+															bind:value={editingPartyId}
+															onchange={(e) => onEditPartyChange(e.currentTarget.value)}
 														>
-															{#each members as member (member.id)}
-																<option value={member.id}>{member.displayName}</option>
+															{#each parties as party (party.id)}
+																<option value={party.id}>{partyOptionLabel(party)}</option>
 															{/each}
 														</select>
 													</label>
@@ -623,10 +634,10 @@
 													{#if editingType === 'payment'}
 														<label class="field">
 															<span class="field-label">Paid to</span>
-															<select name="relatedMemberId" bind:value={editingRelatedMemberId} required>
+															<select name="relatedPartyId" bind:value={editingRelatedPartyId} required>
 																<option value="" disabled>Select member…</option>
-																{#each members.filter((m) => m.id !== editingMemberId) as member (member.id)}
-																	<option value={member.id}>{member.displayName}</option>
+																{#each parties.filter((p) => p.id !== editingPartyId) as party (party.id)}
+																	<option value={party.id}>{partyOptionLabel(party)}</option>
 																{/each}
 															</select>
 														</label>
@@ -696,7 +707,7 @@
 																<button
 																	type="button"
 																	class="copy-btn"
-																	title={`Settle ${memberName(editingMemberId)}'s remaining dues`}
+																	title={`Settle ${partyName(editingPartyId)}'s remaining dues`}
 																	onclick={() => (editingUnitCost = String(editDues))}
 																>all dues</button>
 															{/if}
@@ -793,14 +804,14 @@
 							<label class="field">
 								<span class="field-label">{addType === 'payment' ? 'Paid by' : 'Recorded by'}</span>
 								<select
-									name="memberId"
+									name="partyId"
 									required
-									bind:value={addMemberId}
-									onchange={(e) => onAddMemberChange(e.currentTarget.value)}
+									bind:value={addPartyId}
+									onchange={(e) => onAddPartyChange(e.currentTarget.value)}
 								>
 									<option value="" disabled>Select member…</option>
-									{#each members as member (member.id)}
-										<option value={member.id}>{member.displayName}</option>
+									{#each parties as party (party.id)}
+										<option value={party.id}>{partyOptionLabel(party)}</option>
 									{/each}
 								</select>
 							</label>
@@ -808,10 +819,10 @@
 							{#if addType === 'payment'}
 								<label class="field">
 									<span class="field-label">Paid to</span>
-									<select name="relatedMemberId" required bind:value={addRelatedMemberId}>
+									<select name="relatedPartyId" required bind:value={addRelatedPartyId}>
 										<option value="" disabled>Select member…</option>
-										{#each members.filter((m) => m.id !== addMemberId) as member (member.id)}
-											<option value={member.id}>{member.displayName}</option>
+										{#each parties.filter((p) => p.id !== addPartyId) as party (party.id)}
+											<option value={party.id}>{partyOptionLabel(party)}</option>
 										{/each}
 									</select>
 								</label>
@@ -881,7 +892,7 @@
 										<button
 											type="button"
 											class="copy-btn"
-											title={`Settle ${memberName(addMemberId)}'s remaining dues`}
+											title={`Settle ${partyName(addPartyId)}'s remaining dues`}
 											onclick={() => (addUnitCost = String(addDues))}
 										>all dues</button>
 									{/if}
@@ -937,7 +948,6 @@
 				<div class="money-panel add-panel" transition:slide={{ duration: 150 }} onoutroend={() => (addButtonVisible = true)}>
 					<BulkTransactionForm
 						action={`/api/projects/${projectId}/transactions/create-bulk`}
-						members={members}
 						onSaved={handleBulkAdded}
 						onCancel={closeBulkForm}
 					/>
