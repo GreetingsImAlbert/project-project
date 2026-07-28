@@ -12,6 +12,7 @@
 	} from '../lib/category-color';
 	import {
 		displayStatus,
+		formatDeadline,
 		localToday,
 		relativeDeadline,
 		TASK_STATUS_LABELS,
@@ -498,7 +499,7 @@
 		<dt>Deadline</dt>
 		<dd>
 			{#if task.deadline}
-				{task.deadline} <span class="muted">({relativeDeadline(task.deadline, today)})</span>
+				{formatDeadline(task.deadline, today)} <span class="muted">({relativeDeadline(task.deadline, today)})</span>
 			{:else}
 				—
 			{/if}
@@ -768,7 +769,7 @@
 
 								<div class="cell cell-deadline">
 									{#if task.deadline}
-										<span class="deadline-date">{task.deadline}</span>
+										<span class="deadline-date">{formatDeadline(task.deadline, today)}</span>
 										<span class="task-sub">{relativeDeadline(task.deadline, today)}</span>
 									{:else}
 										<span class="task-sub">no deadline</span>
@@ -899,13 +900,16 @@
 
 	/* List */
 
+	/* The deadline track fits 'September 27' at the cell's font size, with the year only
+	   ever added for a deadline outside this one — where a little truncation is the
+	   right trade for keeping every other row tight. */
 	.task-list {
-		--task-cols: minmax(0, 1.5fr) minmax(0, 1.6fr) minmax(0, 1fr) 118px 84px;
+		--task-cols: minmax(0, 1.5fr) minmax(0, 1.6fr) minmax(0, 1fr) 124px 84px;
 		border-top: 1px solid var(--color-border);
 	}
 
 	.task-list.with-actions {
-		--task-cols: minmax(0, 1.5fr) minmax(0, 1.6fr) minmax(0, 1fr) 118px 84px 170px;
+		--task-cols: minmax(0, 1.5fr) minmax(0, 1.6fr) minmax(0, 1fr) 124px 84px 170px;
 	}
 
 	.list-head,
@@ -979,8 +983,11 @@
 		font-variant-numeric: tabular-nums;
 	}
 
+	/* Tight rows: the list is meant to be scanned, and body copy's 1.6 line-height over
+	   a two-line deadline cell was spending most of a row's height on air. The padding
+	   still has to clear the row controls, which set their own line-height. */
 	.task-row {
-		padding: var(--space-3) var(--space-2);
+		padding: var(--space-2);
 		cursor: pointer;
 		transition: background 0.12s ease;
 	}
@@ -993,6 +1000,7 @@
 	.cell {
 		min-width: 0;
 		font-size: 0.82rem;
+		line-height: 1.35;
 	}
 
 	.cell-task {
@@ -1031,6 +1039,7 @@
 	.task-sub {
 		color: var(--color-muted);
 		font-size: 0.7rem;
+		line-height: 1.3;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
@@ -1050,8 +1059,13 @@
 		gap: 1px;
 	}
 
+	/* One line whatever the month is called: a wrap here would put back the height the
+	   row just gave up. */
 	.deadline-date {
 		font-variant-numeric: tabular-nums;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.status {

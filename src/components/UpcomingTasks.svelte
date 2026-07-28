@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { categoryColorStyle } from '../lib/category-color';
-	import { daysUntil, localToday, relativeDeadline } from '../lib/task-status';
+	import { daysUntil, formatDeadline, localToday, relativeDeadline } from '../lib/task-status';
 	import { HORIZON_COOKIE, HORIZON_OPTIONS, horizonLabel } from '../lib/task-horizon';
 	import type { Reminder } from '../lib/reminders';
 
@@ -95,24 +95,25 @@
 		<ul class="reminder-list">
 			{#each due as reminder (reminder.id)}
 				{@const late = reminder.deadline < today}
+				<!-- One line per reminder: the name, the context it belongs to, then the date
+				     and how far off it is. The stacked version said the same things in twice
+				     the height, and this list is read at a glance. -->
 				<li class="reminder" class:late style={categoryColorStyle(reminder.colorIndex)}>
 					<span class="band" aria-hidden="true"></span>
-					<div class="reminder-main">
-						<!-- Straight to the task, not just to the page it lives on: the hash is what
-						     TasksTable reads on mount to open that task's detail panel. -->
-						<a class="reminder-name" href={`/projects/${reminder.projectId}/tasks#task-${reminder.id}`}>
-							{reminder.name}
-						</a>
-						<span class="reminder-sub">
-							{#if reminder.projectName}{reminder.projectName} · {/if}
-							{reminder.category?.trim() || 'Uncategorized'}
-							{#if reminder.assignees}· {reminder.assignees}{/if}
-						</span>
-					</div>
-					<div class="reminder-when">
-						<span class="reminder-date">{reminder.deadline}</span>
-						<span class="reminder-rel">{late ? 'overdue' : ''} {relativeDeadline(reminder.deadline, today)}</span>
-					</div>
+					<!-- Straight to the task, not just to the page it lives on: the hash is what
+					     TasksTable reads on mount to open that task's detail panel. The link is
+					     still just the title — the CSS stretches its hit area over the whole row,
+					     so the row is clickable without a second, mouse-only click handler. -->
+					<a class="reminder-name" href={`/projects/${reminder.projectId}/tasks#task-${reminder.id}`}>
+						{reminder.name}
+					</a>
+					<span class="reminder-sub">
+						{#if reminder.projectName}{reminder.projectName} · {/if}
+						{reminder.category?.trim() || 'Uncategorized'}
+						{#if reminder.assignees}· {reminder.assignees}{/if}
+					</span>
+					<span class="reminder-date">{formatDeadline(reminder.deadline, today)}</span>
+					<span class="reminder-rel">{late ? 'overdue' : ''} {relativeDeadline(reminder.deadline, today)}</span>
 				</li>
 			{/each}
 		</ul>
@@ -185,6 +186,16 @@
 		margin-left: 0;
 	}
 
+	/* Both centred in the head rather than baseline-aligned with it. An inline-flex box
+	   takes its baseline from its first item, and the toggle's first item is a checkbox
+	   — which has none, so the box sat on the checkbox's bottom edge and 'Just my tasks'
+	   rode low against 'Looking ahead' beside it. Centring the pair lines the two labels
+	   up with each other, which is the alignment that's actually being read. */
+	.mine-toggle,
+	.horizon {
+		align-self: center;
+	}
+
 	.horizon select {
 		font-size: 0.78rem;
 		padding: var(--space-1) var(--space-2);
@@ -201,12 +212,25 @@
 		border-top: 1px solid var(--color-border);
 	}
 
+	/* Padded on the sides like a TasksTable row, so the hover fill has an edge to sit
+	   inside rather than running flush against the text. `position: relative` is what
+	   the title's stretched hit area resolves against. */
 	.reminder {
+		position: relative;
 		display: flex;
 		align-items: baseline;
 		gap: var(--space-3);
-		padding: var(--space-2) 0;
+		padding: var(--space-2);
 		border-bottom: 1px solid var(--color-border);
+		line-height: 1.35;
+		transition: background 0.12s ease;
+	}
+
+	/* focus-within as well as hover: reaching the link by keyboard should light the same
+	   row the pointer would. */
+	.reminder:hover,
+	.reminder:focus-within {
+		background: var(--color-highlight);
 	}
 
 	/* The category's colour, in the same slot the list's group bands use — a stripe
@@ -220,22 +244,39 @@
 		background: var(--cat-bg, var(--color-border));
 	}
 
-	.reminder-main {
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-		flex: 1 1 auto;
-		min-width: 0;
-	}
-
+	/* Sized to its text, not to the row: global.css underlines a link on hover with a
+	   border, and a full-width anchor would draw that rule clear across the row. The
+	   whole row is still a click target — see the stretched pseudo-element below. */
 	.reminder-name {
+		flex: 0 1 auto;
+		min-width: 0;
 		font-size: 0.9rem;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
 
+	/* The row's hit area, laid over it by the one link it contains. A real anchor rather
+	   than a click handler on the <li>: middle-click, ctrl-click and the keyboard all
+	   keep working, and there's nothing to keep in sync with the href. */
+	.reminder-name::after {
+		content: '';
+		position: absolute;
+		inset: 0;
+	}
+
+	/* Hovering anywhere on the row underlines the title — the row is the target, but the
+	   title is what says where it goes. */
+	.reminder:hover .reminder-name {
+		border-bottom-color: currentColor;
+	}
+
+	/* `flex: 1 1 0` rather than `auto`: the context line takes the leftover space and
+	   gives it back first, so a long project or category name truncates before the task
+	   name it belongs to does. */
 	.reminder-sub {
+		flex: 1 1 0;
+		min-width: 0;
 		font-size: 0.72rem;
 		color: var(--color-muted);
 		overflow: hidden;
@@ -243,27 +284,32 @@
 		white-space: nowrap;
 	}
 
-	.reminder-when {
-		display: flex;
-		flex-direction: column;
-		align-items: flex-end;
-		gap: 2px;
-		flex: 0 0 auto;
-		text-align: right;
-	}
-
 	.reminder-date {
+		flex: 0 0 auto;
+		margin-left: auto;
 		font-size: 0.8rem;
 		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
 	}
 
 	.reminder-rel {
+		flex: 0 0 auto;
 		font-size: 0.72rem;
 		color: var(--color-muted);
+		white-space: nowrap;
 	}
 
 	.reminder.late .reminder-date,
 	.reminder.late .reminder-rel {
 		color: var(--color-danger);
+	}
+
+	/* Narrow enough that four things can't share a line: the context drops out rather
+	   than squeezing the name and the date into slivers, and the detail panel behind
+	   the link has all of it anyway. */
+	@media (max-width: 560px) {
+		.reminder-sub {
+			display: none;
+		}
 	}
 </style>

@@ -52,6 +52,38 @@ export function daysUntil(deadline: string, today: string): number {
 	return Math.round((a - b) / 86_400_000);
 }
 
+const MONTH_NAMES = [
+	'January',
+	'February',
+	'March',
+	'April',
+	'May',
+	'June',
+	'July',
+	'August',
+	'September',
+	'October',
+	'November',
+	'December',
+];
+
+// 'July 27' for a deadline in the year that's already on screen everywhere else, and
+// 'July 27, 2027' when it isn't — a year that can only be this one is noise in a
+// column that has to stay narrow.
+//
+// Spelled out from the string rather than through toLocaleDateString: the Worker and
+// the browser have to produce the same characters or the deadline flickers on
+// hydration, and that's a promise about ICU data on both ends rather than about this
+// function.
+export function formatDeadline(deadline: string, today: string): string {
+	const [year, month, day] = deadline.split('-');
+	const name = MONTH_NAMES[Number(month) - 1];
+	if (!name) return deadline;
+
+	const short = `${name} ${Number(day)}`;
+	return year === today.slice(0, 4) ? short : `${short}, ${year}`;
+}
+
 // Human phrasing for a deadline relative to today, e.g. 'today', 'in 3 days',
 // '2 days ago'. Used by the summary tile and the row detail panel.
 export function relativeDeadline(deadline: string, today: string): string {
