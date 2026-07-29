@@ -3,6 +3,7 @@ import { env } from 'cloudflare:workers';
 import { getSupabaseAdmin } from '../../../lib/supabase/admin';
 import { wouldExceedUserLimit } from '../../../lib/user-limit';
 import { displayNameProblem } from '../../../lib/account-validation';
+import { alertSignup } from '../../../lib/signup-alert';
 
 export const prerender = false;
 
@@ -45,6 +46,8 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
 		}
 		return new Response(`Signup failed: ${signUpError?.message}`, { status: 400 });
 	}
+
+	await alertSignup(env, data.user.email ?? email, trimmedDisplayName);
 
 	// No session means Supabase requires email confirmation before the account
 	// is usable — send the user back to login with a message instead of
