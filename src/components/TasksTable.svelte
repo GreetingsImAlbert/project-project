@@ -19,9 +19,12 @@
 		type TaskDisplayStatus,
 	} from '../lib/task-status';
 	import { DELETED_ASSIGNEE_PREFIX } from '../lib/task-form';
+	import { ghostPartyId } from '../lib/money-parties';
 
 	function assigneeToken(assignee: Task['assignees'][number]): string {
-		return assignee.user_id ?? `${DELETED_ASSIGNEE_PREFIX}${assignee.id}`;
+		if (assignee.user_id) return assignee.user_id;
+		if (assignee.ghost_member_id) return ghostPartyId(assignee.ghost_member_id);
+		return `${DELETED_ASSIGNEE_PREFIX}${assignee.id}`;
 	}
 
 	let {
@@ -30,6 +33,7 @@
 		initialCategoryColors,
 		initialViewMode,
 		members,
+		ghostMembers,
 		canEdit,
 		currentUserId,
 		serverToday,
@@ -39,6 +43,7 @@
 		initialCategoryColors: CategoryColors;
 		initialViewMode: 'list' | 'calendar';
 		members: { id: string; displayName: string }[];
+		ghostMembers: { id: string; displayName: string }[];
 		canEdit: boolean;
 		currentUserId: string;
 		serverToday: string;
@@ -451,7 +456,7 @@
 {#snippet assigneeField(selected: string[], onToggle: (id: string, on: boolean) => void, deletedAssignees: Task['assignees'] = [])}
 	<div class="field field-wide">
 		<span class="field-label">Appointed members</span>
-		{#if members.length === 0 && deletedAssignees.length === 0}
+		{#if members.length === 0 && ghostMembers.length === 0 && deletedAssignees.length === 0}
 			<span class="field-value muted">No members to appoint.</span>
 		{:else}
 			<div class="assignee-picker">
@@ -465,6 +470,22 @@
 							onchange={(e) => onToggle(member.id, (e.currentTarget as HTMLInputElement).checked)}
 						/>
 						<span>{member.displayName}</span>
+					</label>
+				{/each}
+				<!-- Ghost members appoint the same way a real member does, just keyed by
+				     money-parties.ts's `ghost:<id>` token instead of a bare user id — see
+				     task-form.ts's taskAssigneeColumns. -->
+				{#each ghostMembers as ghost (ghost.id)}
+					{@const token = ghostPartyId(ghost.id)}
+					<label class="assignee-option">
+						<input
+							type="checkbox"
+							name="assignees"
+							value={token}
+							checked={selected.includes(token)}
+							onchange={(e) => onToggle(token, (e.currentTarget as HTMLInputElement).checked)}
+						/>
+						<span>{ghost.displayName}</span>
 					</label>
 				{/each}
 				<!-- A deleted account's appointment: not a project member anymore (they're
@@ -568,7 +589,7 @@
 				(id, on) => {
 					editAssignees = on ? [...editAssignees, id] : editAssignees.filter((a) => a !== id);
 				},
-				task.assignees.filter((a) => !a.user_id),
+				task.assignees.filter((a) => !a.user_id && !a.ghost_member_id),
 			)}
 
 			<label class="field field-wide">

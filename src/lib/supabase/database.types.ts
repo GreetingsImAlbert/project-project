@@ -360,23 +360,33 @@ export type Database = {
       task_assignees: {
         Row: {
           deleted_display_name: string | null
+          ghost_member_id: string | null
           id: string
           task_id: string
           user_id: string | null
         }
         Insert: {
           deleted_display_name?: string | null
+          ghost_member_id?: string | null
           id?: string
           task_id: string
           user_id?: string | null
         }
         Update: {
           deleted_display_name?: string | null
+          ghost_member_id?: string | null
           id?: string
           task_id?: string
           user_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "task_assignees_ghost_member_id_fkey"
+            columns: ["ghost_member_id"]
+            isOneToOne: false
+            referencedRelation: "ghost_members"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "task_assignees_task_id_fkey"
             columns: ["task_id"]

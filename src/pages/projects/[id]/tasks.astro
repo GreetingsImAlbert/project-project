@@ -63,6 +63,8 @@ const memberOptions = (members ?? []).map((member) => ({
 	displayName: member.profiles.display_name,
 }));
 
+const ghostOptions = ghostMembers.map((ghost) => ({ id: ghost.id, displayName: ghost.display_name }));
+
 const tasks = (taskRows ?? []).map(normalizeTask);
 
 // A row whose index is outside the palette is dropped rather than clamped: it can
@@ -94,6 +96,7 @@ const serverToday = new Date().toISOString().slice(0, 10);
 			initialCategoryColors={categoryColors}
 			initialViewMode={initialViewMode}
 			members={memberOptions}
+			ghostMembers={ghostOptions}
 			canEdit={canEdit}
 			currentUserId={user.id}
 			serverToday={serverToday}

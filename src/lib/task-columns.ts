@@ -4,10 +4,11 @@ import type { TaskStatus } from './task-status';
 // tasks-store's `Task` — kept in one string, like TRANSACTION_COLUMNS, so a newly
 // added column can't reach some of those responses and quietly miss the others.
 //
-// task_assignees has a single FK to profiles (user_id), so the bare embed is
-// unambiguous here — no hint needed the way transactions' two profile FKs need one.
+// task_assignees has a single FK to profiles (user_id) and a single FK to
+// ghost_members (ghost_member_id), so both bare embeds are unambiguous here — no
+// hint needed the way transactions' two-FKs-to-the-same-table pairs need one.
 export const TASK_COLUMNS =
-	'id, name, category, description, deadline, status, task_assignees(id, user_id, deleted_display_name, profiles(display_name))';
+	'id, name, category, description, deadline, status, task_assignees(id, user_id, ghost_member_id, deleted_display_name, profiles(display_name), ghost_members(display_name))';
 
 export interface TaskAssignee {
 	// The task_assignees row's own id — the only stable key once user_id has gone
@@ -15,6 +16,7 @@ export interface TaskAssignee {
 	// TasksTable.svelte keys a former member's checkbox on this instead.
 	id: string;
 	user_id: string | null;
+	ghost_member_id: string | null;
 	display_name: string;
 }
 
@@ -40,8 +42,10 @@ export interface RawTaskRow {
 	task_assignees: {
 		id: string;
 		user_id: string | null;
+		ghost_member_id: string | null;
 		deleted_display_name: string | null;
 		profiles: { display_name: string } | null;
+		ghost_members: { display_name: string } | null;
 	}[];
 }
 
@@ -62,7 +66,8 @@ export function normalizeTask(row: RawTaskRow): Task {
 			.map((a) => ({
 				id: a.id,
 				user_id: a.user_id,
-				display_name: a.profiles?.display_name ?? a.deleted_display_name ?? '',
+				ghost_member_id: a.ghost_member_id,
+				display_name: a.profiles?.display_name ?? a.ghost_members?.display_name ?? a.deleted_display_name ?? '',
 			}))
 			.sort((a, b) => a.display_name.localeCompare(b.display_name)),
 	};

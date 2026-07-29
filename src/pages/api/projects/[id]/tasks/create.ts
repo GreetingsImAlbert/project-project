@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro';
-import { parseTaskForm } from '../../../../../lib/task-form';
+import { parseTaskForm, taskAssigneeColumns } from '../../../../../lib/task-form';
 import { TASK_COLUMNS, normalizeTask, type RawTaskRow } from '../../../../../lib/task-columns';
 
 export const prerender = false;
@@ -12,11 +12,12 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 	const projectId = params.id;
 
 	// One read covers both checks: the caller's own role, and the set of ids that
-	// may legally be appointed to the task.
-	const { data: members } = await locals.supabase
-		.from('project_members')
-		.select('user_id, role')
-		.eq('project_id', projectId);
+	// may legally be appointed to the task. Ghost members are read alongside for the
+	// same reason — a project's ghosts can be appointed too, same as a real member.
+	const [{ data: members }, { data: ghosts }] = await Promise.all([
+		locals.supabase.from('project_members').select('user_id, role').eq('project_id', projectId),
+		locals.supabase.from('ghost_members').select('id').eq('project_id', projectId),
+	]);
 
 	const membership = members?.find((m) => m.user_id === locals.user!.id);
 
@@ -27,7 +28,11 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 	}
 
 	const formData = await request.formData();
-	const parsed = parseTaskForm(formData, new Set((members ?? []).map((m) => m.user_id)));
+	const parsed = parseTaskForm(
+		formData,
+		new Set((members ?? []).map((m) => m.user_id)),
+		new Set((ghosts ?? []).map((g) => g.id)),
+	);
 
 	if ('error' in parsed) {
 		return new Response(parsed.error, { status: 400 });
@@ -48,7 +53,7 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 	if (assignees.length > 0) {
 		const { error: assignError } = await locals.supabase
 			.from('task_assignees')
-			.insert(assignees.map((userId) => ({ task_id: created.id, user_id: userId })));
+			.insert(assignees.map((partyId) => ({ task_id: created.id, ...taskAssigneeColumns(partyId) })));
 
 		// No transaction spans the two statements, so a failed appointment is
 		// compensated the way confirm.ts compensates a failed files insert: undo the

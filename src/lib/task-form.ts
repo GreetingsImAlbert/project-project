@@ -1,5 +1,6 @@
 import { calendarDateError } from './calendar-date';
 import { isTaskStatus, type TaskStatus } from './task-status';
+import { ghostIdOf } from './money-parties';
 
 // Parsing + validation for the task create and update endpoints. Shared for the
 // same reason TASK_COLUMNS is: two endpoints writing the same row must agree on
@@ -19,19 +20,29 @@ export interface TaskFormValues {
 	description: string | null;
 	deadline: string | null;
 	status: TaskStatus;
-	// Project members to (re)appoint.
+	// Project members and ghost members to (re)appoint, as party tokens — a bare
+	// user id or money-parties.ts's `ghost:<id>` — since a task_assignees row can
+	// name either.
 	assignees: string[];
 	// task_assignees.id values of deleted accounts' appointments to keep as-is.
 	keptDeletedAssigneeIds: string[];
 }
 
+// Which pair of task_assignees columns a party token writes to. Same idea as
+// money-parties.ts's partyColumns, just for this table's own column names.
+export function taskAssigneeColumns(partyId: string): { user_id: string | null; ghost_member_id: string | null } {
+	const ghostId = ghostIdOf(partyId);
+	return ghostId ? { user_id: null, ghost_member_id: ghostId } : { user_id: partyId, ghost_member_id: null };
+}
+
 export type TaskFormResult = { values: TaskFormValues } | { error: string };
 
-// `memberIds` is the project's membership. Appointing someone is a client-supplied
-// id landing in a row keyed to this project, so it gets the same treatment as a
-// client-supplied parent folder id: verified against the project before it's used,
-// never trusted because it arrived in the form.
-export function parseTaskForm(formData: FormData, memberIds: Set<string>): TaskFormResult {
+// `memberIds` is the project's membership and `ghostIds` its ghost members.
+// Appointing someone is a client-supplied id landing in a row keyed to this
+// project, so it gets the same treatment as a client-supplied parent folder id:
+// verified against the project before it's used, never trusted because it
+// arrived in the form.
+export function parseTaskForm(formData: FormData, memberIds: Set<string>, ghostIds: Set<string>): TaskFormResult {
 	const name = formData.get('name')?.toString().trim();
 	const category = formData.get('category')?.toString().trim() || null;
 	const description = formData.get('description')?.toString().trim() || null;
@@ -72,6 +83,14 @@ export function parseTaskForm(formData: FormData, memberIds: Set<string>): TaskF
 	for (const token of rawTokens) {
 		if (token.startsWith(DELETED_ASSIGNEE_PREFIX)) {
 			keptDeletedAssigneeIds.push(token.slice(DELETED_ASSIGNEE_PREFIX.length));
+			continue;
+		}
+		const ghostId = ghostIdOf(token);
+		if (ghostId) {
+			if (!ghostIds.has(ghostId)) {
+				return { error: 'Only this project\'s ghost members can be appointed to a task' };
+			}
+			assignees.push(token);
 			continue;
 		}
 		if (!memberIds.has(token)) {

@@ -15,10 +15,11 @@ export const POST: APIRoute = async ({ params, locals }) => {
 		return new Response('Forbidden', { status: 403 });
 	}
 
-	// The FK is `on delete restrict`, so the database would reject this anyway — but a
-	// raw constraint-violation message is no use to whoever clicked Delete. Counted
-	// first so the answer says what's actually in the way. Lines of a bulk transaction
-	// carry their parent's party, hence the count can exceed what the table shows.
+	// Both FKs are `on delete restrict`, so the database would reject this anyway —
+	// but a raw constraint-violation message is no use to whoever clicked Delete.
+	// Counted first so the answer says what's actually in the way. Lines of a bulk
+	// transaction carry their parent's party, hence the count can exceed what the
+	// table shows.
 	const { count, error: countError } = await locals.supabase
 		.from('transactions')
 		.select('id', { count: 'exact', head: true })
@@ -31,6 +32,21 @@ export const POST: APIRoute = async ({ params, locals }) => {
 	if ((count ?? 0) > 0) {
 		return new Response(
 			'This ghost member is named on transactions — reassign or delete those first',
+			{ status: 400 },
+		);
+	}
+
+	const { count: taskCount, error: taskCountError } = await locals.supabase
+		.from('task_assignees')
+		.select('id', { count: 'exact', head: true })
+		.eq('ghost_member_id', ghostId);
+
+	if (taskCountError) {
+		return new Response(`Failed to delete ghost member: ${taskCountError.message}`, { status: 500 });
+	}
+	if ((taskCount ?? 0) > 0) {
+		return new Response(
+			'This ghost member is appointed to tasks — unappoint them first',
 			{ status: 400 },
 		);
 	}
