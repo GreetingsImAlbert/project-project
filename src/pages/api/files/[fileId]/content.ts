@@ -3,7 +3,7 @@ import { AwsClient } from 'aws4fetch';
 import { env } from 'cloudflare:workers';
 import { getSupabaseAdmin } from '../../../../lib/supabase/admin';
 import { wouldExceedUserStorageQuota } from '../../../../lib/r2-quota';
-import { fileKind, MAX_VIEWABLE_BYTES } from '../../../../lib/file-kind';
+import { fileKind, isTextKind, MAX_VIEWABLE_BYTES } from '../../../../lib/file-kind';
 
 export const prerender = false;
 
@@ -46,9 +46,10 @@ export const GET: APIRoute = async ({ params, locals }) => {
 		return new Response('File not found', { status: 404 });
 	}
 
+	// Meshes are served by raw.ts, not decoded here — see isTextKind().
 	const kind = fileKind(file.filename);
-	if (kind === 'unsupported') {
-		return new Response('This file type cannot be previewed', { status: 415 });
+	if (!isTextKind(kind)) {
+		return new Response('This file type cannot be previewed as text', { status: 415 });
 	}
 
 	// size_bytes is derived from a real R2 HEAD at upload time, so it's trustworthy —
@@ -134,7 +135,7 @@ export const PUT: APIRoute = async ({ params, request, locals }) => {
 		return new Response('Forbidden', { status: 403 });
 	}
 
-	if (fileKind(file.filename) === 'unsupported') {
+	if (!isTextKind(fileKind(file.filename))) {
 		return new Response('This file type cannot be edited', { status: 415 });
 	}
 

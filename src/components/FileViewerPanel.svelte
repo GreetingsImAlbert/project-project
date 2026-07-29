@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
 	import { fly } from 'svelte/transition';
-	import { fileKind, languageFor, splitFilename } from '../lib/file-kind';
+	import { fileKind, isTextKind, languageFor, splitFilename } from '../lib/file-kind';
 	import { renderMarkdown } from '../lib/markdown';
 	import { onSwapOrDestroy } from '../lib/island-teardown';
 	// Type-only, so it doesn't drag the highlighter into this component's bundle — the
@@ -146,7 +146,9 @@
 		error = null;
 		downloadError = null;
 
-		if (fileKind(current.filename) === 'unsupported') return;
+		// Meshes never come through here: CadViewer streams the raw bytes from its own
+		// endpoint, and decoding an STL as UTF-8 would only produce a 415 anyway.
+		if (!isTextKind(fileKind(current.filename))) return;
 
 		const seq = ++requestSeq;
 		loading = true;
@@ -270,6 +272,26 @@
 		return () => {
 			cancelled = true;
 		};
+	});
+
+	// three.js is far too big to sit in the bundle every file list pulls in, so the CAD
+	// viewer is fetched the first time a mesh is opened and then kept — the same shape as
+	// the highlighter's dynamic import above. `cadFailed` distinguishes "still downloading"
+	// from "the chunk isn't coming", which for an offline user is the difference between a
+	// spinner that resolves and one that doesn't.
+	let CadViewer = $state<typeof import('./CadViewer.svelte').default | null>(null);
+	let cadFailed = $state(false);
+
+	$effect(() => {
+		if (kind !== 'model' || CadViewer || cadFailed) return;
+
+		import('./CadViewer.svelte')
+			.then((module) => {
+				CadViewer = module.default;
+			})
+			.catch(() => {
+				cadFailed = true;
+			});
 	});
 
 	$effect(() => {
@@ -555,15 +577,19 @@
 					</button>
 					<button type="button" class="btn-plain" onclick={cancelEditing} disabled={saving}>Cancel</button>
 				{:else}
-					<button
-						type="button"
-						class="btn-plain"
-						onclick={startEditing}
-						disabled={!canEdit || content === null}
-						title={canEdit ? 'Edit this file' : 'You need edit access to this project'}
-					>
-						Edit
-					</button>
+					{#if kind !== 'model'}
+						<!-- Meshes are view-only, and a permanently disabled Edit button reading
+						     "you need edit access" would blame the wrong thing. -->
+						<button
+							type="button"
+							class="btn-plain"
+							onclick={startEditing}
+							disabled={!canEdit || content === null}
+							title={canEdit ? 'Edit this file' : 'You need edit access to this project'}
+						>
+							Edit
+						</button>
+					{/if}
 					<button type="button" class="btn-plain" onclick={download} disabled={downloading}>
 						{downloading ? 'Preparing…' : 'Download'}
 					</button>
@@ -585,10 +611,22 @@
 			</p>
 		{/if}
 
-		<div class="viewer-body" class:editing>
+		<div class="viewer-body" class:editing class:model={kind === 'model'}>
 			{#if kind === 'unsupported'}
 				<p class="viewer-note">Unsupported</p>
 				<p class="viewer-note muted">This file can't be previewed. Download it to open it locally.</p>
+			{:else if kind === 'model'}
+				{#if CadViewer}
+					<!-- Deliberately not keyed on the file id: opening a second mesh re-points
+					     this instance instead of remounting it, so the panel doesn't burn one of
+					     the browser's ~16 WebGL contexts per file clicked. The viewer clears its
+					     own scene the moment a new id arrives. -->
+					<CadViewer fileId={file.id} filename={file.filename} />
+				{:else if cadFailed}
+					<p class="viewer-note error">Could not load the 3D viewer. Download the file to open it locally.</p>
+				{:else}
+					<p class="viewer-note muted">Loading 3D viewer…</p>
+				{/if}
 			{:else if loading}
 				<p class="viewer-note muted">Loading…</p>
 			{:else if error}
@@ -704,10 +742,20 @@
 	}
 
 	/* The textarea sizes itself to the body, so the body must not scroll on its own —
-	   the scrollbar belongs to the editor. */
-	.viewer-body.editing {
+	   the scrollbar belongs to the editor. Same for the CAD canvas, which is sized in JS
+	   from the box this gives it: let the body scroll and the two would chase each other
+	   bigger on every resize. */
+	.viewer-body.editing,
+	.viewer-body.model {
 		display: flex;
 		overflow: hidden;
+	}
+
+	/* The viewer fills the body, and its own flex column puts the readout bar at the
+	   bottom. */
+	.viewer-body.model > :global(.cad) {
+		flex: 1;
+		min-width: 0;
 	}
 
 	.editor {

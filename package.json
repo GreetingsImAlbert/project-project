@@ -23,12 +23,14 @@
     "aws4fetch": "^1.0.20",
     "refractor": "^5.0.0",
     "svelte": "^5.56.6",
+    "three": "^0.185.1",
     "typescript": "^6.0.3",
     "wrangler": "^4.112.0"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.9",
     "@types/node": "^26.1.1",
+    "@types/three": "^0.185.1",
     "svelte-check": "^4.7.4"
   }
 }

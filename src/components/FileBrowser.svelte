@@ -11,7 +11,7 @@
 	import { toastError, toastSuccess } from '../lib/toast.svelte';
 	import { formatBytes } from '../lib/format-bytes';
 	import { onSwapOrDestroy } from '../lib/island-teardown';
-	import { fileKind } from '../lib/file-kind';
+	import { fileKind, isTextKind } from '../lib/file-kind';
 
 	interface Folder {
 		id: string;
@@ -86,9 +86,11 @@
 	// pending label while both are disabled.
 	let creatingFile = $state<'create' | 'edit' | null>(null);
 
-	// Only a name the viewer can actually open is worth handing straight to the editor.
+	// Only a name the editor can actually open is worth handing straight to it — a new
+	// `part.stl` is a previewable file but not a writable one, so it takes the plain
+	// Create path like any other binary.
 	let newFileEditable = $derived(
-		newFileName.trim() !== '' && fileKind(newFileName.trim()) !== 'unsupported'
+		newFileName.trim() !== '' && isTextKind(fileKind(newFileName.trim()))
 	);
 	let deletingFolderId = $state<string | null>(null);
 	let folderError = $state<{ id: string; message: string } | null>(null);

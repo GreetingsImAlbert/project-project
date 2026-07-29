@@ -2,11 +2,17 @@
 // unsupported file never even fires a request) and by the content endpoint (so the
 // server doesn't stream arbitrary binaries back as text just because a client asked).
 
-export type FileKind = 'markdown' | 'text' | 'unsupported';
+export type FileKind = 'markdown' | 'text' | 'model' | 'unsupported';
 
 // Text small enough to hand to the browser in one go. Decimal bytes, matching the rest
 // of the project's byte math (see r2-quota.ts).
 export const MAX_VIEWABLE_BYTES = 1_000_000;
+
+// Meshes are binary and get streamed to the CAD viewer rather than decoded as text, so
+// they get their own, much larger ceiling. Held down by what a browser will cheerfully
+// tessellate and orbit, not by what R2 will serve: a 50 MB STL is already several
+// million triangles.
+export const MAX_MODEL_BYTES = 50_000_000;
 
 // R2 keys top out at 1024 bytes and already carry `${projectId}/${uuid}-`, so this
 // leaves comfortable room while still ruling out a filename absurd enough to break
@@ -29,6 +35,12 @@ const TEXT_EXTENSIONS = new Set([
 	// engineering-adjacent plain text
 	'gcode', 'nc', 'scad', 'ino', 'm', 'f', 'f90', 'v', 'vhd', 'vhdl', 'tex', 'bib',
 ]);
+
+// Meshes the in-app CAD viewer can tessellate and orbit. All four are triangle formats
+// that need no geometry kernel — the loaders hand back vertices directly. STEP/IGES are
+// deliberately absent: they're boundary representations, and reading one means shipping
+// an OpenCASCADE WASM build to do the tessellating. See CHECKLIST.md.
+const MODEL_EXTENSIONS = new Set(['stl', 'obj', 'ply', '3mf']);
 
 // Files whose whole name is the type (no extension to go on).
 const TEXT_BASENAMES = new Set([
@@ -96,6 +108,14 @@ export function languageFor(filename: string): string | null {
 	return lookup(LANGUAGE_BY_BASENAME, name.replace(/^\./, ''));
 }
 
+// Kinds the text pipeline handles — decoded as UTF-8, shown in the <pre>/Markdown body,
+// and editable. Callers must test this rather than `!== 'unsupported'`: a mesh is a
+// supported file that is emphatically not text, and decoding one would hand the panel a
+// screenful of replacement characters.
+export function isTextKind(kind: FileKind): boolean {
+	return kind === 'markdown' || kind === 'text';
+}
+
 export function fileKind(filename: string): FileKind {
 	const name = filename.trim().toLowerCase();
 	const { ext } = splitFilename(name);
@@ -104,6 +124,7 @@ export function fileKind(filename: string): FileKind {
 		const bare = ext.slice(1);
 		if (MARKDOWN_EXTENSIONS.has(bare)) return 'markdown';
 		if (TEXT_EXTENSIONS.has(bare)) return 'text';
+		if (MODEL_EXTENSIONS.has(bare)) return 'model';
 		return 'unsupported';
 	}
 
