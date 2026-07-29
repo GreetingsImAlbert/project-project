@@ -13,7 +13,6 @@
 	import {
 		displayStatus,
 		formatDeadline,
-		localToday,
 		relativeDeadline,
 		TASK_STATUS_LABELS,
 		type TaskDisplayStatus,
@@ -54,13 +53,11 @@
 
 	initTasks(initialTasks);
 
-	// Server's date first so SSR and hydration render the same statuses, then the
-	// reader's own calendar day once mounted — see task-status.ts.
-	let today = $state(serverToday);
+	// Rendered on the server and reused as-is: it's an Asia/Manila date either way,
+	// so there's nothing for the client to correct — see today.ts.
+	const today = serverToday;
 
 	onMount(() => {
-		today = localToday();
-
 		openLinkedTask();
 		// A second reminder for a task on a page that's already open only changes the
 		// hash, which is not a navigation — without this the link would do nothing.

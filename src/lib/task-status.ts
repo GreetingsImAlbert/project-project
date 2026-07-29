@@ -7,12 +7,11 @@
 // definition: nothing in this app runs on a schedule to go and update it.
 //
 // Everything here takes `today` as an argument rather than calling the clock
-// itself. Under SSR the Worker's clock is UTC while the reader's calendar day is
-// local, so a component that derived `today` at init would render one status on
-// the server and a different one during hydration for the ~8 hours a day the two
-// dates disagree. Instead the page passes the server's date down as a prop and each
-// island moves to the local date in onMount — a state change *after* hydration,
-// which Svelte patches properly, instead of a mismatch it has to reconcile.
+// itself, and that argument always comes from appToday() in today.ts — one fixed
+// zone for the whole app, server and browser alike. Judging a deadline against the
+// reader's own zone instead would mean a task in Manila turning overdue at 4PM for
+// a member sitting in UTC, and would have the server and the hydrating island
+// disagree for the hours of the day their two dates don't line up.
 
 export type TaskStatus = 'ongoing' | 'done';
 export type TaskDisplayStatus = TaskStatus | 'overdue';
@@ -25,14 +24,6 @@ export const TASK_STATUS_LABELS: Record<TaskDisplayStatus, string> = {
 
 export function isTaskStatus(value: string | null | undefined): value is TaskStatus {
 	return value === 'ongoing' || value === 'done';
-}
-
-// YYYY-MM-DD in whatever timezone the runtime is in. On the client that's the
-// reader's own calendar day, which is the one a deadline should be judged against.
-export function localToday(): string {
-	const now = new Date();
-	const pad = (n: number) => String(n).padStart(2, '0');
-	return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
 // String comparison is the right one here: zero-padded YYYY-MM-DD sorts

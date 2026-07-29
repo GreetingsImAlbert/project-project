@@ -1,7 +1,6 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import { categoryColorStyle } from '../lib/category-color';
-	import { daysUntil, formatDeadline, localToday, relativeDeadline } from '../lib/task-status';
+	import { daysUntil, formatDeadline, relativeDeadline } from '../lib/task-status';
 	import { HORIZON_COOKIE, HORIZON_OPTIONS, horizonLabel } from '../lib/task-horizon';
 	import type { Reminder } from '../lib/reminders';
 
@@ -23,13 +22,9 @@
 		emptyLabel?: string;
 	} = $props();
 
-	// Server's date first so SSR and hydration agree on which tasks fall inside the
-	// window, then the reader's own calendar day once mounted — see task-status.ts.
-	let today = $state(serverToday);
-
-	onMount(() => {
-		today = localToday();
-	});
+	// Which tasks fall inside the window is decided once, on the server: it's an
+	// Asia/Manila date there and would be the same one here — see today.ts.
+	const today = serverToday;
 
 	// Not a store: neither page that renders this edits tasks, so there's no second
 	// island whose copy could go stale.

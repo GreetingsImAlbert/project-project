@@ -1,7 +1,6 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import { tasksState, initTasks, type Task } from '../lib/tasks-store.svelte';
-	import { displayStatus, localToday, relativeDeadline } from '../lib/task-status';
+	import { displayStatus, relativeDeadline } from '../lib/task-status';
 
 	let {
 		initialTasks,
@@ -13,13 +12,9 @@
 
 	initTasks(initialTasks);
 
-	// Starts on the server's date so SSR and hydration agree, then moves to the
-	// reader's own calendar day once mounted — see task-status.ts.
-	let today = $state(serverToday);
-
-	onMount(() => {
-		today = localToday();
-	});
+	// Rendered on the server and reused as-is: it's an Asia/Manila date either way,
+	// so there's nothing for the client to correct — see today.ts.
+	const today = serverToday;
 
 	let statuses = $derived(tasksState.tasks.map((task) => displayStatus(task, today)));
 

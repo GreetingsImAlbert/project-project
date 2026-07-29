@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from './supabase/database.types';
 import { appendJournalEntry } from './journal-entries';
 import { wouldExceedUserStorageQuota } from './r2-quota';
+import { appToday } from './today';
 
 // Every project gets at most one of these — the unique partial index in
 // SCHEMA.md (`journal_file_unique_per_project`) is what actually enforces that;
@@ -129,7 +130,7 @@ export async function ensureJournalDraft(
 
 	const { data: created, error } = await supabase
 		.from('journal_drafts')
-		.insert({ project_id: projectId, draft_date: utcToday(), content: '' })
+		.insert({ project_id: projectId, draft_date: appToday(), content: '' })
 		.select('draft_date, content')
 		.single();
 
@@ -140,23 +141,14 @@ export async function ensureJournalDraft(
 	return created;
 }
 
-// The UTC calendar date the Worker's clock reads right now. Drafts roll over on
-// UTC midnight (the Cron Trigger fires then too — see worker.ts) rather than any
-// project member's local day, for the same reason task-status.ts's "today" starts
-// from the server clock: there's no single local day for a project with members
-// in different time zones to agree on.
-export function utcToday(): string {
-	return new Date().toISOString().slice(0, 10);
-}
-
-// The cron job's actual work, run once at UTC midnight for every project whose
+// The cron job's actual work, run once at Manila midnight for every project whose
 // draft has fallen behind today — normally just the drafts dated yesterday, but
 // a missed run (a deploy, a Cloudflare incident) leaves older ones queued too, and
 // this catches them up the same way. Runs entirely on the admin client: there's no
 // caller session to scope RLS to, and every project's draft needs finalizing in
 // the same pass.
 export async function finalizeStaleDrafts(admin: SupabaseClient<Database>, env: Env): Promise<void> {
-	const today = utcToday();
+	const today = appToday();
 
 	const { data: staleDrafts, error } = await admin
 		.from('journal_drafts')

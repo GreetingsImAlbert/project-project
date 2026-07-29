@@ -8,6 +8,7 @@ import { getUserStorageBytes, MAX_USER_STORAGE_BYTES } from '../lib/r2-quota';
 import { isCategoryColorIndex, categoryColorIndex, type CategoryColors } from '../lib/category-color';
 import { HORIZON_COOKIE, parseHorizonDays } from '../lib/task-horizon';
 import type { Reminder } from '../lib/reminders';
+import { appToday } from '../lib/today';
 
 export const prerender = false;
 
@@ -86,9 +87,8 @@ const reminders: Reminder[] = (taskRows ?? []).map((row) => ({
 // not a per-page setting.
 const horizonDays = parseHorizonDays(Astro.cookies.get(HORIZON_COOKIE)?.value);
 
-// The Worker's clock is UTC and the reader's calendar day may not be. The island starts
-// from this and moves to the local date on mount — see lib/task-status.ts.
-const serverToday = new Date().toISOString().slice(0, 10);
+// One fixed calendar for the whole app, server and client alike — see lib/today.ts.
+const serverToday = appToday();
 ---
 <BaseLayout title="Dashboard">
 	<h1>Dashboard</h1>

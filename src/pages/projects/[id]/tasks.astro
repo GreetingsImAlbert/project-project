@@ -6,6 +6,7 @@ import TasksTable from '../../../components/TasksTable.svelte';
 import { TASK_COLUMNS, normalizeTask, type RawTaskRow } from '../../../lib/task-columns';
 import { isCategoryColorIndex, type CategoryColors } from '../../../lib/category-color';
 import { listGhostMembers } from '../../../lib/ghost-members';
+import { appToday } from '../../../lib/today';
 
 export const prerender = false;
 
@@ -80,10 +81,9 @@ for (const row of categoryRows ?? []) {
 const storedTaskView = Astro.cookies.get('p2-task-view-mode')?.value;
 const initialViewMode = storedTaskView === 'calendar' ? 'calendar' : 'list';
 
-// The Worker's clock is UTC and the reader's calendar day may not be. Both islands
-// start from this value so SSR and hydration derive identical statuses, then move to
-// the local date on mount — see the note at the top of lib/task-status.ts.
-const serverToday = new Date().toISOString().slice(0, 10);
+// One fixed calendar for the whole app, so both islands and the server derive
+// identical statuses — see lib/today.ts.
+const serverToday = appToday();
 ---
 
 <BaseLayout title={`${project.name} — Tasks`}>

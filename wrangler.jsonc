@@ -5,10 +5,11 @@
 	"name": "p2",
 	// Wraps the adapter's own entrypoint to also export `scheduled` — see src/worker.ts.
 	"main": "./src/worker.ts",
-	// UTC midnight, once a day — rolls every project's Journal draft into its file.
-	// See finalizeStaleDrafts in src/lib/journal.ts.
+	// 16:00 UTC, once a day — midnight in Asia/Manila, the day boundary the Journal
+	// itself uses (journalToday in src/lib/journal.ts). Cron expressions are always
+	// UTC, so the +08:00 offset is baked into the hour here. See finalizeStaleDrafts.
 	"triggers": {
-		"crons": ["0 0 * * *"]
+		"crons": ["0 16 * * *"]
 	},
 	// Every SSR page load is a chain of Supabase round trips, and Postgres sits in
 	// one fixed region while the Worker would otherwise run at the edge nearest the
