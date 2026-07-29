@@ -108,6 +108,32 @@ textarea {
 	padding: var(--space-2) var(--space-3);
 }
 
+/* Date and time boxes were never in the list above, so they kept the UA's white-on-white
+   chrome and went invisible on the dark themes. They get a transparent background rather
+   than --color-bg so they sit on whatever surface holds them (panels, table rows), and
+   the root color-scheme in tokens.css takes care of the picker icon and the shadow-DOM
+   spin/segment text that CSS here can't reach. */
+input[type='date'],
+input[type='time'],
+input[type='datetime-local'] {
+	background: transparent;
+	color: var(--color-fg);
+	border: 1px solid var(--color-border);
+	padding: var(--space-2) var(--space-3);
+}
+
+/* On the dark themes the hairline border is too faint to find a transparent box by, so
+   these get the strong (near-white) border there only — light mode keeps the quiet one
+   its neighbouring text inputs use. */
+:root[data-theme='dim'] input[type='date'],
+:root[data-theme='dim'] input[type='time'],
+:root[data-theme='dim'] input[type='datetime-local'],
+:root[data-theme='dark'] input[type='date'],
+:root[data-theme='dark'] input[type='time'],
+:root[data-theme='dark'] input[type='datetime-local'] {
+	border-color: var(--color-border-strong);
+}
+
 input:focus,
 select:focus,
 textarea:focus {
