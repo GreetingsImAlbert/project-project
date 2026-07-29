@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { slide } from 'svelte/transition';
 	import FolderPickerModal from './FolderPickerModal.svelte';
+	import RenameModal from './RenameModal.svelte';
 	import { splitFilename } from '../lib/file-kind';
 
 	interface FileRow {
@@ -45,6 +46,7 @@
 		onFileMoved,
 		onFileCopied,
 		onFileDeleted,
+		onFileRenamed,
 	}: {
 		canEdit: boolean;
 		currentFolderId: string | null;
@@ -57,6 +59,7 @@
 		onFileMoved: (fileId: string, targetFolderId: string | null) => void;
 		onFileCopied: (file: FileRow, targetFolderId: string | null) => void;
 		onFileDeleted: (fileId: string) => void;
+		onFileRenamed: (fileId: string, filename: string) => void;
 	} = $props();
 
 	let deletingId = $state<string | null>(null);
@@ -66,6 +69,10 @@
 	let modalFile = $state<{ file: FileRow; mode: 'move' | 'copy' } | null>(null);
 	let modalBusy = $state(false);
 	let modalError = $state<string | null>(null);
+
+	let renameTarget = $state<FileRow | null>(null);
+	let renameBusy = $state(false);
+	let renameError = $state<string | null>(null);
 
 	function toggleActions(fileId: string) {
 		openActionsId = openActionsId === fileId ? null : fileId;
@@ -129,6 +136,41 @@
 		modalFile = null;
 	}
 
+	function openRename(file: FileRow) {
+		renameTarget = file;
+		renameError = null;
+		openActionsId = null;
+	}
+
+	function closeRename() {
+		renameTarget = null;
+		renameError = null;
+	}
+
+	async function confirmRename(newFilename: string) {
+		if (!renameTarget) return;
+		const fileId = renameTarget.id;
+
+		renameBusy = true;
+		renameError = null;
+
+		const res = await fetch(`/api/files/${fileId}/rename`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ filename: newFilename }),
+		});
+
+		if (!res.ok) {
+			renameError = await res.text();
+			renameBusy = false;
+			return;
+		}
+
+		onFileRenamed(fileId, newFilename);
+		renameBusy = false;
+		renameTarget = null;
+	}
+
 	async function handleDelete(fileId: string) {
 		if (!confirm('Delete this file? This cannot be undone.')) return;
 
@@ -151,13 +193,12 @@
 
 {#snippet actionsPanel(file: FileRow)}
 	<div class="actions-panel" data-file-actions transition:slide={{ duration: 150 }}>
+		<button type="button" class="btn-plain" onclick={() => openRename(file)}>Rename</button>
 		<button type="button" class="btn-plain" onclick={() => openModal(file, 'move')}>Move</button>
 		<button type="button" class="btn-plain" onclick={() => openModal(file, 'copy')}>Copy</button>
-		{#if !file.is_journal}
-			<button type="button" class="btn-danger" onclick={() => handleDelete(file.id)} disabled={deletingId === file.id}>
-				{deletingId === file.id ? 'Deleting…' : 'Delete'}
-			</button>
-		{/if}
+		<button type="button" class="btn-danger" onclick={() => handleDelete(file.id)} disabled={deletingId === file.id}>
+			{deletingId === file.id ? 'Deleting…' : 'Delete'}
+		</button>
 	</div>
 {/snippet}
 
@@ -181,13 +222,13 @@
 					{#if parts.ext}<span class="grid-ext muted">{parts.ext}</span>{/if}
 				</button>
 
-				{#if canEdit}
+				{#if canEdit && !file.is_journal}
 					<button type="button" class="grid-actions-toggle" data-file-actions aria-label="Actions" onclick={() => toggleActions(file.id)}>
 						{openActionsId === file.id ? '▴' : '▾'}
 					</button>
 				{/if}
 
-				{#if canEdit && openActionsId === file.id}
+				{#if canEdit && !file.is_journal && openActionsId === file.id}
 					{@render actionsPanel(file)}
 				{/if}
 
@@ -197,7 +238,7 @@
 			</li>
 		{:else}
 			<li class="file-row" class:open={openFileId === file.id}>
-				<div class="file-header" class:with-actions={canEdit}>
+				<div class="file-header" class:with-actions={canEdit && !file.is_journal}>
 					<div class="cell cell-name">
 						<button
 							type="button"
@@ -217,15 +258,14 @@
 						— uploaded by {file.profiles?.display_name ?? 'a deleted account'}
 					</div>
 
-					{#if canEdit}
+					{#if canEdit && !file.is_journal}
 						<div class="cell cell-actions">
+							<button type="button" class="btn-plain" onclick={() => openRename(file)}>Rename</button>
 							<button type="button" class="btn-plain" onclick={() => openModal(file, 'move')}>Move</button>
 							<button type="button" class="btn-plain" onclick={() => openModal(file, 'copy')}>Copy</button>
-							{#if !file.is_journal}
-								<button type="button" class="btn-danger" onclick={() => handleDelete(file.id)} disabled={deletingId === file.id}>
-									{deletingId === file.id ? 'Deleting…' : 'Delete'}
-								</button>
-							{/if}
+							<button type="button" class="btn-danger" onclick={() => handleDelete(file.id)} disabled={deletingId === file.id}>
+								{deletingId === file.id ? 'Deleting…' : 'Delete'}
+							</button>
 						</div>
 					{/if}
 				</div>
@@ -248,6 +288,17 @@
 		error={modalError}
 		onConfirm={confirmModal}
 		onCancel={closeModal}
+	/>
+{/if}
+
+{#if renameTarget}
+	<RenameModal
+		kind="file"
+		currentName={renameTarget.filename}
+		busy={renameBusy}
+		error={renameError}
+		onConfirm={confirmRename}
+		onCancel={closeRename}
 	/>
 {/if}
 

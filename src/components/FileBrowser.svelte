@@ -4,6 +4,7 @@
 	import FileList from './FileList.svelte';
 	import FileViewerPanel from './FileViewerPanel.svelte';
 	import UploadForm from './UploadForm.svelte';
+	import RenameModal from './RenameModal.svelte';
 	import ProjectStorageUsed from './ProjectStorageUsed.svelte';
 	import Toasts from './Toasts.svelte';
 	import { adjustProjectStorage } from '../lib/project-storage.svelte';
@@ -92,6 +93,9 @@
 	let deletingFolderId = $state<string | null>(null);
 	let folderError = $state<{ id: string; message: string } | null>(null);
 	let openFolderActionsId = $state<string | null>(null);
+	let renameFolderTarget = $state<Folder | null>(null);
+	let renameFolderBusy = $state(false);
+	let renameFolderError = $state<string | null>(null);
 
 	function setCreateMode(mode: 'folder' | 'file' | 'upload') {
 		createMode = mode;
@@ -216,6 +220,11 @@
 	function handleLinkClick(e: MouseEvent, folderId: string | null) {
 		e.preventDefault();
 		navigateWithHistory(folderId);
+	}
+
+	function handleFileRenamed(fileId: string, filename: string) {
+		files = files.map((f) => (f.id === fileId ? { ...f, filename } : f));
+		if (viewingFile?.id === fileId) viewingFile = { ...viewingFile, filename };
 	}
 
 	function handleFileMoved(fileId: string, targetFolderId: string | null) {
@@ -375,6 +384,41 @@
 		toastSuccess(`File ${created.filename} created`);
 
 		if (mode === 'edit') openViewer(created, true);
+	}
+
+	function openRenameFolder(folder: Folder) {
+		renameFolderTarget = folder;
+		renameFolderError = null;
+		openFolderActionsId = null;
+	}
+
+	function closeRenameFolder() {
+		renameFolderTarget = null;
+		renameFolderError = null;
+	}
+
+	async function confirmRenameFolder(newName: string) {
+		if (!renameFolderTarget) return;
+		const folderId = renameFolderTarget.id;
+
+		renameFolderBusy = true;
+		renameFolderError = null;
+
+		const res = await fetch(`/api/projects/${projectId}/folders/${folderId}/rename`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ name: newName }),
+		});
+
+		if (!res.ok) {
+			renameFolderError = await res.text();
+			renameFolderBusy = false;
+			return;
+		}
+
+		allFolders = allFolders.map((f) => (f.id === folderId ? { ...f, name: newName } : f));
+		renameFolderBusy = false;
+		renameFolderTarget = null;
 	}
 
 	async function handleDeleteFolder(folderId: string) {
@@ -593,6 +637,7 @@
 
 					{#if canEdit && openFolderActionsId === folder.id}
 						<div class="actions-panel" data-folder-actions transition:slide={{ duration: 150 }}>
+							<button type="button" class="btn-plain" onclick={() => openRenameFolder(folder)}>Rename</button>
 							<button type="button" class="btn-danger" onclick={() => handleDeleteFolder(folder.id)} disabled={deletingFolderId === folder.id}>
 								{deletingFolderId === folder.id ? 'Deleting…' : 'Delete'}
 							</button>
@@ -617,6 +662,7 @@
 
 						{#if canEdit}
 							<div class="cell cell-actions">
+								<button type="button" class="btn-plain" onclick={() => openRenameFolder(folder)}>Rename</button>
 								<button type="button" class="btn-danger" onclick={() => handleDeleteFolder(folder.id)} disabled={deletingFolderId === folder.id}>
 									{deletingFolderId === folder.id ? 'Deleting…' : 'Delete'}
 								</button>
@@ -647,8 +693,20 @@
 	onFileMoved={handleFileMoved}
 	onFileCopied={handleFileCopied}
 	onFileDeleted={handleFileDeleted}
+	onFileRenamed={handleFileRenamed}
 />
 {#if loading}<p class="muted">Loading…</p>{/if}
+
+{#if renameFolderTarget}
+	<RenameModal
+		kind="folder"
+		currentName={renameFolderTarget.name}
+		busy={renameFolderBusy}
+		error={renameFolderError}
+		onConfirm={confirmRenameFolder}
+		onCancel={closeRenameFolder}
+	/>
+{/if}
 
 <FileViewerPanel
 	file={viewingFile}
