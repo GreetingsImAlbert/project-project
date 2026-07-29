@@ -1,6 +1,7 @@
 import { handle } from '@astrojs/cloudflare/handler';
 import { getSupabaseAdmin } from './lib/supabase/admin';
 import { finalizeStaleDrafts } from './lib/journal';
+import { purgeExpiredPendingDeletions, purgeOrphanedFiles } from './lib/account-deletion';
 
 // Astro's Cloudflare adapter only ever exports a `fetch` handler — see
 // @astrojs/cloudflare/entrypoints/server.js — and has no config surface for
@@ -19,6 +20,11 @@ export default {
 	// down once this function returns, and the work here is all async I/O
 	// (Postgres, R2) that would otherwise be cut off mid-flight.
 	async scheduled(_controller, env, ctx) {
-		ctx.waitUntil(finalizeStaleDrafts(getSupabaseAdmin(env), env));
+		const admin = getSupabaseAdmin(env);
+		ctx.waitUntil(finalizeStaleDrafts(admin, env));
+		// Same daily tick handles both halves of account deletion's grace periods —
+		// see SCHEMA.md's "Account deletion" section for what each one does.
+		ctx.waitUntil(purgeExpiredPendingDeletions(admin));
+		ctx.waitUntil(purgeOrphanedFiles(admin, env));
 	},
 } satisfies ExportedHandler<Env>;

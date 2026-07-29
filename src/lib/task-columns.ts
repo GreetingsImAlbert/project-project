@@ -7,10 +7,14 @@ import type { TaskStatus } from './task-status';
 // task_assignees has a single FK to profiles (user_id), so the bare embed is
 // unambiguous here — no hint needed the way transactions' two profile FKs need one.
 export const TASK_COLUMNS =
-	'id, name, category, description, deadline, status, task_assignees(user_id, profiles(display_name))';
+	'id, name, category, description, deadline, status, task_assignees(id, user_id, deleted_display_name, profiles(display_name))';
 
 export interface TaskAssignee {
-	user_id: string;
+	// The task_assignees row's own id — the only stable key once user_id has gone
+	// null (a deleted account), which is also why the edit picker in
+	// TasksTable.svelte keys a former member's checkbox on this instead.
+	id: string;
+	user_id: string | null;
 	display_name: string;
 }
 
@@ -33,7 +37,12 @@ export interface RawTaskRow {
 	description: string | null;
 	deadline: string | null;
 	status: string;
-	task_assignees: { user_id: string; profiles: { display_name: string } | null }[];
+	task_assignees: {
+		id: string;
+		user_id: string | null;
+		deleted_display_name: string | null;
+		profiles: { display_name: string } | null;
+	}[];
 }
 
 // Flattens `task_assignees(user_id, profiles(display_name))` into a plain array the
@@ -50,7 +59,11 @@ export function normalizeTask(row: RawTaskRow): Task {
 		// column drifted from the app — treat it as ongoing rather than widening the type.
 		status: row.status === 'done' ? 'done' : 'ongoing',
 		assignees: (row.task_assignees ?? [])
-			.map((a) => ({ user_id: a.user_id, display_name: a.profiles?.display_name ?? '' }))
+			.map((a) => ({
+				id: a.id,
+				user_id: a.user_id,
+				display_name: a.profiles?.display_name ?? a.deleted_display_name ?? '',
+			}))
 			.sort((a, b) => a.display_name.localeCompare(b.display_name)),
 	};
 }

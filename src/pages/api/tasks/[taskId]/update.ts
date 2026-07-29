@@ -13,10 +13,10 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 
 	const { data: task, error: taskError } = await locals.supabase
 		.from('tasks')
-		.select('project_id, task_assignees(user_id)')
+		.select('project_id, task_assignees(id, user_id)')
 		.eq('id', taskId)
 		.single()
-		.overrideTypes<{ project_id: string; task_assignees: { user_id: string }[] }>();
+		.overrideTypes<{ project_id: string; task_assignees: { id: string; user_id: string | null }[] }>();
 
 	if (taskError || !task) {
 		return new Response('Task not found', { status: 404 });
@@ -40,7 +40,7 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 		return new Response(parsed.error, { status: 400 });
 	}
 
-	const { name, category, description, deadline, status, assignees } = parsed.values;
+	const { name, category, description, deadline, status, assignees, keptDeletedAssigneeIds } = parsed.values;
 
 	const { error } = await locals.supabase
 		.from('tasks')
@@ -55,27 +55,52 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 	// stays put, and a submit that doesn't touch the members can't drop them on the
 	// floor if the re-insert half fails. It also means task_assignees needs no UPDATE
 	// policy — every write here is an insert or a delete.
-	const current = new Set((task.task_assignees ?? []).map((a) => a.user_id));
-	const next = new Set(assignees);
-	const removed = [...current].filter((id) => !next.has(id));
-	const added = [...next].filter((id) => !current.has(id));
+	//
+	// A deleted account's row has no user_id to diff by (see task-columns.ts), so
+	// those are diffed separately by the row's own id against keptDeletedAssigneeIds
+	// — parseTaskForm already split the submitted tokens into the two spaces.
+	const currentMemberIds = new Set(
+		(task.task_assignees ?? []).flatMap((a) => (a.user_id ? [a.user_id] : [])),
+	);
+	const currentDeletedRowIds = new Set(
+		(task.task_assignees ?? []).flatMap((a) => (a.user_id ? [] : [a.id])),
+	);
 
-	if (removed.length > 0) {
+	const nextMemberIds = new Set(assignees);
+	const keptDeletedRowIds = new Set(keptDeletedAssigneeIds);
+
+	const removedMemberIds = [...currentMemberIds].filter((id) => !nextMemberIds.has(id));
+	const addedMemberIds = [...nextMemberIds].filter((id) => !currentMemberIds.has(id));
+	const removedDeletedRowIds = [...currentDeletedRowIds].filter((id) => !keptDeletedRowIds.has(id));
+
+	if (removedMemberIds.length > 0) {
 		const { error: removeError } = await locals.supabase
 			.from('task_assignees')
 			.delete()
 			.eq('task_id', taskId!)
-			.in('user_id', removed);
+			.in('user_id', removedMemberIds);
 
 		if (removeError) {
 			return new Response(`Failed to update appointed members: ${removeError.message}`, { status: 500 });
 		}
 	}
 
-	if (added.length > 0) {
+	if (removedDeletedRowIds.length > 0) {
+		const { error: removeDeletedError } = await locals.supabase
+			.from('task_assignees')
+			.delete()
+			.eq('task_id', taskId!)
+			.in('id', removedDeletedRowIds);
+
+		if (removeDeletedError) {
+			return new Response(`Failed to update appointed members: ${removeDeletedError.message}`, { status: 500 });
+		}
+	}
+
+	if (addedMemberIds.length > 0) {
 		const { error: addError } = await locals.supabase
 			.from('task_assignees')
-			.insert(added.map((userId) => ({ task_id: taskId!, user_id: userId })));
+			.insert(addedMemberIds.map((userId) => ({ task_id: taskId!, user_id: userId })));
 
 		if (addError) {
 			return new Response(`Failed to update appointed members: ${addError.message}`, { status: 500 });

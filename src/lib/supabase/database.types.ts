@@ -73,36 +73,42 @@ export type Database = {
           filename: string
           folder_id: string | null
           id: string
+          is_journal: boolean
           mime_type: string | null
           project_id: string
           r2_key: string
           size_bytes: number | null
           storage_provider: string
-          uploaded_by: string
+          uploaded_by: string | null
+          uploader_deleted_at: string | null
         }
         Insert: {
           created_at?: string | null
           filename: string
           folder_id?: string | null
           id?: string
+          is_journal?: boolean
           mime_type?: string | null
           project_id: string
           r2_key: string
           size_bytes?: number | null
           storage_provider?: string
-          uploaded_by: string
+          uploaded_by?: string | null
+          uploader_deleted_at?: string | null
         }
         Update: {
           created_at?: string | null
           filename?: string
           folder_id?: string | null
           id?: string
+          is_journal?: boolean
           mime_type?: string | null
           project_id?: string
           r2_key?: string
           size_bytes?: number | null
           storage_provider?: string
-          uploaded_by?: string
+          uploaded_by?: string | null
+          uploader_deleted_at?: string | null
         }
         Relationships: [
           {
@@ -202,6 +208,45 @@ export type Database = {
           },
         ]
       }
+      journal_drafts: {
+        Row: {
+          content: string
+          draft_date: string
+          project_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          content?: string
+          draft_date?: string
+          project_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          content?: string
+          draft_date?: string
+          project_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "journal_drafts_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: true
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "journal_drafts_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           created_at: string | null
@@ -209,6 +254,7 @@ export type Database = {
           email: string | null
           id: string
           is_admin: boolean
+          pending_deletion_at: string | null
         }
         Insert: {
           created_at?: string | null
@@ -216,6 +262,7 @@ export type Database = {
           email?: string | null
           id: string
           is_admin?: boolean
+          pending_deletion_at?: string | null
         }
         Update: {
           created_at?: string | null
@@ -223,6 +270,7 @@ export type Database = {
           email?: string | null
           id?: string
           is_admin?: boolean
+          pending_deletion_at?: string | null
         }
         Relationships: []
       }
@@ -308,16 +356,22 @@ export type Database = {
       }
       task_assignees: {
         Row: {
+          deleted_display_name: string | null
+          id: string
           task_id: string
-          user_id: string
+          user_id: string | null
         }
         Insert: {
+          deleted_display_name?: string | null
+          id?: string
           task_id: string
-          user_id: string
+          user_id?: string | null
         }
         Update: {
+          deleted_display_name?: string | null
+          id?: string
           task_id?: string
-          user_id?: string
+          user_id?: string | null
         }
         Relationships: [
           {

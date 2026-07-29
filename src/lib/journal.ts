@@ -204,6 +204,15 @@ async function finalizeOneDraft(
 			return;
 		}
 
+		// uploaded_by is nullable on files generally (an uploader's account can be
+		// hard-deleted — see account-deletion.ts), but never for the Journal file
+		// itself: it's always charged to the project owner (see ensureJournalFile),
+		// and an owner's account can't be deleted while they still own the project.
+		if (!file.uploaded_by) {
+			console.error(`[journal] project ${projectId}'s journal file has no uploader — skipping`);
+			return;
+		}
+
 		// Charged to the file's owner (always the project owner — see ensureJournalFile),
 		// same rule as content.ts's PUT. A full quota leaves the draft queued rather than
 		// writing past the cap; it's retried on the next run instead of being dropped.

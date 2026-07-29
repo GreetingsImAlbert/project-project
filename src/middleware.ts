@@ -13,6 +13,20 @@ function isAppPath(pathname: string) {
     return pathname === "/" || APP_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 }
 
+// Where a pending-deletion member is still allowed: the page that tells them
+// about it, the endpoint that cancels it, and login/logout so a fresh sign-in
+// (or leaving) doesn't loop back into the same redirect.
+const PENDING_DELETION_ALLOWED_PATHS = [
+    "/account/pending-deletion",
+    "/api/account/cancel-deletion",
+    "/login",
+    "/api/auth/logout",
+];
+
+function isPendingDeletionAllowed(pathname: string) {
+    return PENDING_DELETION_ALLOWED_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));
+}
+
 // Applied to every response, app path or not — cheap, header-only, and there's no
 // reason a bot-probed 404 should skip them either.
 function withSecurityHeaders(response: Response): Response {
@@ -42,6 +56,14 @@ export const onRequest = defineMiddleware(async (context, next) => {
         email: data.claims.email,
         displayName: typeof displayName === 'string' && displayName ? displayName : undefined,
     };
+
+    // app_metadata is admin-only to write (see api/account/delete.ts), so this claim
+    // can't be forged by the member it's about. Everywhere else in the app redirects
+    // to the pending-deletion page while it's set.
+    const pendingDeletionAt = data?.claims.app_metadata?.pending_deletion_at;
+    if (context.locals.user && pendingDeletionAt && !isPendingDeletionAllowed(context.url.pathname)) {
+        return withSecurityHeaders(context.redirect('/account/pending-deletion'));
+    }
 
     return withSecurityHeaders(await next());
 });

@@ -7,9 +7,24 @@
 		id: string;
 		filename: string;
 		size_bytes: number | null;
-		uploaded_by: string;
+		uploaded_by: string | null;
+		uploader_deleted_at?: string | null;
 		profiles: { display_name: string } | null;
 		is_journal?: boolean;
+	}
+
+	// Mirrors FILE_GRACE_DAYS in src/lib/account-deletion.ts — kept as a plain number
+	// here rather than imported, since that module also pulls in aws4fetch/service-role
+	// Supabase types that have no business in a client bundle.
+	const FILE_GRACE_DAYS = 30;
+
+	function purgeWarning(file: FileRow): string | null {
+		if (!file.uploader_deleted_at) return null;
+		const daysLeft = Math.max(
+			0,
+			FILE_GRACE_DAYS - Math.floor((Date.now() - new Date(file.uploader_deleted_at).getTime()) / (24 * 60 * 60 * 1000)),
+		);
+		return `Uploaded by a deleted account — removed in ${daysLeft} day${daysLeft === 1 ? '' : 's'} unless someone copies it first`;
 	}
 
 	interface Folder {
@@ -159,7 +174,10 @@
 			<li class="grid-item" class:open={openFileId === file.id}>
 				<button type="button" class="grid-download" onclick={() => onFileOpen(file)}>
 					<span class="grid-icon">📄</span>
-					<span class="grid-name">{parts.base}</span>
+					<span class="grid-name">
+						<span class="grid-name-text">{parts.base}</span>
+						{#if purgeWarning(file)}<span class="purge-warning-icon" data-tooltip={purgeWarning(file)}>⚠</span>{/if}
+					</span>
 					{#if parts.ext}<span class="grid-ext muted">{parts.ext}</span>{/if}
 				</button>
 
@@ -187,7 +205,7 @@
 						</div>
 						<span class="muted file-meta">
 							{file.size_bytes != null ? `${Math.round(file.size_bytes).toLocaleString()} B` : ''}
-							— uploaded by {file.profiles?.display_name}
+							— uploaded by {file.profiles?.display_name ?? 'a deleted account'}
 						</span>
 					</div>
 
@@ -200,6 +218,10 @@
 
 				{#if canEdit && openActionsId === file.id}
 					{@render actionsPanel(file)}
+				{/if}
+
+				{#if purgeWarning(file)}
+					<p class="purge-warning">⚠ {purgeWarning(file)}</p>
 				{/if}
 
 				{#if rowError?.id === file.id}
@@ -310,6 +332,12 @@
 		margin: 0;
 	}
 
+	.purge-warning {
+		color: var(--color-danger);
+		font-size: 0.8rem;
+		margin: 0;
+	}
+
 	/* Grid view */
 
 	.grid-view {
@@ -330,6 +358,14 @@
 		border: 1px solid var(--color-border);
 		padding: var(--space-3) var(--space-2);
 		text-align: center;
+	}
+
+	/* Grid items paint in DOM order with no z-index of their own, so the tooltip
+	   below overflows past this cell's box and the next cell (painted after it)
+	   covers it. An explicit z-index only while hovered lifts this cell above its
+	   unhovered siblings without disturbing paint order the rest of the time. */
+	.grid-item:hover {
+		z-index: 1;
 	}
 
 	.grid-item.open {
@@ -356,15 +392,60 @@
 	}
 
 	.grid-name {
+		display: flex;
+		align-items: center;
+		gap: 3px;
 		max-width: 100%;
+		font-size: 0.8rem;
+	}
+
+	/* Only the text itself truncates — the warning icon sits outside this span so
+	   its hover tooltip (an absolutely positioned ::after) isn't clipped by the
+	   overflow:hidden that makes the ellipsis work. */
+	.grid-name-text {
+		min-width: 0;
 		overflow: hidden;
 		white-space: nowrap;
 		text-overflow: ellipsis;
-		font-size: 0.8rem;
 	}
 
 	.grid-ext {
 		font-size: 0.7rem;
+	}
+
+	.purge-warning-icon {
+		position: relative;
+		flex: 0 0 auto;
+		color: var(--color-danger);
+		cursor: help;
+	}
+
+	.purge-warning-icon::after {
+		content: attr(data-tooltip);
+		position: absolute;
+		bottom: 100%;
+		left: 50%;
+		transform: translateX(-50%);
+		margin-bottom: var(--space-1);
+		width: max-content;
+		max-width: 180px;
+		background: var(--color-fg);
+		color: var(--color-bg);
+		padding: var(--space-1) var(--space-2);
+		font-size: 0.7rem;
+		font-weight: normal;
+		line-height: 1.3;
+		white-space: normal;
+		text-align: left;
+		border-radius: 3px;
+		opacity: 0;
+		pointer-events: none;
+		transition: opacity 0.1s;
+		z-index: 20;
+	}
+
+	.purge-warning-icon:hover::after {
+		opacity: 1;
 	}
 
 	.grid-actions-toggle {

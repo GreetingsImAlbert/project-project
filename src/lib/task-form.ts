@@ -5,13 +5,24 @@ import { isTaskStatus, type TaskStatus } from './task-status';
 // same reason TASK_COLUMNS is: two endpoints writing the same row must agree on
 // what they'll accept, or a rule tightened on one silently stays loose on the other.
 
+// Marks a checkbox value in the "Appointed members" picker as naming an existing
+// task_assignees row (a deleted account's appointment, kept until explicitly
+// unchecked) rather than a project member being newly (or still) appointed —
+// same idea as money-parties.ts's GHOST_PREFIX, for the same reason: the two
+// live in different id spaces and a submitted token has to say which one it's
+// from before either endpoint can act on it.
+export const DELETED_ASSIGNEE_PREFIX = 'deleted-assignee:';
+
 export interface TaskFormValues {
 	name: string;
 	category: string | null;
 	description: string | null;
 	deadline: string | null;
 	status: TaskStatus;
+	// Project members to (re)appoint.
 	assignees: string[];
+	// task_assignees.id values of deleted accounts' appointments to keep as-is.
+	keptDeletedAssigneeIds: string[];
 }
 
 export type TaskFormResult = { values: TaskFormValues } | { error: string };
@@ -54,12 +65,20 @@ export function parseTaskForm(formData: FormData, memberIds: Set<string>): TaskF
 		return { error: 'Status must be Ongoing or Done' };
 	}
 
-	const assignees = [...new Set(formData.getAll('assignees').map((v) => v.toString()))];
-	for (const id of assignees) {
-		if (!memberIds.has(id)) {
+	const rawTokens = [...new Set(formData.getAll('assignees').map((v) => v.toString()))];
+	const assignees: string[] = [];
+	const keptDeletedAssigneeIds: string[] = [];
+
+	for (const token of rawTokens) {
+		if (token.startsWith(DELETED_ASSIGNEE_PREFIX)) {
+			keptDeletedAssigneeIds.push(token.slice(DELETED_ASSIGNEE_PREFIX.length));
+			continue;
+		}
+		if (!memberIds.has(token)) {
 			return { error: 'Only project members can be appointed to a task' };
 		}
+		assignees.push(token);
 	}
 
-	return { values: { name, category, description, deadline, status: statusRaw, assignees } };
+	return { values: { name, category, description, deadline, status: statusRaw, assignees, keptDeletedAssigneeIds } };
 }

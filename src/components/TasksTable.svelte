@@ -18,6 +18,11 @@
 		TASK_STATUS_LABELS,
 		type TaskDisplayStatus,
 	} from '../lib/task-status';
+	import { DELETED_ASSIGNEE_PREFIX } from '../lib/task-form';
+
+	function assigneeToken(assignee: Task['assignees'][number]): string {
+		return assignee.user_id ?? `${DELETED_ASSIGNEE_PREFIX}${assignee.id}`;
+	}
 
 	let {
 		projectId,
@@ -243,7 +248,7 @@
 		openMode = 'edit';
 		editCategorySelect = task.category?.trim() || '';
 		editCategoryNew = '';
-		editAssignees = task.assignees.map((a) => a.user_id);
+		editAssignees = task.assignees.map(assigneeToken);
 		rowError = null;
 		colorError = null;
 	}
@@ -315,7 +320,7 @@
 		body.set('description', task.description ?? '');
 		body.set('deadline', task.deadline ?? '');
 		body.set('status', task.status === 'done' ? 'ongoing' : 'done');
-		for (const assignee of task.assignees) body.append('assignees', assignee.user_id);
+		for (const assignee of task.assignees) body.append('assignees', assigneeToken(assignee));
 
 		const res = await fetch(`/api/tasks/${task.id}/update`, { method: 'POST', body });
 
@@ -443,10 +448,10 @@
 	</div>
 {/snippet}
 
-{#snippet assigneeField(selected: string[], onToggle: (id: string, on: boolean) => void)}
+{#snippet assigneeField(selected: string[], onToggle: (id: string, on: boolean) => void, deletedAssignees: Task['assignees'] = [])}
 	<div class="field field-wide">
 		<span class="field-label">Appointed members</span>
-		{#if members.length === 0}
+		{#if members.length === 0 && deletedAssignees.length === 0}
 			<span class="field-value muted">No members to appoint.</span>
 		{:else}
 			<div class="assignee-picker">
@@ -460,6 +465,23 @@
 							onchange={(e) => onToggle(member.id, (e.currentTarget as HTMLInputElement).checked)}
 						/>
 						<span>{member.displayName}</span>
+					</label>
+				{/each}
+				<!-- A deleted account's appointment: not a project member anymore (they're
+				     gone from `members` along with their whole account), but the row
+				     survives until this checkbox is unticked and saved — see
+				     task-columns.ts and the update endpoint's diff. -->
+				{#each deletedAssignees as assignee (assignee.id)}
+					{@const token = assigneeToken(assignee)}
+					<label class="assignee-option">
+						<input
+							type="checkbox"
+							name="assignees"
+							value={token}
+							checked={selected.includes(token)}
+							onchange={(e) => onToggle(token, (e.currentTarget as HTMLInputElement).checked)}
+						/>
+						<span>{assignee.display_name}</span>
 					</label>
 				{/each}
 			</div>
@@ -541,9 +563,13 @@
 				</select>
 			</label>
 
-			{@render assigneeField(editAssignees, (id, on) => {
-				editAssignees = on ? [...editAssignees, id] : editAssignees.filter((a) => a !== id);
-			})}
+			{@render assigneeField(
+				editAssignees,
+				(id, on) => {
+					editAssignees = on ? [...editAssignees, id] : editAssignees.filter((a) => a !== id);
+				},
+				task.assignees.filter((a) => !a.user_id),
+			)}
 
 			<label class="field field-wide">
 				<span class="field-label">Description</span>

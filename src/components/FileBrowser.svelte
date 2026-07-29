@@ -22,7 +22,11 @@
 		id: string;
 		filename: string;
 		size_bytes: number | null;
-		uploaded_by: string;
+		uploaded_by: string | null;
+		// Set once the uploader's account is hard-deleted (uploaded_by goes null at
+		// the same moment) — the grace period before the purge cron removes the file
+		// is measured from this, not from created_at.
+		uploader_deleted_at?: string | null;
 		profiles: { display_name: string } | null;
 		// Absent (rather than false) on rows this component creates itself — an upload
 		// or a copy is never the project's Journal file, so there's nothing to select.

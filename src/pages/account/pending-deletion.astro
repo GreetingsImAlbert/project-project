@@ -1,0 +1,37 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import CancelAccountDeletionPanel from '../../components/CancelAccountDeletionPanel.svelte';
+import { PENDING_DELETION_GRACE_DAYS } from '../../lib/account-deletion';
+
+export const prerender = false;
+
+const user = Astro.locals.user;
+if (!user) {
+	return Astro.redirect('/login');
+}
+
+// The JWT claim is what got the request routed here (see middleware.ts), but the
+// profile row is the source of truth — if it's already been cancelled elsewhere
+// and this session's claim just hasn't refreshed yet, send the member on rather
+// than showing a stale warning.
+const { data: profile } = await Astro.locals.supabase
+	.from('profiles')
+	.select('pending_deletion_at')
+	.eq('id', user.id)
+	.single();
+
+if (!profile?.pending_deletion_at) {
+	return Astro.redirect('/account');
+}
+
+const requestedAt = new Date(profile.pending_deletion_at);
+const deletesAt = new Date(requestedAt.getTime() + PENDING_DELETION_GRACE_DAYS * 24 * 60 * 60 * 1000);
+---
+<BaseLayout title="Account deletion pending">
+	<h1>Account deletion pending</h1>
+	<p>
+		Your account is scheduled to be permanently deleted on <strong>{deletesAt.toLocaleDateString()}</strong>. Until
+		then you can change your mind — everything else in P2 is unavailable while a deletion is pending.
+	</p>
+	<CancelAccountDeletionPanel client:load />
+</BaseLayout>
