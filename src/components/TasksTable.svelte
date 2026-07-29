@@ -20,6 +20,7 @@
 	} from '../lib/task-status';
 	import { DELETED_ASSIGNEE_PREFIX } from '../lib/task-form';
 	import { ghostPartyId } from '../lib/money-parties';
+	import { downloadJson, exportFilename } from '../lib/download';
 
 	function assigneeToken(assignee: Task['assignees'][number]): string {
 		if (assignee.user_id) return assignee.user_id;
@@ -29,6 +30,7 @@
 
 	let {
 		projectId,
+		projectName,
 		initialTasks,
 		initialCategoryColors,
 		initialViewMode,
@@ -39,6 +41,7 @@
 		serverToday,
 	}: {
 		projectId: string;
+		projectName: string;
 		initialTasks: Task[];
 		initialCategoryColors: CategoryColors;
 		initialViewMode: 'list' | 'calendar';
@@ -398,6 +401,32 @@
 		showAddForm = false;
 		adding = false;
 	}
+
+	// The whole project's tasks, not `visibleTasks` — the meta line above follows the
+	// "Just my tasks" filter because it describes the list, but a file called
+	// '<project> - tasks.json' that quietly held a third of them would be a trap.
+	// Sorted the way the page sorts (deadline first), so the file reads in the same
+	// order as the screen.
+	function downloadTasks() {
+		const payload = {
+			project: projectName,
+			exportedAt: new Date().toISOString(),
+			taskCount: tasksState.tasks.length,
+			tasks: tasksState.tasks.map((task) => ({
+				id: task.id,
+				name: task.name,
+				category: task.category,
+				description: task.description,
+				deadline: task.deadline,
+				status: task.status,
+				// Names, not ids: a ghost member and a former member have no user_id to
+				// look up, and the point of the export is to be readable on its own.
+				assignees: task.assignees.map((a) => a.display_name),
+			})),
+		};
+
+		downloadJson(exportFilename(projectName, 'tasks', 'json'), payload);
+	}
 </script>
 
 <!-- A div rather than a label, unlike the other fields: the colour swatches are real
@@ -668,6 +697,16 @@
 			</button>
 		</div>
 
+		<!-- Not gated on canEdit: a viewer can read every task on the page already, so
+		     there's nothing in the file they couldn't copy out by hand. -->
+		<button
+			type="button"
+			class="btn-plain head-btn"
+			onclick={downloadTasks}
+			disabled={tasksState.tasks.length === 0}
+			title="Download all tasks as JSON"
+		>Download</button>
+
 		{#if canEdit && !showAddForm}
 			<button type="button" class="btn-plain add-toggle" onclick={openAddForm}>Add task</button>
 		{/if}
@@ -936,9 +975,14 @@
 		color: var(--color-bg);
 	}
 
-	.add-toggle {
+	.add-toggle,
+	.head-btn {
 		padding: var(--space-1) var(--space-3);
 		font-size: 0.8rem;
+	}
+
+	.head-btn {
+		flex: 0 0 auto;
 	}
 
 	.empty {

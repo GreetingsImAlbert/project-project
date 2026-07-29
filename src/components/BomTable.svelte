@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { slide } from 'svelte/transition';
-	import { formatCurrency, initCurrency, type CurrencyCode } from '../lib/currency.svelte';
+	import { currencyState, formatCurrency, initCurrency, type CurrencyCode } from '../lib/currency.svelte';
 	import {
 		bomState,
 		initBom,
@@ -9,14 +9,18 @@
 		removeBomItem,
 		type BomItem,
 	} from '../lib/bom-store.svelte';
+	import { buildXlsx } from '../lib/xlsx';
+	import { downloadBlob, exportFilename } from '../lib/download';
 
 	let {
 		projectId,
+		projectName,
 		initialItems,
 		canEdit,
 		currency,
 	}: {
 		projectId: string;
+		projectName: string;
 		initialItems: BomItem[];
 		canEdit: boolean;
 		currency: CurrencyCode;
@@ -196,6 +200,53 @@
 		showAddForm = false;
 		adding = false;
 	}
+
+	// Money goes out as bare numbers, not formatCurrency strings — the whole point of a
+	// spreadsheet is that the reader can sum and re-sort the columns, which a '₱1,234.00'
+	// string kills. The currency is named in the header instead.
+	function downloadXlsx() {
+		const money = (label: string) => `${label} (${currencyState.code})`;
+
+		// Grouped by category the way the table renders it, so the file and the screen
+		// list the parts in the same order.
+		const rows = groups.flatMap((group) =>
+			group.items.map((item) => [
+				item.part_name,
+				group.category,
+				item.description,
+				item.quantity,
+				item.unit,
+				item.unit_cost,
+				item.supplier,
+				item.item_url,
+				item.total_cost,
+			]),
+		);
+
+		// Matches the table's own footer. Left in the sheet rather than left to the reader
+		// so the file stands on its own when it's mailed to somebody.
+		rows.push(['Total', null, null, null, null, null, null, null, grandTotal]);
+
+		const blob = buildXlsx([
+			{
+				name: 'Bill of Materials',
+				columns: [
+					{ header: 'Part name', width: 28 },
+					{ header: 'Category', width: 18 },
+					{ header: 'Description', width: 34 },
+					{ header: 'Quantity', width: 10 },
+					{ header: 'Unit', width: 10 },
+					{ header: money('Unit cost'), width: 14 },
+					{ header: 'Supplier', width: 22 },
+					{ header: 'Supplier link', width: 34 },
+					{ header: money('Total'), width: 14 },
+				],
+				rows,
+			},
+		]);
+
+		downloadBlob(exportFilename(projectName, 'bill of materials', 'xlsx'), blob);
+	}
 </script>
 
 {#snippet categoryField(select: string, newValue: string, onSelect: (v: string) => void, onNew: (v: string) => void)}
@@ -223,9 +274,19 @@
 <section class="money-section">
 	<div class="money-section-head">
 		<h2>Bill of Materials</h2>
-		<span class="section-meta">
-			{bomState.items.length} item{bomState.items.length === 1 ? '' : 's'} · total <strong>{formatCurrency(grandTotal)}</strong>
-		</span>
+		<div class="head-actions">
+			<span class="section-meta">
+				{bomState.items.length} item{bomState.items.length === 1 ? '' : 's'} · total <strong>{formatCurrency(grandTotal)}</strong>
+			</span>
+			<!-- Not gated on canEdit: a viewer already sees every row this file holds. -->
+			<button
+				type="button"
+				class="btn-plain"
+				onclick={downloadXlsx}
+				disabled={bomState.items.length === 0}
+				title="Download the bill of materials as a spreadsheet"
+			>Download</button>
+		</div>
 	</div>
 
 	{#if bomState.items.length === 0}
@@ -478,6 +539,21 @@
 </section>
 
 <style>
+	/* Keeps the meta line and the Download button together on the right, so the head
+	   stays a two-part row rather than letting space-between strand the count in the
+	   middle. */
+	.head-actions {
+		display: flex;
+		align-items: baseline;
+		gap: var(--space-3);
+	}
+
+	.head-actions button {
+		flex: 0 0 auto;
+		padding: var(--space-1) var(--space-3);
+		font-size: 0.8rem;
+	}
+
 	.group-head {
 		display: flex;
 		justify-content: space-between;

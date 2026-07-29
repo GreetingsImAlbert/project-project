@@ -1,8 +1,10 @@
 <script lang="ts">
 	import { slide } from 'svelte/transition';
 	import BulkTransactionForm from './BulkTransactionForm.svelte';
-	import { formatCurrency, initCurrency, type CurrencyCode } from '../lib/currency.svelte';
-	import { duesFor, netSpend, topLevel } from '../lib/money-math';
+	import { currencyState, formatCurrency, initCurrency, type CurrencyCode } from '../lib/currency.svelte';
+	import { duesFor, netSpend, signedAmount, topLevel } from '../lib/money-math';
+	import { buildXlsx } from '../lib/xlsx';
+	import { downloadBlob, exportFilename } from '../lib/download';
 	import { bomState, initBom, type BomItem } from '../lib/bom-store.svelte';
 	import { contributionsState, initContributions } from '../lib/contributions-store.svelte';
 	import { partiesState, initParties, type Party } from '../lib/parties-store.svelte';
@@ -22,6 +24,7 @@
 
 	let {
 		projectId,
+		projectName,
 		initialTransactions,
 		initialBomItems,
 		initialPercents,
@@ -30,6 +33,7 @@
 		currency,
 	}: {
 		projectId: string;
+		projectName: string;
 		initialTransactions: Transaction[];
 		initialBomItems: BomItem[];
 		initialPercents: Record<string, number>;
@@ -245,6 +249,87 @@
 
 	let netTotal = $derived(netSpend(transactionsState.items));
 
+	// Same order as the table (newest date first), but a bulk parent is followed by its
+	// own lines instead of hiding them behind a click — a spreadsheet has room for the
+	// breakdown. The lines carry a 'Line of' label and no amount of their own in the
+	// running total, exactly like money-math treats them, so summing the Total column
+	// can't double-count a bulk purchase.
+	function downloadXlsx() {
+		const money = (label: string) => `${label} (${currencyState.code})`;
+
+		const sheetRows: (string | number | null)[][] = [];
+
+		for (const { t } of rows) {
+			sheetRows.push([
+				t.transaction_date,
+				TYPE_LABELS[t.type],
+				itemLabel(t),
+				t.type === 'item' ? t.quantity : null,
+				t.type === 'item' ? t.unit : null,
+				t.type === 'item' ? t.unit_cost : null,
+				t.supplier,
+				t.item_url,
+				// Signed, so a discount or refund subtracts when the column is summed —
+				// the table shows the same number with a '-' in front of it.
+				signedAmount(t),
+				payerName(t),
+				null,
+			]);
+
+			if (t.type !== 'bulk') continue;
+
+			const parentLabel = itemLabel(t);
+			for (const line of linesOf(t.id)) {
+				sheetRows.push([
+					line.transaction_date,
+					TYPE_LABELS[line.type],
+					line.item_name,
+					line.quantity,
+					line.unit,
+					line.unit_cost,
+					line.supplier,
+					line.item_url,
+					// Blank on purpose: the parent above already carries this money.
+					null,
+					null,
+					parentLabel,
+				]);
+			}
+		}
+
+		// Spelled out because it deliberately isn't SUM() of the column above it: a payment
+		// is one member settling up with another, not money the project spent, so it shows
+		// in its own row but stays out of the net. Same rule as netSpend().
+		sheetRows.push([
+			'Net spend (excludes payments)',
+			null, null, null, null, null, null, null,
+			netTotal,
+			null, null,
+		]);
+
+		const blob = buildXlsx([
+			{
+				name: 'Transactions',
+				columns: [
+					{ header: 'Date', width: 12 },
+					{ header: 'Type', width: 11 },
+					{ header: 'Item', width: 30 },
+					{ header: 'Quantity', width: 10 },
+					{ header: 'Unit', width: 10 },
+					{ header: money('Unit cost'), width: 14 },
+					{ header: 'Supplier', width: 22 },
+					{ header: 'Supplier link', width: 34 },
+					{ header: money('Amount'), width: 14 },
+					{ header: 'By', width: 20 },
+					{ header: 'Line of', width: 24 },
+				],
+				rows: sheetRows,
+			},
+		]);
+
+		downloadBlob(exportFilename(projectName, 'transactions', 'xlsx'), blob);
+	}
+
 	function handleRowClick(e: MouseEvent, id: string) {
 		if ((e.target as HTMLElement).closest('.row-actions, a')) return;
 		if (openId === id && openMode === 'detail') {
@@ -393,10 +478,20 @@
 <section class="money-section">
 	<div class="money-section-head">
 		<h2>Transactions</h2>
-		<span class="section-meta">
-			{rows.length} entr{rows.length === 1 ? 'y' : 'ies'} · net
-			<strong>{formatCurrency(netTotal)}</strong>
-		</span>
+		<div class="head-actions">
+			<span class="section-meta">
+				{rows.length} entr{rows.length === 1 ? 'y' : 'ies'} · net
+				<strong>{formatCurrency(netTotal)}</strong>
+			</span>
+			<!-- Not gated on canEdit: a viewer already sees every row this file holds. -->
+			<button
+				type="button"
+				class="btn-plain"
+				onclick={downloadXlsx}
+				disabled={rows.length === 0}
+				title="Download the transactions as a spreadsheet"
+			>Download</button>
+		</div>
 	</div>
 
 	{#if rows.length === 0}
@@ -971,6 +1066,21 @@
 </section>
 
 <style>
+	/* Keeps the meta line and the Download button together on the right, so the head
+	   stays a two-part row rather than letting space-between strand the count in the
+	   middle. */
+	.head-actions {
+		display: flex;
+		align-items: baseline;
+		gap: var(--space-3);
+	}
+
+	.head-actions button {
+		flex: 0 0 auto;
+		padding: var(--space-1) var(--space-3);
+		font-size: 0.8rem;
+	}
+
 	.date-cell {
 		color: var(--color-muted);
 		font-variant-numeric: tabular-nums;

@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { slide } from 'svelte/transition';
-	import { formatCurrency, initCurrency, type CurrencyCode } from '../lib/currency.svelte';
+	import { currencyState, formatCurrency, initCurrency, type CurrencyCode } from '../lib/currency.svelte';
+	import { buildXlsx } from '../lib/xlsx';
+	import { downloadBlob, exportFilename } from '../lib/download';
 	import { transactionsState, initTransactions, type Transaction, type TransactionType } from '../lib/transactions-store.svelte';
 	import { contributionsState, initContributions, setContributionPercents } from '../lib/contributions-store.svelte';
 	import { partiesState, initParties, updateParty, removeParty, type Party } from '../lib/parties-store.svelte';
@@ -9,12 +11,14 @@
 
 	let {
 		projectId,
+		projectName,
 		initialParties,
 		transactions: initialTransactions,
 		canEdit,
 		currency,
 	}: {
 		projectId: string;
+		projectName: string;
 		initialParties: Party[];
 		transactions: Transaction[];
 		canEdit: boolean;
@@ -285,13 +289,97 @@
 		if (expandedId === party.id) expandedId = null;
 		deletingGhostId = null;
 	}
+
+	// Two sheets, because the page holds two things: the split itself, and the per-member
+	// history behind each row's caret. Exporting only the summary would drop the half
+	// that answers "why does he owe that much?", which is the question the table is
+	// usually open to settle.
+	//
+	// Percentages go out as 12.5 rather than 0.125 — the column is headed '%' and reads
+	// like the screen, instead of quietly depending on a cell format we don't write.
+	function downloadXlsx() {
+		const money = (label: string) => `${label} (${currencyState.code})`;
+
+		const summaryRows = parties.map((party) => [
+			party.displayName,
+			party.isGhost ? 'Ghost' : 'Member',
+			party.note,
+			percents[party.id] ?? 0,
+			contributionAmount(party.id),
+			paid(party.id),
+			dues(party.id),
+		]);
+
+		// The same footer the table draws, including the case where the stored shares
+		// don't add up — a file that silently said 100% would be worse than the page.
+		summaryRows.push([
+			splitBalanced ? 'Total' : `Total (split adds up to ${totalPercent.toFixed(2)}%, not 100%)`,
+			null,
+			null,
+			totalPercent,
+			totalOwed,
+			totalPaid,
+			totalDues,
+		]);
+
+		const historyRows = parties.flatMap((party) =>
+			transactionsFor(party.id).map((t) => [
+				party.displayName,
+				t.transaction_date,
+				TYPE_LABELS[t.type],
+				entryLabel(t, party.id),
+				// Signed from this member's side: a payment they received is negative here
+				// and positive on the other member's rows. See entryAmount().
+				entryAmount(t, party.id),
+			]),
+		);
+
+		const blob = buildXlsx([
+			{
+				name: 'Contributions',
+				columns: [
+					{ header: 'Member', width: 24 },
+					{ header: 'Kind', width: 10 },
+					{ header: 'Note', width: 30 },
+					{ header: 'Share %', width: 10 },
+					{ header: money('Owes total'), width: 15 },
+					{ header: money('Paid'), width: 15 },
+					{ header: money('Dues'), width: 15 },
+				],
+				rows: summaryRows,
+			},
+			{
+				name: 'Member history',
+				columns: [
+					{ header: 'Member', width: 24 },
+					{ header: 'Date', width: 12 },
+					{ header: 'Type', width: 11 },
+					{ header: 'Entry', width: 34 },
+					{ header: money('Amount'), width: 14 },
+				],
+				rows: historyRows,
+			},
+		]);
+
+		downloadBlob(exportFilename(projectName, 'member contributions', 'xlsx'), blob);
+	}
 </script>
 
 <section class="money-section">
 	<div class="money-section-head">
 		<h2>Member contributions</h2>
-		{#if canEdit}
-			<div class="head-actions">
+		<div class="head-actions">
+			<!-- Outside the canEdit block below: a viewer already sees every number this
+			     file holds, and downloading it changes nothing. -->
+			<button
+				type="button"
+				class="btn-plain"
+				onclick={downloadXlsx}
+				disabled={parties.length === 0 || editingPercents}
+				title="Download the contributions table as a spreadsheet"
+			>Download</button>
+
+			{#if canEdit}
 				{#if editingPercents}
 					<button type="button" onclick={savePercents} disabled={saving || !remainderValid}>
 						{saving ? 'Saving…' : 'Save split'}
@@ -308,8 +396,8 @@
 				{:else if parties.length > 0}
 					<button type="button" class="btn-plain" onclick={startEditPercents}>Edit split</button>
 				{/if}
-			</div>
-		{/if}
+			{/if}
+		</div>
 	</div>
 
 	{#if parties.length === 0}

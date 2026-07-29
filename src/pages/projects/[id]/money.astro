@@ -118,10 +118,11 @@ const initialPercents = resolveContributionPercents(parties);
 			initialPercents={initialPercents}
 			currency={project.currency}
 		/>
-		<BomTable client:load projectId={project.id} initialItems={bomItems ?? []} canEdit={canEdit} currency={project.currency} />
+		<BomTable client:load projectId={project.id} projectName={project.name} initialItems={bomItems ?? []} canEdit={canEdit} currency={project.currency} />
 		<TransactionsTable
 			client:load
 			projectId={project.id}
+			projectName={project.name}
 			initialTransactions={transactionRows}
 			initialBomItems={bomItems ?? []}
 			initialPercents={initialPercents}
@@ -132,6 +133,7 @@ const initialPercents = resolveContributionPercents(parties);
 		<MemberContributionsTable
 			client:load
 			projectId={project.id}
+			projectName={project.name}
 			initialParties={parties}
 			transactions={transactionRows}
 			canEdit={canEdit}

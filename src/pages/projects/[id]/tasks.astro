@@ -92,6 +92,7 @@ const serverToday = new Date().toISOString().slice(0, 10);
 		<TasksTable
 			client:load
 			projectId={project.id}
+			projectName={project.name}
 			initialTasks={tasks}
 			initialCategoryColors={categoryColors}
 			initialViewMode={initialViewMode}
