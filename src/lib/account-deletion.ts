@@ -51,9 +51,10 @@ async function repointTransactionsToGhosts(
 			.from('ghost_members')
 			.insert({
 				project_id: projectId,
-				display_name: `${displayName} [deleted]`,
+				display_name: displayName,
 				note: 'Stands in for a member whose P2 account was deleted; preserves their transaction history.',
 				contribution_percent: membership?.contribution_percent ?? null,
+				is_deleted_account: true,
 			})
 			.select('id')
 			.single();

@@ -179,6 +179,7 @@ export type Database = {
           created_at: string | null
           display_name: string
           id: string
+          is_deleted_account: boolean
           note: string | null
           project_id: string
         }
@@ -187,6 +188,7 @@ export type Database = {
           created_at?: string | null
           display_name: string
           id?: string
+          is_deleted_account?: boolean
           note?: string | null
           project_id: string
         }
@@ -195,6 +197,7 @@ export type Database = {
           created_at?: string | null
           display_name?: string
           id?: string
+          is_deleted_account?: boolean
           note?: string | null
           project_id?: string
         }

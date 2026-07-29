@@ -2,12 +2,12 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from './supabase/database.types';
 import { ghostIdOf } from './money-parties';
 
-export const GHOST_COLUMNS = 'id, display_name, note, contribution_percent';
+export const GHOST_COLUMNS = 'id, display_name, note, contribution_percent, is_deleted_account';
 
 // Exactly the columns GHOST_COLUMNS selects, so the two can't drift apart.
 export type GhostMemberRow = Pick<
 	Database['public']['Tables']['ghost_members']['Row'],
-	'id' | 'display_name' | 'note' | 'contribution_percent'
+	'id' | 'display_name' | 'note' | 'contribution_percent' | 'is_deleted_account'
 >;
 
 export const MAX_GHOST_NAME = 80;
