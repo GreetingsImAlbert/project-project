@@ -36,11 +36,11 @@ const TEXT_EXTENSIONS = new Set([
 	'gcode', 'nc', 'scad', 'ino', 'm', 'f', 'f90', 'v', 'vhd', 'vhdl', 'tex', 'bib',
 ]);
 
-// Meshes the in-app CAD viewer can tessellate and orbit. All four are triangle formats
-// that need no geometry kernel — the loaders hand back vertices directly. STEP/IGES are
-// deliberately absent: they're boundary representations, and reading one means shipping
-// an OpenCASCADE WASM build to do the tessellating. See CHECKLIST.md.
-const MODEL_EXTENSIONS = new Set(['stl', 'obj', 'ply', '3mf']);
+// Meshes the in-app CAD viewer can tessellate and orbit. The first four are triangle
+// formats the loaders hand vertices back from directly. STEP/IGES are boundary
+// representations instead, so CadViewer tessellates them via occt-import-js (OpenCASCADE
+// compiled to WASM) in a web worker — see CadViewer.svelte's loadBrepModel.
+const MODEL_EXTENSIONS = new Set(['stl', 'obj', 'ply', '3mf', 'step', 'stp', 'iges', 'igs']);
 
 // Files whose whole name is the type (no extension to go on).
 const TEXT_BASENAMES = new Set([

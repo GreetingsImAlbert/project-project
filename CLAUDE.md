@@ -24,7 +24,7 @@ npx wrangler types       # Only after changing wrangler.jsonc bindings
 
 Before concluding the response:
 
-1. Run the aforementioned commands in order. If npm run build won't complete because of wrangler dev process, ask the user for permission to stop the process. If permitted, stop the wrangler dev process then npm run build.
+1. Run the aforementioned commands in order. If npm run build won't complete because of wrangler dev process, ask the user for permission to stop the process or if the process has been stopped. Then, try to build again.
 2. Check the latest commit and give me the commit message for the latest changes. Never commit yourself.
 3. Update SCHEMA.md for changes to the Supabase schema. Include the SQL queries to run in the response.
 4. Update CHECKLIST.md. Remove finished tasks. Append new tasks you deem appropriate.

@@ -3,9 +3,10 @@
 	// import from FileViewerPanel, which is what keeps three.js — several hundred KB — in
 	// its own chunk and out of every page that merely lists files.
 	//
-	// View-only by design: orbit, zoom, pan. Formats here are all triangle soups, so no
-	// geometry kernel is involved; STEP/IGES would need one and are not handled (see
-	// CHECKLIST.md).
+	// View-only by design: orbit, zoom, pan. STL/OBJ/PLY/3MF are triangle soups the loaders
+	// below hand back directly; STEP/IGES are boundary representations instead and go
+	// through occt-import-js (OpenCASCADE compiled to WASM) in cad-worker.ts, off the main
+	// thread — see loadBrepModel.
 	import { onMount } from 'svelte';
 	import * as THREE from 'three';
 	import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -15,6 +16,10 @@
 	import { ThreeMFLoader } from 'three/examples/jsm/loaders/3MFLoader.js';
 	import { onSwapOrDestroy } from '../lib/island-teardown';
 	import { splitFilename } from '../lib/file-kind';
+	import type { CadWorkerMesh, CadWorkerRequest, CadWorkerResponse } from '../lib/cad-worker';
+	// Resolved to an absolute URL below, on the main thread — see the comment on
+	// CadWorkerRequest.wasmUrl for why that resolution doesn't happen inside the worker.
+	import wasmUrl from 'occt-import-js/dist/occt-import-js.wasm?url';
 
 	let { fileId, filename }: { fileId: string; filename: string } = $props();
 
@@ -55,6 +60,14 @@
 	// canvas.
 	let loadSeq = 0;
 	let inflight: AbortController | null = null;
+	// The tessellation worker for a STEP/IGES load in flight, if any — terminating it is how
+	// a load in progress gets cancelled, since occt-import-js has no cooperative abort of its
+	// own once a file is handed to it.
+	let inflightWorker: Worker | null = null;
+
+	// STEP/IGES can carry real per-solid colour, same reason 3MF keeps its own materials
+	// instead of the neutral grey below.
+	const BREP_EXTENSIONS = new Set(['step', 'stp', 'iges', 'igs']);
 
 	// Neutral machined-part grey, deliberately fixed rather than themed: the model is the
 	// subject, and recolouring it per theme would make the same part look like a different
@@ -204,7 +217,7 @@
 		return bytes.buffer;
 	}
 
-	function buildModel(extension: string, buffer: ArrayBuffer): THREE.Object3D {
+	async function buildModel(extension: string, buffer: ArrayBuffer): Promise<THREE.Object3D> {
 		switch (extension) {
 			case 'stl':
 				// Handles both the binary and the ASCII flavour off the same buffer.
@@ -217,9 +230,79 @@
 				return new OBJLoader().parse(new TextDecoder().decode(buffer));
 			case '3mf':
 				return new ThreeMFLoader().parse(buffer);
+			case 'step':
+			case 'stp':
+				return loadBrepModel('step', buffer);
+			case 'iges':
+			case 'igs':
+				return loadBrepModel('iges', buffer);
 			default:
 				throw new Error('Unsupported model format');
 		}
+	}
+
+	// Hands the raw bytes to cad-worker.ts and turns its per-solid mesh list back into a
+	// THREE.Object3D, the same shape every other branch of buildModel returns. A fresh
+	// worker per call rather than a shared one kept around: it makes cancelling a load (the
+	// user opens another file, or closes the panel) as simple as terminate(), with no
+	// message-id bookkeeping to match a stale response back to an abandoned request.
+	function loadBrepModel(format: CadWorkerRequest['format'], buffer: ArrayBuffer): Promise<THREE.Object3D> {
+		return new Promise((resolve, reject) => {
+			const worker = new Worker(new URL('../lib/cad-worker.ts', import.meta.url), { type: 'module' });
+			inflightWorker = worker;
+
+			function settle() {
+				worker.terminate();
+				if (inflightWorker === worker) inflightWorker = null;
+			}
+
+			worker.onmessage = (ev: MessageEvent<CadWorkerResponse>) => {
+				settle();
+				const data = ev.data;
+				if (!data.success) {
+					reject(new Error(data.error));
+					return;
+				}
+				resolve(meshesToObject(data.meshes));
+			};
+
+			worker.onerror = (ev) => {
+				settle();
+				// ev.message is the underlying exception's real text (emscripten aborts are
+				// often specific — "abort(OOM)", a missing-export message, etc.) — worth
+				// surfacing over a generic string when the worker fails outside the
+				// try/catch in cad-worker.ts (e.g. an error thrown asynchronously, off the
+				// promise chain that catch actually covers).
+				reject(new Error(ev.message || 'Could not read this model'));
+			};
+
+			const wasmAbsoluteUrl = new URL(wasmUrl, window.location.href).href;
+			worker.postMessage({ format, buffer, wasmUrl: wasmAbsoluteUrl } satisfies CadWorkerRequest, [buffer]);
+		});
+	}
+
+	// Colour, when occt-import-js found one on the solid; the same neutral material as the
+	// other formats otherwise. Most mechanical STEP/IGES exports carry no colour at all.
+	function meshesToObject(meshes: CadWorkerMesh[]): THREE.Object3D {
+		const group = new THREE.Group();
+		for (const mesh of meshes) {
+			const geometry = new THREE.BufferGeometry();
+			geometry.setAttribute('position', new THREE.BufferAttribute(mesh.position, 3));
+			if (mesh.normal) geometry.setAttribute('normal', new THREE.BufferAttribute(mesh.normal, 3));
+			geometry.setIndex(new THREE.BufferAttribute(mesh.index, 1));
+
+			const material = mesh.color
+				? new THREE.MeshStandardMaterial({
+						color: new THREE.Color(mesh.color[0], mesh.color[1], mesh.color[2]),
+						roughness: 0.55,
+						metalness: 0.05,
+						side: THREE.DoubleSide,
+					})
+				: partMaterial();
+
+			group.add(new THREE.Mesh(geometry, material));
+		}
+		return group;
 	}
 
 	// Counts triangles, gives every mesh usable normals and (for the group formats) a
@@ -299,6 +382,8 @@
 
 		inflight?.abort();
 		inflight = new AbortController();
+		inflightWorker?.terminate();
+		inflightWorker = null;
 
 		clearModel();
 		loading = true;
@@ -312,8 +397,8 @@
 			const buffer = await fetchModel(id, inflight.signal);
 			if (seq !== loadSeq) return;
 
-			const obj = buildModel(extension, buffer);
-			prepare(obj, extension === '3mf');
+			const obj = await buildModel(extension, buffer);
+			prepare(obj, extension === '3mf' || BREP_EXTENSIONS.has(extension));
 			frameModel(obj);
 
 			// Re-checked after parsing too: tessellating a large mesh is slow enough that the
@@ -433,6 +518,7 @@
 		// kills the viewer after a dozen page moves. See lib/island-teardown.ts.
 		return onSwapOrDestroy(() => {
 			inflight?.abort();
+			inflightWorker?.terminate();
 			// Stops a queued frame from rendering into a context that's about to go.
 			if (frameHandle) cancelAnimationFrame(frameHandle);
 			frameHandle = 0;

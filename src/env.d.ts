@@ -1,5 +1,8 @@
 /// <reference path="../.astro/types.d.ts" />
 /// <reference types="astro/client" />
+// astro/client doesn't pull in Vite's asset-import declarations (only its import-meta
+// ones) — needed explicitly for the `?url` import in cad-worker.ts.
+/// <reference types="vite/client" />
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 

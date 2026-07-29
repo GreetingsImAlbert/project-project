@@ -27,7 +27,12 @@
 	"r2_buckets": [
 		{
 			"binding": "R2_BUCKET",
-			"bucket_name": "project-project"
+			"bucket_name": "project-project",
+			// Uploads go straight to the real bucket via a presigned URL from the browser
+			// (see upload-url.ts), bypassing the Worker entirely. Without this flag the
+			// binding reads/writes a separate, empty local simulation in dev, so every
+			// read here would miss regardless of file type.
+			"remote": true
 		}
 	]
 }
