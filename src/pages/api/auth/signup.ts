@@ -47,7 +47,15 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
 		return new Response(`Signup failed: ${signUpError?.message}`, { status: 400 });
 	}
 
-	await alertSignup(env, data.user.email ?? email, trimmedDisplayName);
+	// When email confirmations are on, Supabase deliberately returns a look-alike
+	// success (a user object, no error, no session) for an email that's already
+	// registered and confirmed — an empty `identities` array is its documented
+	// signal for that case. Keeping the same response preserves that anti-
+	// enumeration protection; the alert is skipped since no account was created.
+	const alreadyRegistered = data.user.identities?.length === 0;
+	if (!alreadyRegistered) {
+		await alertSignup(env, data.user.email ?? email, trimmedDisplayName, !data.session);
+	}
 
 	// No session means Supabase requires email confirmation before the account
 	// is usable — send the user back to login with a message instead of

@@ -2,8 +2,11 @@
 // signing-up user (confirmation, password reset) — it has no concept of also
 // notifying a third party. This hits Resend's API directly instead. Best-effort:
 // swallows its own errors so a Resend outage never fails a signup.
-export async function alertSignup(env: Env, email: string, displayName: string) {
+export async function alertSignup(env: Env, email: string, displayName: string, needsConfirmation: boolean) {
 	try {
+		const status = needsConfirmation
+			? 'pending email confirmation'
+			: 'auto-confirmed, already has a session';
 		const res = await fetch('https://api.resend.com/emails', {
 			method: 'POST',
 			headers: {
@@ -14,7 +17,7 @@ export async function alertSignup(env: Env, email: string, displayName: string) 
 				from: env.ALERT_EMAIL_FROM,
 				to: env.ALERT_EMAIL_TO,
 				subject: `P2 signup: ${displayName}`,
-				text: `${displayName} <${email}> just signed up.`,
+				text: `${displayName} <${email}> just signed up (${status}).`,
 			}),
 		});
 		if (!res.ok) {
