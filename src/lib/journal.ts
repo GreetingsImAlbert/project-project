@@ -1,0 +1,227 @@
+import { AwsClient } from 'aws4fetch';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from './supabase/database.types';
+import { appendJournalEntry } from './journal-entries';
+import { wouldExceedUserStorageQuota } from './r2-quota';
+
+// Every project gets at most one of these — the unique partial index in
+// SCHEMA.md (`journal_file_unique_per_project`) is what actually enforces that;
+// this filename is just what a member sees in the Files list.
+export const JOURNAL_FILENAME = 'Journal.md';
+export const JOURNAL_MIME = 'text/markdown';
+
+// A day's worth of notes, not a document — generous, but nowhere near the 1MB
+// the general file editor allows (file-kind.ts's MAX_VIEWABLE_BYTES). Enforced
+// both by the draft API and the journal_drafts check constraint in SCHEMA.md.
+export const MAX_DRAFT_CHARS = 50_000;
+
+function r2Client(env: Env) {
+	return new AwsClient({
+		accessKeyId: env.R2_ACCESS_KEY_ID,
+		secretAccessKey: env.R2_SECRET_ACCESS_KEY,
+		service: 's3',
+		region: 'auto',
+	});
+}
+
+function objectUrlFor(env: Env, r2Key: string) {
+	return `https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${env.R2_BUCKET_NAME}/${r2Key}`;
+}
+
+export async function readJournalObject(env: Env, r2Key: string): Promise<string> {
+	const r2 = r2Client(env);
+	const res = await r2.fetch(objectUrlFor(env, r2Key), { method: 'GET' });
+	if (!res.ok) return '';
+	return new TextDecoder('utf-8').decode(await res.arrayBuffer());
+}
+
+// Returns the size R2 actually recorded, same rule as every other write in this
+// app (confirm.ts, content.ts's PUT) — never the length of what was sent.
+async function writeJournalObject(env: Env, r2Key: string, content: string): Promise<number> {
+	const r2 = r2Client(env);
+	const bytes = new TextEncoder().encode(content);
+
+	const putRes = await r2.fetch(objectUrlFor(env, r2Key), {
+		method: 'PUT',
+		headers: { 'content-type': `${JOURNAL_MIME}; charset=utf-8` },
+		body: bytes,
+	});
+	if (!putRes.ok) {
+		throw new Error(`Failed to write journal object: ${putRes.status} ${await putRes.text()}`);
+	}
+
+	const headRes = await r2.fetch(objectUrlFor(env, r2Key), { method: 'HEAD' });
+	return Number(headRes.headers.get('content-length') ?? bytes.byteLength);
+}
+
+export interface JournalFileRow {
+	id: string;
+	r2_key: string;
+	size_bytes: number | null;
+}
+
+// Lazily creates the project's one Journal file the first time anyone opens the
+// page. Runs on the admin (service-role) client rather than the caller's own —
+// the file is attributed to the project owner's storage no matter who happens to
+// be the first owner/editor to visit, and the files insert policy (uploaded_by =
+// auth.uid()) has no way to let a non-owner editor insert a row owned by someone
+// else. The role/membership check that would normally be RLS's job is done by
+// the caller before this runs (see journal.astro).
+export async function ensureJournalFile(
+	admin: SupabaseClient<Database>,
+	env: Env,
+	projectId: string,
+	ownerId: string,
+): Promise<JournalFileRow> {
+	const { data: existing } = await admin
+		.from('files')
+		.select('id, r2_key, size_bytes')
+		.eq('project_id', projectId)
+		.eq('is_journal', true)
+		.maybeSingle();
+
+	if (existing) return existing;
+
+	const r2Key = `${projectId}/${crypto.randomUUID()}-${JOURNAL_FILENAME}`;
+	const sizeBytes = await writeJournalObject(env, r2Key, '');
+
+	const { data: created, error } = await admin
+		.from('files')
+		.insert({
+			project_id: projectId,
+			uploaded_by: ownerId,
+			filename: JOURNAL_FILENAME,
+			r2_key: r2Key,
+			mime_type: JOURNAL_MIME,
+			size_bytes: sizeBytes,
+			is_journal: true,
+		})
+		.select('id, r2_key, size_bytes')
+		.single();
+
+	if (error || !created) {
+		throw new Error(`Failed to create journal file: ${error?.message ?? 'unknown error'}`);
+	}
+
+	return created;
+}
+
+export interface JournalDraftRow {
+	draft_date: string;
+	content: string;
+}
+
+// Lazily creates the project's one draft row, same idea as ensureJournalFile but
+// on the caller's own RLS-scoped client: a draft carries no per-user attribution
+// (unlike the file, nothing here is charged to anyone's storage), so an ordinary
+// owner/editor insert is all it needs.
+export async function ensureJournalDraft(
+	supabase: SupabaseClient<Database>,
+	projectId: string,
+): Promise<JournalDraftRow> {
+	const { data: existing } = await supabase
+		.from('journal_drafts')
+		.select('draft_date, content')
+		.eq('project_id', projectId)
+		.maybeSingle();
+
+	if (existing) return existing;
+
+	const { data: created, error } = await supabase
+		.from('journal_drafts')
+		.insert({ project_id: projectId, draft_date: utcToday(), content: '' })
+		.select('draft_date, content')
+		.single();
+
+	if (error || !created) {
+		throw new Error(`Failed to create journal draft: ${error?.message ?? 'unknown error'}`);
+	}
+
+	return created;
+}
+
+// The UTC calendar date the Worker's clock reads right now. Drafts roll over on
+// UTC midnight (the Cron Trigger fires then too — see worker.ts) rather than any
+// project member's local day, for the same reason task-status.ts's "today" starts
+// from the server clock: there's no single local day for a project with members
+// in different time zones to agree on.
+export function utcToday(): string {
+	return new Date().toISOString().slice(0, 10);
+}
+
+// The cron job's actual work, run once at UTC midnight for every project whose
+// draft has fallen behind today — normally just the drafts dated yesterday, but
+// a missed run (a deploy, a Cloudflare incident) leaves older ones queued too, and
+// this catches them up the same way. Runs entirely on the admin client: there's no
+// caller session to scope RLS to, and every project's draft needs finalizing in
+// the same pass.
+export async function finalizeStaleDrafts(admin: SupabaseClient<Database>, env: Env): Promise<void> {
+	const today = utcToday();
+
+	const { data: staleDrafts, error } = await admin
+		.from('journal_drafts')
+		.select('project_id, draft_date, content')
+		.lt('draft_date', today);
+
+	if (error) {
+		console.error(`[journal] failed to read stale drafts: ${error.message}`);
+		return;
+	}
+
+	for (const draft of staleDrafts ?? []) {
+		try {
+			await finalizeOneDraft(admin, env, draft.project_id, draft.draft_date, draft.content, today);
+		} catch (err) {
+			// One project's failure (a full quota, a transient R2 error) shouldn't stop the
+			// rest from finalizing — this draft simply stays queued and is retried at the
+			// next run, since it's still dated before `today`.
+			console.error(`[journal] failed to finalize project ${draft.project_id}: ${(err as Error).message}`);
+		}
+	}
+}
+
+async function finalizeOneDraft(
+	admin: SupabaseClient<Database>,
+	env: Env,
+	projectId: string,
+	draftDate: string,
+	content: string,
+	today: string,
+): Promise<void> {
+	// A day with nothing written is simply skipped — "except if there is no content
+	// to be saved" — but the draft still has to move forward to today, or every empty
+	// day between now and the last real entry would be retried forever.
+	if (content.trim()) {
+		const { data: file } = await admin
+			.from('files')
+			.select('id, r2_key, size_bytes, uploaded_by')
+			.eq('project_id', projectId)
+			.eq('is_journal', true)
+			.maybeSingle();
+
+		if (!file) {
+			console.error(`[journal] project ${projectId} has a draft but no journal file — skipping`);
+			return;
+		}
+
+		// Charged to the file's owner (always the project owner — see ensureJournalFile),
+		// same rule as content.ts's PUT. A full quota leaves the draft queued rather than
+		// writing past the cap; it's retried on the next run instead of being dropped.
+		const growth = new TextEncoder().encode(content).byteLength;
+		if (await wouldExceedUserStorageQuota(admin, file.uploaded_by, growth)) {
+			console.error(`[journal] project ${projectId}'s owner is over quota — leaving draft queued`);
+			return;
+		}
+
+		const current = await readJournalObject(env, file.r2_key);
+		const updated = appendJournalEntry(current, draftDate, content);
+		const sizeBytes = await writeJournalObject(env, file.r2_key, updated);
+
+		await admin.from('files').update({ size_bytes: sizeBytes }).eq('id', file.id);
+	}
+
+	await admin
+		.from('journal_drafts')
+		.update({ draft_date: today, content: '', updated_by: null })
+		.eq('project_id', projectId);
+}

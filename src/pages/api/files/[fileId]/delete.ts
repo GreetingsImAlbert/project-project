@@ -13,12 +13,18 @@ export const POST: APIRoute = async ({ params, locals }) => {
 
 	const { data: file, error: fileError } = await locals.supabase
 		.from('files')
-		.select('project_id, r2_key')
+		.select('project_id, r2_key, is_journal')
 		.eq('id', fileId)
 		.single();
 
 	if (fileError || !file) {
 		return new Response('File not found', { status: 404 });
+	}
+
+	// The RLS delete policy already refuses this (see SCHEMA.md), but that would
+	// surface as a bare "Failed to delete file: ..." — this gives the real reason.
+	if (file.is_journal) {
+		return new Response('The Journal file cannot be deleted', { status: 403 });
 	}
 
 	const { data: membership } = await locals.supabase

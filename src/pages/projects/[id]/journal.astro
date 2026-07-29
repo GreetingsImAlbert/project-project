@@ -1,0 +1,71 @@
+---
+import { env } from 'cloudflare:workers';
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import ProjectShell from '../../../components/ProjectShell.astro';
+import JournalPage from '../../../components/JournalPage.svelte';
+import { getSupabaseAdmin } from '../../../lib/supabase/admin';
+import { listGhostMembers } from '../../../lib/ghost-members';
+import { ensureJournalFile, ensureJournalDraft, readJournalObject } from '../../../lib/journal';
+import { parseJournalEntries } from '../../../lib/journal-entries';
+
+export const prerender = false;
+
+const user = Astro.locals.user;
+if (!user) {
+	return Astro.redirect('/login');
+}
+
+const { id } = Astro.params;
+
+const [{ data: project, error }, { data: members }, ghostMembers] = await Promise.all([
+	Astro.locals.supabase.from('projects').select('id, name, description, owner_id').eq('id', id).single(),
+	Astro.locals.supabase
+		.from('project_members')
+		.select('role, is_auditor, user_id, profiles(display_name, email)')
+		.eq('project_id', id)
+		.overrideTypes<
+			{ role: string; is_auditor: boolean; user_id: string; profiles: { display_name: string; email: string } }[]
+		>(),
+	listGhostMembers(Astro.locals.supabase, id!),
+]);
+
+if (error || !project) {
+	return new Response('Project not found', { status: 404 });
+}
+
+const userRole = members?.find((member) => member.user_id === user.id)?.role;
+
+// "Only owners and editors can use the journal" — a viewer has nothing to see
+// here at all, same as a non-owner on Settings.
+if (userRole !== 'owner' && userRole !== 'editor') {
+	return Astro.redirect(`/projects/${id}`);
+}
+
+const admin = getSupabaseAdmin(env);
+
+// Both lazily create their row on this project's first-ever Journal visit — the
+// file on the admin client (attributed to the owner regardless of who's visiting,
+// see ensureJournalFile), the draft on the caller's own RLS-scoped one.
+const [journalFile, draft] = await Promise.all([
+	ensureJournalFile(admin, env, id!, project.owner_id),
+	ensureJournalDraft(Astro.locals.supabase, id!),
+]);
+
+const journalContent = await readJournalObject(env, journalFile.r2_key);
+// Newest first — a log reads top-down from "most recent", while the file itself
+// stays a plain append-only tail (see journal-entries.ts).
+const entries = parseJournalEntries(journalContent).reverse();
+---
+<BaseLayout title={`${project.name} — Journal`}>
+	<ProjectShell project={project} members={members ?? []} ghostMembers={ghostMembers} userRole={userRole} activePage="journal">
+		<h2>Journal</h2>
+
+		<JournalPage
+			client:load
+			projectId={project.id}
+			initialDraftDate={draft.draft_date}
+			initialDraftContent={draft.content}
+			initialEntries={entries}
+		/>
+	</ProjectShell>
+</BaseLayout>

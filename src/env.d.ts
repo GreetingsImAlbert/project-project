@@ -12,4 +12,14 @@ declare global {
     }
 }
 
+// Vite public env vars, inlined into the client bundle — see lib/supabase/browser.ts.
+interface ImportMetaEnv {
+    readonly PUBLIC_SUPABASE_URL: string;
+    readonly PUBLIC_SUPABASE_PUBLISHABLE_KEY: string;
+}
+
+interface ImportMeta {
+    readonly env: ImportMetaEnv;
+}
+
 export {};

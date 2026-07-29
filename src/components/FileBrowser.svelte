@@ -24,6 +24,9 @@
 		size_bytes: number | null;
 		uploaded_by: string;
 		profiles: { display_name: string } | null;
+		// Absent (rather than false) on rows this component creates itself — an upload
+		// or a copy is never the project's Journal file, so there's nothing to select.
+		is_journal?: boolean;
 	}
 
 	let {

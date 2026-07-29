@@ -3,7 +3,13 @@
 	"compatibility_date": "2026-07-18",
 	"compatibility_flags": ["global_fetch_strictly_public", "nodejs_compat"],
 	"name": "p2",
-	"main": "@astrojs/cloudflare/entrypoints/server",
+	// Wraps the adapter's own entrypoint to also export `scheduled` — see src/worker.ts.
+	"main": "./src/worker.ts",
+	// UTC midnight, once a day — rolls every project's Journal draft into its file.
+	// See finalizeStaleDrafts in src/lib/journal.ts.
+	"triggers": {
+		"crons": ["0 0 * * *"]
+	},
 	// Every SSR page load is a chain of Supabase round trips, and Postgres sits in
 	// one fixed region while the Worker would otherwise run at the edge nearest the
 	// user — so each hop pays a full edge->region trip. Smart Placement runs the

@@ -9,6 +9,7 @@
 		size_bytes: number | null;
 		uploaded_by: string;
 		profiles: { display_name: string } | null;
+		is_journal?: boolean;
 	}
 
 	interface Folder {
@@ -137,9 +138,11 @@
 	<div class="actions-panel" data-file-actions transition:slide={{ duration: 150 }}>
 		<button type="button" class="btn-plain" onclick={() => openModal(file, 'move')}>Move</button>
 		<button type="button" class="btn-plain" onclick={() => openModal(file, 'copy')}>Copy</button>
-		<button type="button" class="btn-danger" onclick={() => handleDelete(file.id)} disabled={deletingId === file.id}>
-			{deletingId === file.id ? 'Deleting…' : 'Delete'}
-		</button>
+		{#if !file.is_journal}
+			<button type="button" class="btn-danger" onclick={() => handleDelete(file.id)} disabled={deletingId === file.id}>
+				{deletingId === file.id ? 'Deleting…' : 'Delete'}
+			</button>
+		{/if}
 	</div>
 {/snippet}
 
