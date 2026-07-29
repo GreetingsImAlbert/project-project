@@ -1,7 +1,10 @@
 {
 	"$schema": "./node_modules/wrangler/config-schema.json",
 	"compatibility_date": "2026-07-18",
-	"compatibility_flags": ["global_fetch_strictly_public", "nodejs_compat"],
+	"compatibility_flags": [
+		"global_fetch_strictly_public",
+		"nodejs_compat"
+	],
 	"name": "p2",
 	// Wraps the adapter's own entrypoint to also export `scheduled` — see src/worker.ts.
 	"main": "./src/worker.ts",
@@ -9,14 +12,18 @@
 	// itself uses (journalToday in src/lib/journal.ts). Cron expressions are always
 	// UTC, so the +08:00 offset is baked into the hour here. See finalizeStaleDrafts.
 	"triggers": {
-		"crons": ["0 16 * * *"]
+		"crons": [
+			"0 16 * * *"
+		]
 	},
 	// Every SSR page load is a chain of Supabase round trips, and Postgres sits in
 	// one fixed region while the Worker would otherwise run at the edge nearest the
 	// user — so each hop pays a full edge->region trip. Smart Placement runs the
 	// Worker near the database instead: N long hops become N short ones plus a
 	// single long user->Worker trip. Production-only, no effect under wrangler dev.
-	"placement": { "mode": "smart" },
+	"placement": {
+		"mode": "smart"
+	},
 	"assets": {
 		"directory": "./dist",
 		"binding": "ASSETS"

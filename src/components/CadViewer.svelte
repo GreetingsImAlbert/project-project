@@ -3,17 +3,14 @@
 	// import from FileViewerPanel, which is what keeps three.js — several hundred KB — in
 	// its own chunk and out of every page that merely lists files.
 	//
-	// View-only by design: orbit, zoom, pan. STL/OBJ/PLY/3MF are triangle soups the loaders
-	// below hand back directly; STEP/IGES are boundary representations instead and go
-	// through occt-import-js (OpenCASCADE compiled to WASM) in cad-worker.ts, off the main
-	// thread — see loadBrepModel.
+	// View-only by design: orbit, zoom, pan. Every format — STL/OBJ/PLY/3MF triangle soups
+	// and STEP/IGES boundary representations alike — is parsed off the main thread in
+	// cad-worker.ts (STEP/IGES via occt-import-js, OpenCASCADE compiled to WASM; the rest via
+	// three's own loaders), so a large file never freezes this tab while it parses — see
+	// loadModel.
 	import { onMount } from 'svelte';
 	import * as THREE from 'three';
 	import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-	import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
-	import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
-	import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader.js';
-	import { ThreeMFLoader } from 'three/examples/jsm/loaders/3MFLoader.js';
 	import { onSwapOrDestroy } from '../lib/island-teardown';
 	import { splitFilename } from '../lib/file-kind';
 	import type { CadWorkerMesh, CadWorkerRequest, CadWorkerResponse } from '../lib/cad-worker';
@@ -60,9 +57,9 @@
 	// canvas.
 	let loadSeq = 0;
 	let inflight: AbortController | null = null;
-	// The tessellation worker for a STEP/IGES load in flight, if any — terminating it is how
-	// a load in progress gets cancelled, since occt-import-js has no cooperative abort of its
-	// own once a file is handed to it.
+	// The parse worker for a load in flight, if any — terminating it is how a load in
+	// progress gets cancelled, since none of the loaders in cad-worker.ts have a
+	// cooperative abort of their own once a file is handed to them.
 	let inflightWorker: Worker | null = null;
 
 	// STEP/IGES can carry real per-solid colour, same reason 3MF keeps its own materials
@@ -217,36 +214,29 @@
 		return bytes.buffer;
 	}
 
+	const FORMAT_BY_EXTENSION: Record<string, CadWorkerRequest['format']> = {
+		stl: 'stl',
+		ply: 'ply',
+		obj: 'obj',
+		'3mf': '3mf',
+		step: 'step',
+		stp: 'step',
+		iges: 'iges',
+		igs: 'iges',
+	};
+
 	async function buildModel(extension: string, buffer: ArrayBuffer): Promise<THREE.Object3D> {
-		switch (extension) {
-			case 'stl':
-				// Handles both the binary and the ASCII flavour off the same buffer.
-				return new THREE.Mesh(new STLLoader().parse(buffer), partMaterial());
-			case 'ply':
-				return new THREE.Mesh(new PLYLoader().parse(buffer), partMaterial());
-			case 'obj':
-				// The only text format here, and the only one that can reference a .mtl we
-				// have no way to fetch — so its materials are replaced wholesale below.
-				return new OBJLoader().parse(new TextDecoder().decode(buffer));
-			case '3mf':
-				return new ThreeMFLoader().parse(buffer);
-			case 'step':
-			case 'stp':
-				return loadBrepModel('step', buffer);
-			case 'iges':
-			case 'igs':
-				return loadBrepModel('iges', buffer);
-			default:
-				throw new Error('Unsupported model format');
-		}
+		const format = FORMAT_BY_EXTENSION[extension];
+		if (!format) throw new Error('Unsupported model format');
+		return loadModel(format, buffer);
 	}
 
-	// Hands the raw bytes to cad-worker.ts and turns its per-solid mesh list back into a
-	// THREE.Object3D, the same shape every other branch of buildModel returns. A fresh
-	// worker per call rather than a shared one kept around: it makes cancelling a load (the
-	// user opens another file, or closes the panel) as simple as terminate(), with no
-	// message-id bookkeeping to match a stale response back to an abandoned request.
-	function loadBrepModel(format: CadWorkerRequest['format'], buffer: ArrayBuffer): Promise<THREE.Object3D> {
+	// Hands the raw bytes to cad-worker.ts and turns its mesh list back into a
+	// THREE.Object3D via meshesToObject. A fresh worker per call rather than a shared one
+	// kept around: it makes cancelling a load (the user opens another file, or closes the
+	// panel) as simple as terminate(), with no message-id bookkeeping to match a stale
+	// response back to an abandoned request.
+	function loadModel(format: CadWorkerRequest['format'], buffer: ArrayBuffer): Promise<THREE.Object3D> {
 		return new Promise((resolve, reject) => {
 			const worker = new Worker(new URL('../lib/cad-worker.ts', import.meta.url), { type: 'module' });
 			inflightWorker = worker;
@@ -281,15 +271,17 @@
 		});
 	}
 
-	// Colour, when occt-import-js found one on the solid; the same neutral material as the
-	// other formats otherwise. Most mechanical STEP/IGES exports carry no colour at all.
+	// Colour, when cad-worker.ts found one on the solid (STEP/IGES) or the object (3MF); the
+	// same neutral material as the other formats otherwise. Most mechanical STEP/IGES
+	// exports carry no colour at all.
 	function meshesToObject(meshes: CadWorkerMesh[]): THREE.Object3D {
 		const group = new THREE.Group();
 		for (const mesh of meshes) {
 			const geometry = new THREE.BufferGeometry();
 			geometry.setAttribute('position', new THREE.BufferAttribute(mesh.position, 3));
 			if (mesh.normal) geometry.setAttribute('normal', new THREE.BufferAttribute(mesh.normal, 3));
-			geometry.setIndex(new THREE.BufferAttribute(mesh.index, 1));
+			// STL/OBJ/PLY commonly parse to non-indexed geometry; STEP/IGES/3MF always have one.
+			if (mesh.index) geometry.setIndex(new THREE.BufferAttribute(mesh.index, 1));
 
 			const material = mesh.color
 				? new THREE.MeshStandardMaterial({
