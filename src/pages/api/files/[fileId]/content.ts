@@ -58,14 +58,15 @@ export const GET: APIRoute = async ({ params, locals }) => {
 		return new Response('File is too large to preview — download it instead', { status: 413 });
 	}
 
-	const r2 = r2Client();
-	const res = await r2.fetch(objectUrlFor(file.r2_key), { method: 'GET' });
+	// Binding read, not the signed S3 API: drops both the SigV4 signing and the
+	// subrequest for the path every file preview goes through.
+	const object = await env.R2_BUCKET.get(file.r2_key);
 
-	if (!res.ok) {
+	if (!object) {
 		return new Response('Could not read this file', { status: 502 });
 	}
 
-	const bytes = await res.arrayBuffer();
+	const bytes = await object.arrayBuffer();
 	if (bytes.byteLength > MAX_VIEWABLE_BYTES) {
 		return new Response('File is too large to preview — download it instead', { status: 413 });
 	}
@@ -98,7 +99,7 @@ export const GET: APIRoute = async ({ params, locals }) => {
 		kind,
 		content,
 		canEdit,
-		etag: res.headers.get('etag'),
+		etag: object.httpEtag,
 	});
 };
 

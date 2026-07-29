@@ -1,5 +1,4 @@
 import type { APIRoute } from 'astro';
-import { AwsClient } from 'aws4fetch';
 import { env } from 'cloudflare:workers';
 import { fileKind, MAX_MODEL_BYTES } from '../../../../lib/file-kind';
 
@@ -42,30 +41,20 @@ export const GET: APIRoute = async ({ params, locals }) => {
 		return new Response('Model is too large to preview — download it instead', { status: 413 });
 	}
 
-	const r2 = new AwsClient({
-		accessKeyId: env.R2_ACCESS_KEY_ID,
-		secretAccessKey: env.R2_SECRET_ACCESS_KEY,
-		service: 's3',
-		region: 'auto',
-	});
+	// The binding reads the bucket directly — no SigV4 signing, no subrequest to
+	// r2.cloudflarestorage.com — so a repeat open costs one Worker invocation, not two.
+	const object = await env.R2_BUCKET.get(file.r2_key);
 
-	const res = await r2.fetch(
-		`https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${env.R2_BUCKET_NAME}/${file.r2_key}`,
-		{ method: 'GET' }
-	);
-
-	if (!res.ok || !res.body) {
+	if (!object || !object.body) {
 		return new Response('Could not read this file', { status: 502 });
 	}
 
-	// Second guard, for rows whose size_bytes predates the HEAD-at-upload behaviour. The
-	// body is still streamed rather than measured, so this reads R2's own header instead.
-	const length = Number(res.headers.get('content-length'));
-	if (Number.isFinite(length) && length > MAX_MODEL_BYTES) {
+	// Second guard, for rows whose size_bytes predates the HEAD-at-upload behaviour.
+	if (object.size > MAX_MODEL_BYTES) {
 		return new Response('Model is too large to preview — download it instead', { status: 413 });
 	}
 
-	return new Response(res.body, {
+	return new Response(object.body, {
 		headers: {
 			// Never the stored mime_type: these bytes are handed to a parser, and letting an
 			// uploader's Content-Type reach the browser on a same-origin URL is how a file
@@ -73,9 +62,11 @@ export const GET: APIRoute = async ({ params, locals }) => {
 			'content-type': 'application/octet-stream',
 			'content-disposition': 'inline',
 			'x-content-type-options': 'nosniff',
-			// Signed R2 reads shouldn't be re-fetched every time the panel reopens, but the
-			// object can be overwritten in place, so this stays private and short.
-			'cache-control': 'private, max-age=60',
+			// A model's r2_key is immutable: the editor's PUT only accepts text kinds, and a
+			// re-upload mints a fresh key, so the object behind this URL never changes in
+			// place. Safe to cache for a year — a repeat open then costs zero Worker
+			// invocations rather than cheap ones.
+			'cache-control': 'private, max-age=31536000, immutable',
 		},
 	});
 };

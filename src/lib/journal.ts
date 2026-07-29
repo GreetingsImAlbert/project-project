@@ -30,10 +30,9 @@ function objectUrlFor(env: Env, r2Key: string) {
 }
 
 export async function readJournalObject(env: Env, r2Key: string): Promise<string> {
-	const r2 = r2Client(env);
-	const res = await r2.fetch(objectUrlFor(env, r2Key), { method: 'GET' });
-	if (!res.ok) return '';
-	return new TextDecoder('utf-8').decode(await res.arrayBuffer());
+	const object = await env.R2_BUCKET.get(r2Key);
+	if (!object) return '';
+	return new TextDecoder('utf-8').decode(await object.arrayBuffer());
 }
 
 // Returns the size R2 actually recorded, same rule as every other write in this
