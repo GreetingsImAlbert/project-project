@@ -17,6 +17,7 @@
 		TASK_STATUS_LABELS,
 		type TaskDisplayStatus,
 	} from '../lib/task-status';
+	import { DEFAULT_DEADLINE_TIME, formatDeadlineTime } from '../lib/deadline-time';
 	import { DELETED_ASSIGNEE_PREFIX } from '../lib/task-form';
 	import { ghostPartyId } from '../lib/money-parties';
 	import { downloadJson, exportFilename } from '../lib/download';
@@ -38,6 +39,7 @@
 		canEdit,
 		currentUserId,
 		serverToday,
+		serverNowTime,
 	}: {
 		projectId: string;
 		projectName: string;
@@ -49,6 +51,7 @@
 		canEdit: boolean;
 		currentUserId: string;
 		serverToday: string;
+		serverNowTime: string;
 	} = $props();
 
 	initTasks(initialTasks);
@@ -56,6 +59,9 @@
 	// Rendered on the server and reused as-is: it's an Asia/Manila date either way,
 	// so there's nothing for the client to correct — see today.ts.
 	const today = serverToday;
+	// The clock half of the same moment, for the deadline that falls on `today` — see
+	// today.ts and task-status.ts.
+	const nowTime = serverNowTime;
 
 	onMount(() => {
 		openLinkedTask();
@@ -125,6 +131,10 @@
 	let addCategoryNew = $state('');
 	let addDescription = $state('');
 	let addDeadline = $state('');
+	// Pre-filled rather than left empty: a deadline with no stated time is due at the end
+	// of its day, and showing that up front beats storing it silently — see
+	// deadline-time.ts.
+	let addDeadlineTime = $state(DEFAULT_DEADLINE_TIME);
 	let addStatus = $state<'ongoing' | 'done'>('ongoing');
 	let addAssignees = $state<string[]>([]);
 
@@ -209,7 +219,7 @@
 	// the local date. The colour ones read `categoryColors` the same way, so a swatch
 	// click repaints every band and popsicle in that category at once.
 	function statusOf(task: Task): TaskDisplayStatus {
-		return displayStatus(task, today);
+		return displayStatus(task, today, nowTime);
 	}
 
 	function styleFor(category: string | null): string {
@@ -324,6 +334,7 @@
 		body.set('category', task.category ?? '');
 		body.set('description', task.description ?? '');
 		body.set('deadline', task.deadline ?? '');
+		body.set('deadline_time', task.deadline_time);
 		body.set('status', task.status === 'done' ? 'ongoing' : 'done');
 		for (const assignee of task.assignees) body.append('assignees', assigneeToken(assignee));
 
@@ -393,6 +404,7 @@
 		addCategoryNew = '';
 		addDescription = '';
 		addDeadline = '';
+		addDeadlineTime = DEFAULT_DEADLINE_TIME;
 		addStatus = 'ongoing';
 		addAssignees = [];
 		showAddForm = false;
@@ -415,6 +427,7 @@
 				category: task.category,
 				description: task.description,
 				deadline: task.deadline,
+				deadlineTime: task.deadline_time,
 				status: task.status,
 				// Names, not ids: a ghost member and a former member have no user_id to
 				// look up, and the point of the export is to be readable on its own.
@@ -568,7 +581,8 @@
 		<dt>Deadline</dt>
 		<dd>
 			{#if task.deadline}
-				{formatDeadline(task.deadline, today)} <span class="muted">({relativeDeadline(task.deadline, today)})</span>
+				{formatDeadline(task.deadline, today)}, {formatDeadlineTime(task.deadline_time)}
+				<span class="muted">({relativeDeadline(task.deadline, today)})</span>
 			{:else}
 				—
 			{/if}
@@ -595,9 +609,15 @@
 			)}
 			<input type="hidden" name="category" value={editCategoryEffective} />
 
+			<!-- Date and time in one field: they're halves of one deadline, and splitting
+			     them across two panel-grid tracks would let the grid put them on separate
+			     rows. -->
 			<label class="field">
 				<span class="field-label">Deadline</span>
-				<input type="date" name="deadline" value={task.deadline ?? ''} />
+				<div class="deadline-inputs">
+					<input type="date" name="deadline" value={task.deadline ?? ''} />
+					<input type="time" name="deadline_time" value={task.deadline_time} aria-label="Deadline time" />
+				</div>
 			</label>
 
 			<!-- Only the two storable states. Overdue is derived from the deadline, so it
@@ -734,7 +754,10 @@
 
 				<label class="field">
 					<span class="field-label">Deadline</span>
-					<input type="date" name="deadline" bind:value={addDeadline} />
+					<div class="deadline-inputs">
+						<input type="date" name="deadline" bind:value={addDeadline} />
+						<input type="time" name="deadline_time" bind:value={addDeadlineTime} aria-label="Deadline time" />
+					</div>
 				</label>
 
 				<label class="field">
@@ -765,7 +788,7 @@
 	{/if}
 
 	{#if viewMode === 'calendar'}
-		<TasksCalendar tasks={visibleTasks} today={today} colorFor={styleForTask} onSelect={toggleDetail} selectedId={openId} />
+		<TasksCalendar tasks={visibleTasks} today={today} nowTime={nowTime} colorFor={styleForTask} onSelect={toggleDetail} selectedId={openId} />
 
 		<!-- The grid has no rows, so the open task's panel lands under it — with the
 		     row controls it would otherwise have nowhere to live. -->
@@ -853,7 +876,7 @@
 								<div class="cell cell-deadline">
 									{#if task.deadline}
 										<span class="deadline-date">{formatDeadline(task.deadline, today)}</span>
-										<span class="task-sub">{relativeDeadline(task.deadline, today)}</span>
+										<span class="task-sub">{formatDeadlineTime(task.deadline_time)} · {relativeDeadline(task.deadline, today)}</span>
 									{:else}
 										<span class="task-sub">no deadline</span>
 									{/if}
@@ -988,16 +1011,16 @@
 
 	/* List */
 
-	/* The deadline track fits 'September 27' at the cell's font size, with the year only
-	   ever added for a deadline outside this one — where a little truncation is the
-	   right trade for keeping every other row tight. */
+	/* The deadline track fits 'September 27' over '11:59 PM · in 3 days' at the cell's
+	   font sizes, with the year only ever added for a deadline outside this one — where
+	   a little truncation is the right trade for keeping every other row tight. */
 	.task-list {
-		--task-cols: minmax(0, 1.5fr) minmax(0, 1.6fr) minmax(0, 1fr) 124px 84px;
+		--task-cols: minmax(0, 1.5fr) minmax(0, 1.6fr) minmax(0, 1fr) 142px 84px;
 		border-top: 1px solid var(--color-border);
 	}
 
 	.task-list.with-actions {
-		--task-cols: minmax(0, 1.5fr) minmax(0, 1.6fr) minmax(0, 1fr) 124px 84px 170px;
+		--task-cols: minmax(0, 1.5fr) minmax(0, 1.6fr) minmax(0, 1fr) 142px 84px 170px;
 	}
 
 	.list-head,
@@ -1309,6 +1332,20 @@
 		min-width: 0;
 		padding: var(--space-1) var(--space-2);
 		font-size: 0.82rem;
+	}
+
+	/* The time box is sized to its own content so the date box takes whatever's left —
+	   the reverse leaves the date truncated at the panel grid's 180px track, which is
+	   the half nobody can read from a truncated string. */
+	.deadline-inputs {
+		display: flex;
+		gap: var(--space-1);
+		min-width: 0;
+	}
+
+	.deadline-inputs input[type='time'] {
+		width: auto;
+		flex: 0 0 auto;
 	}
 
 	.field .field-value {

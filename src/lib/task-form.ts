@@ -1,4 +1,5 @@
 import { calendarDateError } from './calendar-date';
+import { DEFAULT_DEADLINE_TIME, deadlineTimeError, normalizeDeadlineTime } from './deadline-time';
 import { isTaskStatus, type TaskStatus } from './task-status';
 import { ghostIdOf } from './money-parties';
 
@@ -19,6 +20,9 @@ export interface TaskFormValues {
 	category: string | null;
 	description: string | null;
 	deadline: string | null;
+	// Always set, even with no deadline to hang it on: the column is not null, and an
+	// empty time field means 'end of day' rather than 'no time' — see deadline-time.ts.
+	deadline_time: string;
 	status: TaskStatus;
 	// Project members and ghost members to (re)appoint, as party tokens — a bare
 	// user id or money-parties.ts's `ghost:<id>` — since a task_assignees row can
@@ -47,6 +51,7 @@ export function parseTaskForm(formData: FormData, memberIds: Set<string>, ghostI
 	const category = formData.get('category')?.toString().trim() || null;
 	const description = formData.get('description')?.toString().trim() || null;
 	const deadline = formData.get('deadline')?.toString().trim() || null;
+	const deadlineTimeRaw = formData.get('deadline_time')?.toString().trim() || DEFAULT_DEADLINE_TIME;
 	const statusRaw = formData.get('status')?.toString().trim() || 'ongoing';
 
 	if (!name) {
@@ -67,6 +72,15 @@ export function parseTaskForm(formData: FormData, memberIds: Set<string>, ghostI
 		if (dateError) {
 			return { error: `Deadline: ${dateError.charAt(0).toLowerCase()}${dateError.slice(1)}` };
 		}
+	}
+
+	// Checked whether or not a date came with it: the value is stored either way, so a
+	// malformed one would reach the `time` column and come back as a raw 500. Browsers
+	// that render <input type="time"> as a plain text box are exactly the ones this
+	// catches.
+	const timeError = deadlineTimeError(normalizeDeadlineTime(deadlineTimeRaw));
+	if (timeError) {
+		return { error: `Deadline time: ${timeError.charAt(0).toLowerCase()}${timeError.slice(1)}` };
 	}
 
 	// 'overdue' is deliberately not a storable status — it's derived from the
@@ -99,5 +113,5 @@ export function parseTaskForm(formData: FormData, memberIds: Set<string>, ghostI
 		assignees.push(token);
 	}
 
-	return { values: { name, category, description, deadline, status: statusRaw, assignees, keptDeletedAssigneeIds } };
+	return { values: { name, category, description, deadline, deadline_time: normalizeDeadlineTime(deadlineTimeRaw), status: statusRaw, assignees, keptDeletedAssigneeIds } };
 }

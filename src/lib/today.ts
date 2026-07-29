@@ -26,3 +26,22 @@ const dateFormat = new Intl.DateTimeFormat('en-CA', {
 export function appToday(): string {
 	return dateFormat.format(new Date());
 }
+
+// 'HH:MM' in the same zone, zero-padded and 24-hour so it compares lexicographically
+// against a task's stored deadline time exactly as it does chronologically — the same
+// property appToday()'s format relies on. 'en-GB' with hour12 off is the combination
+// that never produces a '24:00' hour for midnight.
+const timeFormat = new Intl.DateTimeFormat('en-GB', {
+	timeZone: APP_TIME_ZONE,
+	hour: '2-digit',
+	minute: '2-digit',
+	hour12: false,
+});
+
+// The clock half of "now", for the one rule that needs it: a task whose deadline is
+// today is overdue only once its time has passed. Read on the server and handed to
+// the islands as a prop, like appToday(), so the two never disagree on hydration —
+// which does mean the page's sense of "now" is the moment it was rendered.
+export function appNowTime(): string {
+	return timeFormat.format(new Date());
+}

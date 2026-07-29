@@ -11,7 +11,7 @@ import { isCategoryColorIndex, type CategoryColors } from '../../lib/category-co
 import { HORIZON_COOKIE, parseHorizonDays } from '../../lib/task-horizon';
 import { projectReminders } from '../../lib/reminders';
 import { listGhostMembers } from '../../lib/ghost-members';
-import { appToday } from '../../lib/today';
+import { appNowTime, appToday } from '../../lib/today';
 
 export const prerender = false;
 
@@ -60,6 +60,7 @@ const [
 			.neq('status', 'done')
 			.not('deadline', 'is', null)
 			.order('deadline', { ascending: true })
+			.order('deadline_time', { ascending: true })
 			.order('name', { ascending: true })
 			.overrideTypes<RawTaskRow[]>(),
 		// Same as the Tasks page: only the categories somebody picked a colour for, with
@@ -94,6 +95,7 @@ const horizonDays = parseHorizonDays(Astro.cookies.get(HORIZON_COOKIE)?.value);
 
 // One fixed calendar for the whole app, server and client alike — see lib/today.ts.
 const serverToday = appToday();
+const serverNowTime = appNowTime();
 ---
 <BaseLayout title={project.name}>
 	<ProjectShell project={project} members={members ?? []} ghostMembers={ghostMembers} userRole={userRole} activePage="overview">
@@ -110,6 +112,7 @@ const serverToday = appToday();
 					reminders={reminders}
 					initialHorizonDays={horizonDays}
 					serverToday={serverToday}
+					serverNowTime={serverNowTime}
 					showMineFilter={true}
 				/>
 			</div>

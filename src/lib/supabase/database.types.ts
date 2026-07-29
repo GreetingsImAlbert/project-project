@@ -434,6 +434,7 @@ export type Database = {
           category: string | null
           created_at: string | null
           deadline: string | null
+          deadline_time: string
           description: string | null
           id: string
           name: string
@@ -444,6 +445,7 @@ export type Database = {
           category?: string | null
           created_at?: string | null
           deadline?: string | null
+          deadline_time?: string
           description?: string | null
           id?: string
           name: string
@@ -454,6 +456,7 @@ export type Database = {
           category?: string | null
           created_at?: string | null
           deadline?: string | null
+          deadline_time?: string
           description?: string | null
           id?: string
           name?: string

@@ -1,3 +1,4 @@
+import { normalizeDeadlineTime } from './deadline-time';
 import type { TaskStatus } from './task-status';
 
 // The Tasks page's SSR query and every task endpoint hand the same row shape to
@@ -8,7 +9,7 @@ import type { TaskStatus } from './task-status';
 // ghost_members (ghost_member_id), so both bare embeds are unambiguous here — no
 // hint needed the way transactions' two-FKs-to-the-same-table pairs need one.
 export const TASK_COLUMNS =
-	'id, name, category, description, deadline, status, task_assignees(id, user_id, ghost_member_id, deleted_display_name, profiles(display_name), ghost_members(display_name))';
+	'id, name, category, description, deadline, deadline_time, status, task_assignees(id, user_id, ghost_member_id, deleted_display_name, profiles(display_name), ghost_members(display_name))';
 
 export interface TaskAssignee {
 	// The task_assignees row's own id — the only stable key once user_id has gone
@@ -26,6 +27,10 @@ export interface Task {
 	category: string | null;
 	description: string | null;
 	deadline: string | null;
+	// Time of day the deadline falls at, always 'HH:MM' and never null — a dated task
+	// with no stated time is due at the end of its day. Meaningless (and unread) when
+	// `deadline` is null. See deadline-time.ts.
+	deadline_time: string;
 	status: TaskStatus;
 	assignees: TaskAssignee[];
 }
@@ -38,6 +43,9 @@ export interface RawTaskRow {
 	category: string | null;
 	description: string | null;
 	deadline: string | null;
+	// 'HH:MM:SS' out of Postgres; normalizeTask trims it to the 'HH:MM' the rest of the
+	// app (and <input type="time">) works in.
+	deadline_time: string;
 	status: string;
 	task_assignees: {
 		id: string;
@@ -59,6 +67,7 @@ export function normalizeTask(row: RawTaskRow): Task {
 		category: row.category,
 		description: row.description,
 		deadline: row.deadline,
+		deadline_time: normalizeDeadlineTime(row.deadline_time),
 		// The check constraint only allows these two, so anything else would mean the
 		// column drifted from the app — treat it as ongoing rather than widening the type.
 		status: row.status === 'done' ? 'done' : 'ongoing',
@@ -73,15 +82,21 @@ export function normalizeTask(row: RawTaskRow): Task {
 	};
 }
 
-// Deadline first (soonest at the top), tasks with no deadline last, name as the
-// tiebreak. Applied client-side as well as in the SSR query's `order`, because an
-// edit that changes a deadline has to re-sort without a refetch.
+// Deadline first (soonest at the top), then time of day within the same date, tasks
+// with no deadline last, name as the tiebreak. Applied client-side as well as in the
+// SSR query's `order`, because an edit that changes a deadline has to re-sort without
+// a refetch.
 export function sortTasks(tasks: Task[]): Task[] {
 	return [...tasks].sort((a, b) => {
 		if (a.deadline !== b.deadline) {
 			if (!a.deadline) return 1;
 			if (!b.deadline) return -1;
 			return a.deadline < b.deadline ? -1 : 1;
+		}
+		// Only meaningful once both sit on the same day — and when neither has a date at
+		// all, both times are the column default, so this falls through to the name.
+		if (a.deadline && a.deadline_time !== b.deadline_time) {
+			return a.deadline_time < b.deadline_time ? -1 : 1;
 		}
 		return a.name.localeCompare(b.name);
 	});

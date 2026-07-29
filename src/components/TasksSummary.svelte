@@ -1,13 +1,16 @@
 <script lang="ts">
 	import { tasksState, initTasks, type Task } from '../lib/tasks-store.svelte';
-	import { displayStatus, relativeDeadline } from '../lib/task-status';
+	import { deadlinePassed, displayStatus, relativeDeadline } from '../lib/task-status';
+	import { formatDeadlineTime } from '../lib/deadline-time';
 
 	let {
 		initialTasks,
 		serverToday,
+		serverNowTime,
 	}: {
 		initialTasks: Task[];
 		serverToday: string;
+		serverNowTime: string;
 	} = $props();
 
 	initTasks(initialTasks);
@@ -15,8 +18,9 @@
 	// Rendered on the server and reused as-is: it's an Asia/Manila date either way,
 	// so there's nothing for the client to correct — see today.ts.
 	const today = serverToday;
+	const nowTime = serverNowTime;
 
-	let statuses = $derived(tasksState.tasks.map((task) => displayStatus(task, today)));
+	let statuses = $derived(tasksState.tasks.map((task) => displayStatus(task, today, nowTime)));
 
 	let ongoing = $derived(statuses.filter((s) => s === 'ongoing').length);
 	let overdue = $derived(statuses.filter((s) => s === 'overdue').length);
@@ -24,12 +28,19 @@
 
 	// Soonest deadline still ahead of us on a task that isn't done. Overdue tasks are
 	// excluded on purpose — they have their own tile, and showing a past date under
-	// 'Next deadline' would read as if it were still upcoming.
+	// 'Next deadline' would read as if it were still upcoming. The whole moment is kept
+	// rather than just the date, so the note underneath can say the time of day and two
+	// tasks sharing a date resolve to the earlier one.
 	let nextDue = $derived(
 		tasksState.tasks
-			.filter((task) => task.status !== 'done' && task.deadline && task.deadline >= today)
-			.map((task) => task.deadline!)
-			.sort()[0] ?? null,
+			.filter(
+				(task) =>
+					task.status !== 'done' &&
+					task.deadline &&
+					!deadlinePassed(task.deadline, task.deadline_time, today, nowTime),
+			)
+			.map((task) => ({ date: task.deadline!, time: task.deadline_time }))
+			.sort((a, b) => (a.date === b.date ? a.time.localeCompare(b.time) : a.date.localeCompare(b.date)))[0] ?? null,
 	);
 </script>
 
@@ -48,8 +59,10 @@
 
 	<div class="tile">
 		<span class="tile-label">Next deadline</span>
-		<span class="tile-value">{nextDue ?? '—'}</span>
-		<span class="tile-note">{nextDue ? relativeDeadline(nextDue, today) : 'nothing scheduled'}</span>
+		<span class="tile-value">{nextDue?.date ?? '—'}</span>
+		<span class="tile-note">
+			{nextDue ? `${relativeDeadline(nextDue.date, today)} · ${formatDeadlineTime(nextDue.time)}` : 'nothing scheduled'}
+		</span>
 	</div>
 </div>
 

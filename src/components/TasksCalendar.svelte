@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Task } from '../lib/tasks-store.svelte';
 	import { displayStatus } from '../lib/task-status';
+	import { DEFAULT_DEADLINE_TIME, formatDeadlineTime } from '../lib/deadline-time';
 
 	// A child of TasksTable rather than its own island: it reads the same filtered
 	// task list, the same `today`, and the same category colours, and clicking a
@@ -9,12 +10,14 @@
 	let {
 		tasks,
 		today,
+		nowTime,
 		colorFor,
 		onSelect,
 		selectedId,
 	}: {
 		tasks: Task[];
 		today: string;
+		nowTime: string;
 		colorFor: (task: Task) => string;
 		onSelect: (id: string) => void;
 		selectedId: string | null;
@@ -128,7 +131,7 @@
 
 				<div class="pops">
 					{#each cell.tasks as task (task.id)}
-						{@const status = displayStatus(task, today)}
+						{@const status = displayStatus(task, today, nowTime)}
 						<!-- The popsicle carries the category colour and nothing else, so status
 						     has to be said another way: done is struck through and faded, overdue
 						     takes a danger-coloured edge. -->
@@ -137,9 +140,15 @@
 							class="pop status-{status}"
 							class:selected={selectedId === task.id}
 							style={colorFor(task)}
-							title={task.name}
+							title={`${task.name} — due ${formatDeadlineTime(task.deadline_time)}`}
 							onclick={() => onSelect(task.id)}
 						>
+							<!-- Only when it isn't end of day: a cell this narrow truncates titles
+							     already, and '11:59 PM' on every popsicle would be spending that
+							     width to say the same thing the date already says. -->
+							{#if task.deadline_time !== DEFAULT_DEADLINE_TIME}
+								<span class="pop-time">{formatDeadlineTime(task.deadline_time)}</span>
+							{/if}
 							{task.name}
 						</button>
 					{/each}
@@ -288,6 +297,11 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		cursor: pointer;
+	}
+
+	.pop-time {
+		opacity: 0.7;
+		font-variant-numeric: tabular-nums;
 	}
 
 	.pop:hover {

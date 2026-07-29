@@ -20,6 +20,8 @@ export interface Reminder {
 	category: string | null;
 	// Never null: a task with no deadline can't come due, so it never becomes a reminder.
 	deadline: string;
+	// 'HH:MM', the time of day that deadline falls at — see deadline-time.ts.
+	deadlineTime: string;
 	colorIndex: number | null;
 	projectId: string;
 	// The project's name, or null on a page that's already about one project and would
@@ -42,6 +44,7 @@ export function projectReminders(tasks: Task[], projectId: string, colors: Categ
 			name: task.name,
 			category: task.category,
 			deadline: task.deadline!,
+			deadlineTime: task.deadline_time,
 			colorIndex: categoryColorIndex(task.category, colors),
 			projectId,
 			projectName: null,

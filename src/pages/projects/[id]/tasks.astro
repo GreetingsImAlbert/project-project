@@ -6,7 +6,7 @@ import TasksTable from '../../../components/TasksTable.svelte';
 import { TASK_COLUMNS, normalizeTask, type RawTaskRow } from '../../../lib/task-columns';
 import { isCategoryColorIndex, type CategoryColors } from '../../../lib/category-color';
 import { listGhostMembers } from '../../../lib/ghost-members';
-import { appToday } from '../../../lib/today';
+import { appNowTime, appToday } from '../../../lib/today';
 
 export const prerender = false;
 
@@ -38,6 +38,7 @@ const [{ data: project, error }, { data: members }, ghostMembers, { data: taskRo
 		.select(TASK_COLUMNS)
 		.eq('project_id', id)
 		.order('deadline', { ascending: true, nullsFirst: false })
+		.order('deadline_time', { ascending: true })
 		.order('name', { ascending: true })
 		.overrideTypes<RawTaskRow[]>(),
 	// Only the categories somebody has picked a colour for. Everything else falls back
@@ -84,11 +85,12 @@ const initialViewMode = storedTaskView === 'calendar' ? 'calendar' : 'list';
 // One fixed calendar for the whole app, so both islands and the server derive
 // identical statuses — see lib/today.ts.
 const serverToday = appToday();
+const serverNowTime = appNowTime();
 ---
 
 <BaseLayout title={`${project.name} — Tasks`}>
 	<ProjectShell project={project} members={members ?? []} ghostMembers={ghostMembers} userRole={userRole} activePage="tasks">
-		<TasksSummary client:load initialTasks={tasks} serverToday={serverToday} />
+		<TasksSummary client:load initialTasks={tasks} serverToday={serverToday} serverNowTime={serverNowTime} />
 		<TasksTable
 			client:load
 			projectId={project.id}
@@ -101,6 +103,7 @@ const serverToday = appToday();
 			canEdit={canEdit}
 			currentUserId={user.id}
 			serverToday={serverToday}
+			serverNowTime={serverNowTime}
 		/>
 	</ProjectShell>
 </BaseLayout>

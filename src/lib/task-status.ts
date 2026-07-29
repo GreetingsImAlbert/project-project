@@ -2,8 +2,9 @@
 //
 // The column holds only the two states a person can actually choose. A task reads
 // as overdue when its deadline has passed and it isn't done — computed at render
-// time, so it flips the moment the date rolls over rather than the next time
-// somebody happens to open the edit form. A stored third state would be stale by
+// time from the deadline's date and its time of day (see deadline-time.ts), so it
+// flips on the next render past that moment rather than the next time somebody
+// happens to open the edit form. A stored third state would be stale by
 // definition: nothing in this app runs on a schedule to go and update it.
 //
 // Everything here takes `today` as an argument rather than calling the clock
@@ -26,12 +27,30 @@ export function isTaskStatus(value: string | null | undefined): value is TaskSta
 	return value === 'ongoing' || value === 'done';
 }
 
-// String comparison is the right one here: zero-padded YYYY-MM-DD sorts
-// lexicographically exactly as it does chronologically.
-export function displayStatus(task: { status: TaskStatus; deadline: string | null }, today: string): TaskDisplayStatus {
+// String comparison is the right one here: zero-padded YYYY-MM-DD and HH:MM both sort
+// lexicographically exactly as they do chronologically.
+//
+// `nowTime` is the clock half of the same moment `today` is the date half of — both
+// from today.ts, both in Asia/Manila — and it only decides the boundary day: a task due
+// earlier today is already late, one due later today is not. Everything before or after
+// that day is settled by the date alone.
+export function displayStatus(
+	task: { status: TaskStatus; deadline: string | null; deadline_time: string },
+	today: string,
+	nowTime: string,
+): TaskDisplayStatus {
 	if (task.status === 'done') return 'done';
-	if (task.deadline && task.deadline < today) return 'overdue';
+	if (!task.deadline) return 'ongoing';
+	if (task.deadline < today) return 'overdue';
+	if (task.deadline === today && task.deadline_time < nowTime) return 'overdue';
 	return 'ongoing';
+}
+
+// Whether a deadline moment has already passed, for the callers that hold a date and a
+// time rather than a whole task — the Reminders list, which works from Reminder rows.
+export function deadlinePassed(deadline: string, deadlineTime: string, today: string, nowTime: string): boolean {
+	if (deadline < today) return true;
+	return deadline === today && deadlineTime < nowTime;
 }
 
 // Whole days from `today` to `deadline`: negative in the past, 0 for today.

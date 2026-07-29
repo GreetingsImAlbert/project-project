@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { categoryColorStyle } from '../lib/category-color';
-	import { daysUntil, formatDeadline, relativeDeadline } from '../lib/task-status';
+	import { daysUntil, deadlinePassed, formatDeadline, relativeDeadline } from '../lib/task-status';
+import { formatDeadlineTime } from '../lib/deadline-time';
 	import { HORIZON_COOKIE, HORIZON_OPTIONS, horizonLabel } from '../lib/task-horizon';
 	import type { Reminder } from '../lib/reminders';
 
@@ -8,6 +9,7 @@
 		reminders,
 		initialHorizonDays,
 		serverToday,
+		serverNowTime,
 		showMineFilter = false,
 		emptyLabel = 'Nothing due',
 	}: {
@@ -16,6 +18,7 @@
 		reminders: Reminder[];
 		initialHorizonDays: number;
 		serverToday: string;
+		serverNowTime: string;
 		// The Overview offers it; the Dashboard doesn't, because its list is the reader's
 		// own tasks to begin with and the filter would be a checkbox that changes nothing.
 		showMineFilter?: boolean;
@@ -25,6 +28,7 @@
 	// Which tasks fall inside the window is decided once, on the server: it's an
 	// Asia/Manila date there and would be the same one here — see today.ts.
 	const today = serverToday;
+	const nowTime = serverNowTime;
 
 	// Not a store: neither page that renders this edits tasks, so there's no second
 	// island whose copy could go stale.
@@ -45,10 +49,12 @@
 	// Anything already past due, however long ago. Deliberately not bounded by the
 	// horizon: the setting says how far ahead to look, and a deadline that has already
 	// been missed is the one reminder nobody should be able to shorten their way out of.
-	let overdue = $derived(scoped.filter((r) => r.deadline < today));
+	let overdue = $derived(scoped.filter((r) => deadlinePassed(r.deadline, r.deadlineTime, today, nowTime)));
 
 	let upcoming = $derived(
-		scoped.filter((r) => r.deadline >= today && daysUntil(r.deadline, today) <= horizonDays),
+		scoped.filter(
+			(r) => !deadlinePassed(r.deadline, r.deadlineTime, today, nowTime) && daysUntil(r.deadline, today) <= horizonDays,
+		),
 	);
 
 	// Both halves in one list, overdue first — the section is a reading order, not two
@@ -89,7 +95,7 @@
 	{:else}
 		<ul class="reminder-list">
 			{#each due as reminder (reminder.id)}
-				{@const late = reminder.deadline < today}
+				{@const late = deadlinePassed(reminder.deadline, reminder.deadlineTime, today, nowTime)}
 				<!-- One line per reminder: the name, the context it belongs to, then the date
 				     and how far off it is. The stacked version said the same things in twice
 				     the height, and this list is read at a glance. -->
@@ -107,7 +113,10 @@
 						{reminder.category?.trim() || 'Uncategorized'}
 						{#if reminder.assignees}· {reminder.assignees}{/if}
 					</span>
-					<span class="reminder-date">{formatDeadline(reminder.deadline, today)}</span>
+					<span class="reminder-date">
+						{formatDeadline(reminder.deadline, today)}
+						<span class="reminder-time">{formatDeadlineTime(reminder.deadlineTime)}</span>
+					</span>
 					<span class="reminder-rel">{late ? 'overdue' : ''} {relativeDeadline(reminder.deadline, today)}</span>
 				</li>
 			{/each}
@@ -287,6 +296,13 @@
 		white-space: nowrap;
 	}
 
+	/* Rides along with the date rather than taking a column of its own — it's the same
+	   value, and a fourth track would be what pushes the row into wrapping. */
+	.reminder-time {
+		font-size: 0.72rem;
+		color: var(--color-muted);
+	}
+
 	.reminder-rel {
 		flex: 0 0 auto;
 		font-size: 0.72rem;
@@ -295,6 +311,7 @@
 	}
 
 	.reminder.late .reminder-date,
+	.reminder.late .reminder-time,
 	.reminder.late .reminder-rel {
 		color: var(--color-danger);
 	}
