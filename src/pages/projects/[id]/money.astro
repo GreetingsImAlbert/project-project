@@ -61,6 +61,7 @@ const [{ data: project, error }, { data: members }, ghostMembers, { data: bomIte
 		.from('bom_items')
 		.select('id, part_name, category, description, quantity, unit, unit_cost, supplier, item_url, total_cost')
 		.eq('project_id', id)
+		.is('deleted_at', null)
 		.order('created_at', { ascending: true }),
 	// created_at breaks the tie: every line of a bulk transaction carries its parent's
 	// date, so ordering by date alone leaves a purchase's own breakdown in whatever order
@@ -69,6 +70,7 @@ const [{ data: project, error }, { data: members }, ghostMembers, { data: bomIte
 		.from('transactions')
 		.select(TRANSACTION_COLUMNS)
 		.eq('project_id', id)
+		.is('deleted_at', null)
 		.order('transaction_date', { ascending: true })
 		.order('created_at', { ascending: true })
 		.overrideTypes<TransactionRow[]>(),

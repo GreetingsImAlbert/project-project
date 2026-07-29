@@ -17,7 +17,7 @@ interface Props {
 	members: Member[];
 	ghostMembers: GhostMember[];
 	userRole: string | undefined;
-	activePage: 'overview' | 'tasks' | 'files' | 'journal' | 'money' | 'settings';
+	activePage: 'overview' | 'tasks' | 'files' | 'journal' | 'money' | 'trash' | 'settings';
 }
 
 const { project, members, ghostMembers, userRole, activePage } = Astro.props;
@@ -25,6 +25,9 @@ const isOwner = userRole === 'owner';
 // Journal follows base editor rights, same as Files/Tasks — a viewer has nothing
 // to do there (see journal.astro, which redirects one away outright).
 const canUseJournal = userRole === 'owner' || userRole === 'editor';
+// Same rights, same reasoning — Trash is nothing but restore/delete-forever
+// actions, which a viewer can't do to anything in it either.
+const canUseTrash = userRole === 'owner' || userRole === 'editor';
 
 // Members are grouped by role instead of colour-coded — owner first, then
 // editors, then viewers. Any role the check constraint grows later still shows
@@ -86,6 +89,9 @@ const memberGroups = roles.map((role) => ({
 			<a href={`/projects/${project.id}/journal`} class={activePage === 'journal' ? 'active' : ''}>Journal</a>
 		)}
 		<a href={`/projects/${project.id}/money`} class={activePage === 'money' ? 'active' : ''}>Money</a>
+		{canUseTrash && (
+			<a href={`/projects/${project.id}/trash`} class={activePage === 'trash' ? 'active' : ''}>Trash</a>
+		)}
 		{isOwner && (
 			<a href={`/projects/${project.id}/settings`} class={activePage === 'settings' ? 'active' : ''}>Settings</a>
 		)}

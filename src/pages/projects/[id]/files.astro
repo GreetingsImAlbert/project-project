@@ -21,6 +21,7 @@ let filesQuery = Astro.locals.supabase
 	.from('files')
 	.select('id, filename, size_bytes, mime_type, created_at, uploaded_by, uploader_deleted_at, is_journal, profiles(display_name)')
 	.eq('project_id', id)
+	.is('deleted_at', null)
 	.order('created_at', { ascending: false });
 
 filesQuery = currentFolderId ? filesQuery.eq('folder_id', currentFolderId) : filesQuery.is('folder_id', null);
@@ -55,7 +56,8 @@ const [
 	Astro.locals.supabase
 		.from('folders')
 		.select('id, name, parent_folder_id')
-		.eq('project_id', id),
+		.eq('project_id', id)
+		.is('deleted_at', null),
 	filesQuery
 		.overrideTypes<{ id: string; filename: string; size_bytes: number | null; mime_type: string | null; created_at: string; uploaded_by: string | null; uploader_deleted_at: string | null; is_journal: boolean; profiles: { display_name: string } | null }[]>(),
 	getUserStorageBytes(admin, user.id),

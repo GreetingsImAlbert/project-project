@@ -1,31 +1,12 @@
 import type { APIRoute } from 'astro';
-import type { SupabaseClient } from '@supabase/supabase-js';
-import type { Database } from '../../../../../../lib/supabase/database.types';
-import { AwsClient } from 'aws4fetch';
-import { env } from 'cloudflare:workers';
+import { collectDescendantFolderIds } from '../../../../../../lib/folder-tree';
 
 export const prerender = false;
 
-// `folders.parent_folder_id` cascades at the DB level, but `files.folder_id` is
-// ON DELETE SET NULL, so files under a deleted folder tree must be removed explicitly
-// rather than left orphaned at the project root.
-async function collectDescendantFolderIds(supabase: SupabaseClient<Database>, rootId: string) {
-	const allIds = [rootId];
-	let frontier = [rootId];
-
-	while (frontier.length > 0) {
-		const { data: children } = await supabase.from('folders').select('id').in('parent_folder_id', frontier);
-
-		const childIds = (children ?? []).map((c) => c.id);
-		if (childIds.length === 0) break;
-
-		allIds.push(...childIds);
-		frontier = childIds;
-	}
-
-	return allIds;
-}
-
+// Soft-delete — stamps deleted_at on the whole folder subtree and every file under
+// it in one pass, moving them to the project's Trash instead of removing them.
+// The R2 objects and rows themselves are left alone until the trash cron (or a
+// user-triggered permanent delete, see purge.ts) actually removes them.
 export const POST: APIRoute = async ({ params, locals }) => {
 	if (!locals.user) {
 		return new Response('Unauthorized', { status: 401 });
@@ -57,45 +38,28 @@ export const POST: APIRoute = async ({ params, locals }) => {
 	}
 
 	const folderIds = await collectDescendantFolderIds(locals.supabase, folderId as string);
+	const deletedAt = new Date().toISOString();
 
-	const { data: files } = await locals.supabase.from('files').select('id, r2_key').in('folder_id', folderIds);
+	// Files under it first: not that order matters for correctness, just so a
+	// failure here reports itself before the folder rows are touched.
+	const { error: filesError } = await locals.supabase
+		.from('files')
+		.update({ deleted_at: deletedAt })
+		.in('folder_id', folderIds)
+		.is('deleted_at', null);
 
-	if (files && files.length > 0) {
-		const { error: filesDeleteError } = await locals.supabase
-			.from('files')
-			.delete()
-			.in(
-				'id',
-				files.map((f) => f.id),
-			);
-
-		if (filesDeleteError) {
-			return new Response(`Failed to delete folder contents: ${filesDeleteError.message}`, { status: 500 });
-		}
+	if (filesError) {
+		return new Response(`Failed to delete folder contents: ${filesError.message}`, { status: 500 });
 	}
 
-	const { error } = await locals.supabase.from('folders').delete().eq('id', folderId);
+	const { error } = await locals.supabase
+		.from('folders')
+		.update({ deleted_at: deletedAt })
+		.in('id', folderIds)
+		.is('deleted_at', null);
 
 	if (error) {
 		return new Response(`Failed to delete folder: ${error.message}`, { status: 500 });
-	}
-
-	// Best-effort: the DB side is already committed, so a failed R2 delete here
-	// just leaks storage quietly rather than undoing the folder delete.
-	if (files && files.length > 0) {
-		const r2 = new AwsClient({
-			accessKeyId: env.R2_ACCESS_KEY_ID,
-			secretAccessKey: env.R2_SECRET_ACCESS_KEY,
-			service: 's3',
-			region: 'auto',
-		});
-
-		await Promise.all(
-			files.map((file) => {
-				const objectUrl = `https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${env.R2_BUCKET_NAME}/${file.r2_key}`;
-				return r2.fetch(objectUrl, { method: 'DELETE' }).catch(() => {});
-			}),
-		);
 	}
 
 	return new Response(null, { status: 204 });

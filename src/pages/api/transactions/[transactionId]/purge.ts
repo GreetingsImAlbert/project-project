@@ -3,8 +3,8 @@ import { canEditMoney } from '../../../../lib/money-access';
 
 export const prerender = false;
 
-// Soft-delete — moves the transaction (and, for a bulk parent, its lines) to the
-// project's Trash instead of removing it.
+// Permanent delete — the "delete forever" action from the Trash page. Deleting a
+// bulk parent cascades its lines via the group_id FK.
 export const POST: APIRoute = async ({ params, locals }) => {
 	if (!locals.user) {
 		return new Response('Unauthorized', { status: 401 });
@@ -14,7 +14,7 @@ export const POST: APIRoute = async ({ params, locals }) => {
 
 	const { data: transaction, error: transactionError } = await locals.supabase
 		.from('transactions')
-		.select('project_id, group_id')
+		.select('project_id, group_id, deleted_at')
 		.eq('id', transactionId)
 		.single();
 
@@ -22,9 +22,10 @@ export const POST: APIRoute = async ({ params, locals }) => {
 		return new Response('Transaction not found', { status: 404 });
 	}
 
-	// A line belongs to its bulk parent, which carries the whole amount — dropping one
-	// line on its own would leave the parent's total standing on a breakdown that no
-	// longer adds up to it. Deleting the parent takes the lines with it (FK cascade).
+	if (!transaction.deleted_at) {
+		return new Response('Transaction is not in the trash', { status: 400 });
+	}
+
 	if (transaction.group_id) {
 		return new Response('Delete this item from its bulk transaction', { status: 400 });
 	}
@@ -33,17 +34,11 @@ export const POST: APIRoute = async ({ params, locals }) => {
 		return new Response('Forbidden', { status: 403 });
 	}
 
-	const deletedAt = new Date().toISOString();
-
-	const { error } = await locals.supabase.from('transactions').update({ deleted_at: deletedAt }).eq('id', transactionId);
+	const { error } = await locals.supabase.from('transactions').delete().eq('id', transactionId);
 
 	if (error) {
 		return new Response(`Failed to delete transaction: ${error.message}`, { status: 500 });
 	}
-
-	// A bulk parent's lines move to (and later come back from) trash with it — see
-	// SCHEMA.md's "Trash bin" section.
-	await locals.supabase.from('transactions').update({ deleted_at: deletedAt }).eq('group_id', transactionId);
 
 	return new Response(null, { status: 204 });
 };

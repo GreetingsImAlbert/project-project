@@ -1,0 +1,141 @@
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import ProjectShell from '../../../components/ProjectShell.astro';
+import TrashList from '../../../components/TrashList.svelte';
+import { listGhostMembers } from '../../../lib/ghost-members';
+
+export const prerender = false;
+
+const user = Astro.locals.user;
+if (!user) {
+	return Astro.redirect('/login');
+}
+
+const { id } = Astro.params;
+
+const [{ data: project, error }, { data: members }, ghostMembers] = await Promise.all([
+	Astro.locals.supabase.from('projects').select('id, name, description, owner_id, currency').eq('id', id).single(),
+	Astro.locals.supabase
+		.from('project_members')
+		.select('role, is_auditor, user_id, profiles(display_name, email)')
+		.eq('project_id', id)
+		.overrideTypes<
+			{ role: string; is_auditor: boolean; user_id: string; profiles: { display_name: string; email: string } }[]
+		>(),
+	listGhostMembers(Astro.locals.supabase, id!),
+]);
+
+if (error || !project) {
+	return new Response('Project not found', { status: 404 });
+}
+
+const currentMember = members?.find((member) => member.user_id === user.id);
+const userRole = currentMember?.role;
+
+// Same rights as the Journal page — a viewer has nothing to do here, only
+// restore/delete-forever actions.
+if (userRole !== 'owner' && userRole !== 'editor') {
+	return Astro.redirect(`/projects/${id}`);
+}
+
+// Money-page edit rights (owner or auditor) gate restoring/purging BOM items and
+// transactions specifically — a plain editor can see they're there (same as the
+// Money page itself) but can't act on them.
+const canEditMoney = currentMember?.role === 'owner' || currentMember?.is_auditor === true;
+
+interface FileRow {
+	id: string;
+	filename: string;
+	size_bytes: number | null;
+	deleted_at: string;
+}
+
+interface FolderRow {
+	id: string;
+	name: string;
+	deleted_at: string;
+}
+
+interface TaskRow {
+	id: string;
+	name: string;
+	category: string | null;
+	deleted_at: string;
+}
+
+interface BomItemRow {
+	id: string;
+	part_name: string;
+	category: string | null;
+	total_cost: number | null;
+	deleted_at: string;
+}
+
+interface TransactionRow {
+	id: string;
+	type: string;
+	item_name: string | null;
+	transaction_date: string;
+	total_cost: number | null;
+	deleted_at: string;
+}
+
+const [{ data: files }, { data: folders }, { data: tasks }, { data: bomItems }, { data: transactions }] = await Promise.all([
+	Astro.locals.supabase
+		.from('files')
+		.select('id, filename, size_bytes, deleted_at')
+		.eq('project_id', id)
+		.not('deleted_at', 'is', null)
+		.order('deleted_at', { ascending: false })
+		.overrideTypes<FileRow[]>(),
+	Astro.locals.supabase
+		.from('folders')
+		.select('id, name, deleted_at')
+		.eq('project_id', id)
+		.not('deleted_at', 'is', null)
+		.order('deleted_at', { ascending: false })
+		.overrideTypes<FolderRow[]>(),
+	Astro.locals.supabase
+		.from('tasks')
+		.select('id, name, category, deleted_at')
+		.eq('project_id', id)
+		.not('deleted_at', 'is', null)
+		.order('deleted_at', { ascending: false })
+		.overrideTypes<TaskRow[]>(),
+	Astro.locals.supabase
+		.from('bom_items')
+		.select('id, part_name, category, total_cost, deleted_at')
+		.eq('project_id', id)
+		.not('deleted_at', 'is', null)
+		.order('deleted_at', { ascending: false })
+		.overrideTypes<BomItemRow[]>(),
+	// Lines of a trashed bulk transaction (group_id set) are restored/purged
+	// together with their parent, not listed as their own row.
+	Astro.locals.supabase
+		.from('transactions')
+		.select('id, type, item_name, transaction_date, total_cost, deleted_at')
+		.eq('project_id', id)
+		.is('group_id', null)
+		.not('deleted_at', 'is', null)
+		.order('deleted_at', { ascending: false })
+		.overrideTypes<TransactionRow[]>(),
+]);
+---
+<BaseLayout title={`${project.name} — Trash`}>
+	<ProjectShell project={project} members={members ?? []} ghostMembers={ghostMembers} userRole={userRole} activePage="trash">
+		<h2>Trash</h2>
+		<p class="muted">Deleted items are kept here for 10 days before they're removed for good.</p>
+
+		<TrashList
+			client:load
+			projectId={project.id}
+			currency={project.currency}
+			canEditMoney={canEditMoney}
+			initialFiles={files ?? []}
+			initialFolders={folders ?? []}
+			initialTasks={tasks ?? []}
+			initialBomItems={bomItems ?? []}
+			initialTransactions={transactions ?? []}
+		/>
+	</ProjectShell>
+</BaseLayout>

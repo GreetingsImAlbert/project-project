@@ -2,9 +2,9 @@ import type { APIRoute } from 'astro';
 
 export const prerender = false;
 
-// Soft-delete — moves the file to the project's Trash instead of removing it.
-// The R2 object is left alone until the trash cron actually purges the row (see
-// src/lib/trash.ts) — restore.ts undoes this, purge.ts does the same removal on demand.
+// Undoes delete.ts. If the file's folder is itself still trashed, it's reparented
+// to the project root instead — restoring one item deep inside a trashed tree
+// shouldn't leave it invisible under a still-deleted folder.
 export const POST: APIRoute = async ({ params, locals }) => {
 	if (!locals.user) {
 		return new Response('Unauthorized', { status: 401 });
@@ -14,7 +14,7 @@ export const POST: APIRoute = async ({ params, locals }) => {
 
 	const { data: file, error: fileError } = await locals.supabase
 		.from('files')
-		.select('project_id, is_journal')
+		.select('project_id, folder_id, deleted_at')
 		.eq('id', fileId)
 		.single();
 
@@ -22,11 +22,8 @@ export const POST: APIRoute = async ({ params, locals }) => {
 		return new Response('File not found', { status: 404 });
 	}
 
-	// The RLS update policy would allow this (Journal isn't protected there — only
-	// the delete policy checks is_journal), so this app-level check is what
-	// actually protects it from ending up in the trash.
-	if (file.is_journal) {
-		return new Response('The Journal file cannot be deleted', { status: 403 });
+	if (!file.deleted_at) {
+		return new Response('File is not in the trash', { status: 400 });
 	}
 
 	const { data: membership } = await locals.supabase
@@ -40,10 +37,19 @@ export const POST: APIRoute = async ({ params, locals }) => {
 		return new Response('Forbidden', { status: 403 });
 	}
 
-	const { error } = await locals.supabase.from('files').update({ deleted_at: new Date().toISOString() }).eq('id', fileId);
+	let folderId = file.folder_id;
+	if (folderId) {
+		const { data: folder } = await locals.supabase.from('folders').select('deleted_at').eq('id', folderId).maybeSingle();
+		if (!folder || folder.deleted_at) folderId = null;
+	}
+
+	const { error } = await locals.supabase
+		.from('files')
+		.update({ deleted_at: null, folder_id: folderId })
+		.eq('id', fileId);
 
 	if (error) {
-		return new Response(`Failed to delete file: ${error.message}`, { status: 500 });
+		return new Response(`Failed to restore file: ${error.message}`, { status: 500 });
 	}
 
 	return new Response(null, { status: 204 });

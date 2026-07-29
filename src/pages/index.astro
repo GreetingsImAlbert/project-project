@@ -38,6 +38,7 @@ const [{ totalBytes, failed }, { data: taskRows }, { data: categoryRows }] = awa
 		.from('tasks')
 		.select('id, name, category, deadline, deadline_time, project_id, projects(name), task_assignees!inner(user_id)')
 		.eq('task_assignees.user_id', user.id)
+		.is('deleted_at', null)
 		.neq('status', 'done')
 		.not('deadline', 'is', null)
 		.order('deadline', { ascending: true })

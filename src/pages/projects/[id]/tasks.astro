@@ -37,6 +37,7 @@ const [{ data: project, error }, { data: members }, ghostMembers, { data: taskRo
 		.from('tasks')
 		.select(TASK_COLUMNS)
 		.eq('project_id', id)
+		.is('deleted_at', null)
 		.order('deadline', { ascending: true, nullsFirst: false })
 		.order('deadline_time', { ascending: true })
 		.order('name', { ascending: true })

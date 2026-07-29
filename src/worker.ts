@@ -2,6 +2,7 @@ import { handle } from '@astrojs/cloudflare/handler';
 import { getSupabaseAdmin } from './lib/supabase/admin';
 import { finalizeStaleDrafts } from './lib/journal';
 import { purgeExpiredPendingDeletions, purgeOrphanedFiles } from './lib/account-deletion';
+import { purgeTrash } from './lib/trash';
 
 // Astro's Cloudflare adapter only ever exports a `fetch` handler — see
 // @astrojs/cloudflare/entrypoints/server.js — and has no config surface for
@@ -26,5 +27,7 @@ export default {
 		// see SCHEMA.md's "Account deletion" section for what each one does.
 		ctx.waitUntil(purgeExpiredPendingDeletions(admin));
 		ctx.waitUntil(purgeOrphanedFiles(admin, env));
+		// Trash-bin purge — see SCHEMA.md's "Trash bin" section.
+		ctx.waitUntil(purgeTrash(admin, env));
 	},
 } satisfies ExportedHandler<Env>;

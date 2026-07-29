@@ -18,6 +18,7 @@ export type Database = {
         Row: {
           category: string | null
           created_at: string | null
+          deleted_at: string | null
           description: string | null
           id: string
           item_url: string | null
@@ -32,6 +33,7 @@ export type Database = {
         Insert: {
           category?: string | null
           created_at?: string | null
+          deleted_at?: string | null
           description?: string | null
           id?: string
           item_url?: string | null
@@ -46,6 +48,7 @@ export type Database = {
         Update: {
           category?: string | null
           created_at?: string | null
+          deleted_at?: string | null
           description?: string | null
           id?: string
           item_url?: string | null
@@ -70,6 +73,7 @@ export type Database = {
       files: {
         Row: {
           created_at: string | null
+          deleted_at: string | null
           filename: string
           folder_id: string | null
           id: string
@@ -84,6 +88,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string | null
+          deleted_at?: string | null
           filename: string
           folder_id?: string | null
           id?: string
@@ -98,6 +103,7 @@ export type Database = {
         }
         Update: {
           created_at?: string | null
+          deleted_at?: string | null
           filename?: string
           folder_id?: string | null
           id?: string
@@ -137,6 +143,7 @@ export type Database = {
       folders: {
         Row: {
           created_at: string | null
+          deleted_at: string | null
           id: string
           name: string
           parent_folder_id: string | null
@@ -144,6 +151,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string | null
+          deleted_at?: string | null
           id?: string
           name: string
           parent_folder_id?: string | null
@@ -151,6 +159,7 @@ export type Database = {
         }
         Update: {
           created_at?: string | null
+          deleted_at?: string | null
           id?: string
           name?: string
           parent_folder_id?: string | null
@@ -435,6 +444,7 @@ export type Database = {
           created_at: string | null
           deadline: string | null
           deadline_time: string
+          deleted_at: string | null
           description: string | null
           id: string
           name: string
@@ -446,6 +456,7 @@ export type Database = {
           created_at?: string | null
           deadline?: string | null
           deadline_time?: string
+          deleted_at?: string | null
           description?: string | null
           id?: string
           name: string
@@ -457,6 +468,7 @@ export type Database = {
           created_at?: string | null
           deadline?: string | null
           deadline_time?: string
+          deleted_at?: string | null
           description?: string | null
           id?: string
           name?: string
@@ -476,6 +488,7 @@ export type Database = {
       transactions: {
         Row: {
           created_at: string | null
+          deleted_at: string | null
           ghost_member_id: string | null
           group_id: string | null
           id: string
@@ -495,6 +508,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string | null
+          deleted_at?: string | null
           ghost_member_id?: string | null
           group_id?: string | null
           id?: string
@@ -514,6 +528,7 @@ export type Database = {
         }
         Update: {
           created_at?: string | null
+          deleted_at?: string | null
           ghost_member_id?: string | null
           group_id?: string | null
           id?: string

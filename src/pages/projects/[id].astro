@@ -48,7 +48,8 @@ const [
 		Astro.locals.supabase
 			.from('bom_items')
 			.select('total_cost')
-			.eq('project_id', id),
+			.eq('project_id', id)
+			.is('deleted_at', null),
 		getProjectStorageBytes(Astro.locals.supabase, id!),
 		// Only what can actually become a reminder: still open, and dated. The horizon
 		// itself isn't applied here — it's a client-side setting, and filtering by it in
@@ -57,6 +58,7 @@ const [
 			.from('tasks')
 			.select(TASK_COLUMNS)
 			.eq('project_id', id)
+			.is('deleted_at', null)
 			.neq('status', 'done')
 			.not('deadline', 'is', null)
 			.order('deadline', { ascending: true })

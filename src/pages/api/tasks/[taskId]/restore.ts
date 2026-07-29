@@ -2,7 +2,8 @@ import type { APIRoute } from 'astro';
 
 export const prerender = false;
 
-// Soft-delete — moves the task to the project's Trash instead of removing it.
+// Undoes delete.ts. task_assignees were never touched by the delete, so they're
+// still there once the task comes back.
 export const POST: APIRoute = async ({ params, locals }) => {
 	if (!locals.user) {
 		return new Response('Unauthorized', { status: 401 });
@@ -12,12 +13,16 @@ export const POST: APIRoute = async ({ params, locals }) => {
 
 	const { data: task, error: taskError } = await locals.supabase
 		.from('tasks')
-		.select('project_id')
+		.select('project_id, deleted_at')
 		.eq('id', taskId)
 		.single();
 
 	if (taskError || !task) {
 		return new Response('Task not found', { status: 404 });
+	}
+
+	if (!task.deleted_at) {
+		return new Response('Task is not in the trash', { status: 400 });
 	}
 
 	const { data: membership } = await locals.supabase
@@ -31,12 +36,10 @@ export const POST: APIRoute = async ({ params, locals }) => {
 		return new Response('Forbidden', { status: 403 });
 	}
 
-	// task_assignees is left untouched — a soft-delete never fires the cascade, so a
-	// restored task keeps its appointments. The cron purge is what eventually cascades.
-	const { error } = await locals.supabase.from('tasks').update({ deleted_at: new Date().toISOString() }).eq('id', taskId!);
+	const { error } = await locals.supabase.from('tasks').update({ deleted_at: null }).eq('id', taskId!);
 
 	if (error) {
-		return new Response(`Failed to delete task: ${error.message}`, { status: 500 });
+		return new Response(`Failed to restore task: ${error.message}`, { status: 500 });
 	}
 
 	return new Response(null, { status: 204 });
