@@ -182,13 +182,11 @@
 		<ul class="trash-list">
 			{#each files as file (file.id)}
 				<li class="trash-row">
-					<div class="row-main">
-						<span class="row-label">{file.filename}</span>
-						<span class="row-meta muted">
-							{file.size_bytes != null ? `${Math.round(file.size_bytes).toLocaleString()} B — ` : ''}
-							{daysLeft(file.deleted_at)} day{daysLeft(file.deleted_at) === 1 ? '' : 's'} left
-						</span>
-					</div>
+					<span class="row-label">{file.filename}</span>
+					<span class="row-meta muted">
+						{file.size_bytes != null ? `${Math.round(file.size_bytes).toLocaleString()} B — ` : ''}
+						{daysLeft(file.deleted_at)} day{daysLeft(file.deleted_at) === 1 ? '' : 's'} left
+					</span>
 					{@render actions('file', file.id, file.filename, true)}
 				</li>
 			{/each}
@@ -202,10 +200,8 @@
 		<ul class="trash-list">
 			{#each folders as folder (folder.id)}
 				<li class="trash-row">
-					<div class="row-main">
-						<span class="row-label">{folder.name}</span>
-						<span class="row-meta muted">{daysLeft(folder.deleted_at)} day{daysLeft(folder.deleted_at) === 1 ? '' : 's'} left</span>
-					</div>
+					<span class="row-label">{folder.name}</span>
+					<span class="row-meta muted">{daysLeft(folder.deleted_at)} day{daysLeft(folder.deleted_at) === 1 ? '' : 's'} left</span>
 					{@render actions('folder', folder.id, folder.name, true)}
 				</li>
 			{/each}
@@ -219,13 +215,11 @@
 		<ul class="trash-list">
 			{#each tasks as task (task.id)}
 				<li class="trash-row">
-					<div class="row-main">
-						<span class="row-label">{task.name}</span>
-						<span class="row-meta muted">
-							{task.category ? `${task.category} — ` : ''}
-							{daysLeft(task.deleted_at)} day{daysLeft(task.deleted_at) === 1 ? '' : 's'} left
-						</span>
-					</div>
+					<span class="row-label">{task.name}</span>
+					<span class="row-meta muted">
+						{task.category ? `${task.category} — ` : ''}
+						{daysLeft(task.deleted_at)} day{daysLeft(task.deleted_at) === 1 ? '' : 's'} left
+					</span>
 					{@render actions('task', task.id, task.name, true)}
 				</li>
 			{/each}
@@ -239,13 +233,11 @@
 		<ul class="trash-list">
 			{#each bomItems as item (item.id)}
 				<li class="trash-row">
-					<div class="row-main">
-						<span class="row-label">{item.part_name}</span>
-						<span class="row-meta muted">
-							{item.total_cost != null ? `${formatCurrency(item.total_cost)} — ` : ''}
-							{daysLeft(item.deleted_at)} day{daysLeft(item.deleted_at) === 1 ? '' : 's'} left
-						</span>
-					</div>
+					<span class="row-label">{item.part_name}</span>
+					<span class="row-meta muted">
+						{item.total_cost != null ? `${formatCurrency(item.total_cost)} — ` : ''}
+						{daysLeft(item.deleted_at)} day{daysLeft(item.deleted_at) === 1 ? '' : 's'} left
+					</span>
 					{@render actions('bom_item', item.id, item.part_name, canEditMoney)}
 				</li>
 			{/each}
@@ -260,14 +252,12 @@
 			{#each transactions as transaction (transaction.id)}
 				{@const label = transaction.item_name ?? transaction.type}
 				<li class="trash-row">
-					<div class="row-main">
-						<span class="row-label">{label}</span>
-						<span class="row-meta muted">
-							{transaction.total_cost != null ? `${formatCurrency(transaction.total_cost)} — ` : ''}
-							{transaction.transaction_date} —
-							{daysLeft(transaction.deleted_at)} day{daysLeft(transaction.deleted_at) === 1 ? '' : 's'} left
-						</span>
-					</div>
+					<span class="row-label">{label}</span>
+					<span class="row-meta muted">
+						{transaction.total_cost != null ? `${formatCurrency(transaction.total_cost)} — ` : ''}
+						{transaction.transaction_date} —
+						{daysLeft(transaction.deleted_at)} day{daysLeft(transaction.deleted_at) === 1 ? '' : 's'} left
+					</span>
 					{@render actions('transaction', transaction.id, label, canEditMoney)}
 				</li>
 			{/each}
@@ -281,14 +271,21 @@
 	}
 
 	.trash-section h3 {
-		margin-bottom: var(--space-2);
+		margin: 0 0 var(--space-2);
+		padding-bottom: var(--space-2);
+		border-bottom: 1px solid var(--color-border);
+		color: var(--color-muted);
+		font-size: 0.68rem;
+		font-weight: 700;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
 	}
 
 	.trash-list {
 		list-style: none;
 		margin: 0;
 		padding: 0;
-		font-size: 0.85rem;
+		font-size: 0.82rem;
 	}
 
 	.trash-list > .trash-row {
@@ -300,46 +297,56 @@
 	}
 
 	.trash-row {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		flex-wrap: wrap;
-		gap: var(--space-2);
-		padding: var(--space-2);
-	}
-
-	.row-main {
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-		min-width: 0;
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+		align-items: baseline;
+		gap: var(--space-3);
+		padding: var(--space-1) var(--space-2);
 	}
 
 	.row-label {
 		font-weight: 600;
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
 	}
 
 	.row-meta {
 		font-size: 0.78rem;
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
 	}
 
 	.row-actions {
 		display: flex;
 		gap: var(--space-1);
 		flex-shrink: 0;
+		justify-content: flex-end;
+	}
+
+	.row-actions button {
+		flex-shrink: 0;
+		white-space: nowrap;
+		padding: 0 var(--space-2);
+		font-size: 0.7rem;
+		line-height: 1.8;
 	}
 
 	.row-error {
+		grid-column: 1 / -1;
 		color: var(--color-danger);
 		margin: 0;
-		width: 100%;
-		padding: 0 var(--space-2) var(--space-2);
 	}
 
 	@media (max-width: 640px) {
 		.trash-row {
-			flex-direction: column;
-			align-items: flex-start;
+			grid-template-columns: minmax(0, 1fr);
+			row-gap: 2px;
+		}
+
+		.row-actions {
+			grid-column: 1 / -1;
 		}
 	}
 </style>
