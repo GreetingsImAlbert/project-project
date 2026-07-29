@@ -3,8 +3,8 @@
 	import { formatCurrency, initCurrency, type CurrencyCode } from '../lib/currency.svelte';
 	import { transactionsState, initTransactions, type Transaction, type TransactionType } from '../lib/transactions-store.svelte';
 	import { contributionsState, initContributions, setContributionPercents } from '../lib/contributions-store.svelte';
-	import { partiesState, initParties, addParty, updateParty, removeParty, type Party } from '../lib/parties-store.svelte';
-	import { ghostIdOf, ghostPartyId, partyIdOf, relatedPartyIdOf } from '../lib/money-parties';
+	import { partiesState, initParties, updateParty, removeParty, type Party } from '../lib/parties-store.svelte';
+	import { ghostIdOf, partyIdOf, relatedPartyIdOf } from '../lib/money-parties';
 	import { netSpend, paidByMember, entryAmount, topLevel, resolveContributionPercents } from '../lib/money-math';
 
 	let {
@@ -36,12 +36,6 @@
 	let saving = $state(false);
 	let rowError = $state<string | null>(null);
 	let expandedId = $state<string | null>(null);
-
-	let addingGhost = $state(false);
-	let ghostName = $state('');
-	let ghostNote = $state('');
-	let ghostSaving = $state(false);
-	let ghostError = $state<string | null>(null);
 
 	let editingGhostId = $state<string | null>(null);
 	let editGhostName = $state('');
@@ -232,53 +226,6 @@
 		editingPercents = false;
 	}
 
-	function openAddGhost() {
-		ghostName = '';
-		ghostNote = '';
-		ghostError = null;
-		addingGhost = true;
-	}
-
-	function cancelAddGhost() {
-		addingGhost = false;
-		ghostError = null;
-	}
-
-	async function submitGhost(e: SubmitEvent) {
-		e.preventDefault();
-
-		ghostError = null;
-		ghostSaving = true;
-
-		const formData = new FormData();
-		formData.set('displayName', ghostName);
-		formData.set('note', ghostNote);
-
-		const res = await fetch(`/api/projects/${projectId}/ghost-members/create`, { method: 'POST', body: formData });
-
-		if (!res.ok) {
-			ghostError = await res.text();
-			ghostSaving = false;
-			return;
-		}
-
-		const created: { id: string; display_name: string; note: string | null; contribution_percent: number | null } =
-			await res.json();
-
-		addParty({
-			id: ghostPartyId(created.id),
-			displayName: created.display_name,
-			isGhost: true,
-			note: created.note,
-			contributionPercent: created.contribution_percent,
-		});
-
-		// Deliberately left out of assignedIds: a new ghost has no share until the split
-		// is edited and saved, which is exactly what the notice under the table says.
-		ghostSaving = false;
-		addingGhost = false;
-	}
-
 	function startEditGhost(party: Party) {
 		editingGhostId = party.id;
 		editGhostName = party.displayName;
@@ -345,9 +292,6 @@
 		<h2>Member contributions</h2>
 		{#if canEdit}
 			<div class="head-actions">
-				{#if !editingPercents && !addingGhost}
-					<button type="button" class="btn-plain" onclick={openAddGhost}>Add ghost member</button>
-				{/if}
 				{#if editingPercents}
 					<button type="button" onclick={savePercents} disabled={saving || !remainderValid}>
 						{saving ? 'Saving…' : 'Save split'}
@@ -367,33 +311,6 @@
 			</div>
 		{/if}
 	</div>
-
-	{#if canEdit && addingGhost}
-		<form class="money-panel ghost-form" transition:slide={{ duration: 150 }} onsubmit={submitGhost}>
-			<p class="muted ghost-hint">
-				A ghost member stands in for somebody funding or buying for this project who has no P2
-				account — a commissioner, a sponsor, an outside supplier. They take a share of the split
-				and can be named on transactions, but they never sign in.
-			</p>
-			<div class="panel-grid">
-				<label class="field">
-					<span class="field-label">Name</span>
-					<input type="text" bind:value={ghostName} placeholder="e.g. Dept. of Engineering" maxlength="80" required />
-				</label>
-				<label class="field field-wide">
-					<span class="field-label">Note</span>
-					<input type="text" bind:value={ghostNote} placeholder="Who they are (optional)" maxlength="200" />
-				</label>
-			</div>
-
-			{#if ghostError}<p class="panel-error">{ghostError}</p>{/if}
-
-			<div class="panel-actions">
-				<button type="submit" disabled={ghostSaving}>{ghostSaving ? 'Adding…' : 'Add ghost member'}</button>
-				<button type="button" class="btn-plain" onclick={cancelAddGhost} disabled={ghostSaving}>Cancel</button>
-			</div>
-		</form>
-	{/if}
 
 	{#if parties.length === 0}
 		<p class="muted empty">No members yet.</p>
@@ -617,16 +534,6 @@
 	.ghost-actions button {
 		padding: 0 var(--space-1);
 		font-size: 0.68rem;
-	}
-
-	.ghost-form {
-		border: 1px solid var(--color-border-strong);
-		margin-bottom: var(--space-2);
-	}
-
-	.ghost-hint {
-		font-size: 0.75rem;
-		margin: 0 0 var(--space-3);
 	}
 
 	.dues-owed {
