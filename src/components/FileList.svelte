@@ -197,32 +197,38 @@
 			</li>
 		{:else}
 			<li class="file-row" class:open={openFileId === file.id}>
-				<div class="file-header">
-					<div class="file-main">
-						<div class="file-name">
-							<button type="button" class="btn-plain" onclick={() => onFileOpen(file)}>{parts.base}</button>
+				<div class="file-header" class:with-actions={canEdit}>
+					<div class="cell cell-name">
+						<button
+							type="button"
+							class="btn-plain file-name-btn"
+							title={file.filename}
+							onclick={() => onFileOpen(file)}
+						>
+							<span class="file-icon">📄</span>
+							<span class="file-name-text">{parts.base}</span>
 							{#if parts.ext}<span class="file-ext muted">{parts.ext}</span>{/if}
-						</div>
-						<span class="muted file-meta">
-							{file.size_bytes != null ? `${Math.round(file.size_bytes).toLocaleString()} B` : ''}
-							— uploaded by {file.profiles?.display_name ?? 'a deleted account'}
-						</span>
+						</button>
+						{#if purgeWarning(file)}<span class="purge-warning-icon" data-tooltip={purgeWarning(file)}>⚠</span>{/if}
+					</div>
+
+					<div class="cell cell-meta muted">
+						{file.size_bytes != null ? `${Math.round(file.size_bytes).toLocaleString()} B` : ''}
+						— uploaded by {file.profiles?.display_name ?? 'a deleted account'}
 					</div>
 
 					{#if canEdit}
-						<button type="button" class="btn-plain actions-toggle" data-file-actions onclick={() => toggleActions(file.id)}>
-							Actions {openActionsId === file.id ? '▴' : '▾'}
-						</button>
+						<div class="cell cell-actions">
+							<button type="button" class="btn-plain" onclick={() => openModal(file, 'move')}>Move</button>
+							<button type="button" class="btn-plain" onclick={() => openModal(file, 'copy')}>Copy</button>
+							{#if !file.is_journal}
+								<button type="button" class="btn-danger" onclick={() => handleDelete(file.id)} disabled={deletingId === file.id}>
+									{deletingId === file.id ? 'Deleting…' : 'Delete'}
+								</button>
+							{/if}
+						</div>
 					{/if}
 				</div>
-
-				{#if canEdit && openActionsId === file.id}
-					{@render actionsPanel(file)}
-				{/if}
-
-				{#if purgeWarning(file)}
-					<p class="purge-warning">⚠ {purgeWarning(file)}</p>
-				{/if}
 
 				{#if rowError?.id === file.id}
 					<p class="row-error">{rowError.message}</p>
@@ -250,11 +256,10 @@
 		list-style: none;
 		margin: 0 0 var(--space-4);
 		padding: 0;
-		font-size: 0.85rem;
+		font-size: 0.82rem;
 	}
 
 	.file-list > .file-row {
-		padding: var(--space-2) 0;
 		border-top: 1px solid var(--color-border);
 	}
 
@@ -264,9 +269,6 @@
 
 	.file-row {
 		position: relative;
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-2);
 	}
 
 	/* The file whose preview panel is open. The negative margin cancels the padding so
@@ -274,68 +276,115 @@
 	.file-list > .file-row.open {
 		background: var(--color-highlight);
 		box-shadow: inset 2px 0 0 var(--color-border-strong);
-		padding-left: var(--space-2);
-		padding-right: var(--space-2);
-		margin-left: calc(-1 * var(--space-2));
-		margin-right: calc(-1 * var(--space-2));
 	}
 
+	/* One row, three columns: a fixed-width name (so every row's name box lines up the
+	   same way TasksTable's cell-task column does), a flexible meta strip, and an
+	   actions column that only exists when canEdit — mirrors task-row/.with-actions. */
 	.file-header {
-		display: flex;
-		flex-wrap: wrap;
-		justify-content: space-between;
+		display: grid;
+		grid-template-columns: 220px minmax(0, 1fr);
 		align-items: center;
-		gap: var(--space-2);
+		gap: var(--space-3);
+		padding: var(--space-1) var(--space-2);
 	}
 
-	.file-main {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: flex-start;
-		gap: var(--space-2);
+	.file-header.with-actions {
+		grid-template-columns: 220px minmax(0, 1fr) auto;
 	}
 
-	.file-name {
+	.cell {
+		min-width: 0;
+	}
+
+	.cell-name {
 		display: flex;
-		flex-direction: column;
-		gap: 0;
+		align-items: center;
+		gap: var(--space-1);
+	}
+
+	/* A real button so the row opens from the keyboard too, styled back down to plain
+	   text — same trick as TasksTable's .task-name. */
+	.file-name-btn {
+		display: flex;
+		align-items: baseline;
+		gap: 3px;
+		min-width: 0;
+		max-width: 100%;
+		background: none;
+		border: none;
+		padding: 0;
+		margin: 0;
+		color: inherit;
+		font: inherit;
+		text-align: left;
+		cursor: pointer;
+	}
+
+	.file-name-btn:hover {
+		text-decoration: underline;
+		text-underline-offset: 2px;
+	}
+
+	.file-icon {
+		flex: 0 0 auto;
+	}
+
+	.file-name-text {
+		min-width: 0;
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
 	}
 
 	.file-ext {
-		font-size: 0.75rem;
+		flex: 0 0 auto;
+		font-size: 0.76rem;
 	}
 
-	.file-meta {
-		font-size: 0.8rem;
+	.cell-meta {
+		font-size: 0.78rem;
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
 	}
 
-	.actions-panel {
-		position: absolute;
-		top: calc(100% + var(--space-1));
-		left: 0;
-		right: 0;
-		z-index: 10;
+	.cell-actions {
 		display: flex;
-		flex-direction: column;
-		gap: var(--space-2);
-		background: var(--color-bg);
-		border: 1px solid var(--color-border-strong);
-		padding: var(--space-2);
+		gap: var(--space-1);
+		justify-content: flex-end;
 	}
 
-	.actions-panel button {
-		width: 100%;
+	.cell-actions button {
+		flex-shrink: 0;
+		white-space: nowrap;
+		padding: 0 var(--space-2);
+		font-size: 0.7rem;
+		line-height: 1.8;
 	}
 
 	.row-error {
 		color: var(--color-danger);
 		margin: 0;
+		padding: 0 var(--space-2) var(--space-2);
 	}
 
-	.purge-warning {
-		color: var(--color-danger);
-		font-size: 0.8rem;
-		margin: 0;
+	@media (max-width: 640px) {
+		.file-header,
+		.file-header.with-actions {
+			grid-template-columns: minmax(0, 1fr) auto;
+			row-gap: var(--space-1);
+		}
+
+		.cell-meta {
+			grid-column: 1 / -1;
+			white-space: normal;
+		}
+
+		.cell-actions {
+			grid-column: 1 / -1;
+			justify-content: flex-start;
+		}
 	}
 
 	/* Grid view */
@@ -460,5 +509,23 @@
 
 	.grid-actions-toggle:hover {
 		color: var(--color-fg);
+	}
+
+	.actions-panel {
+		position: absolute;
+		top: calc(100% + var(--space-1));
+		left: 0;
+		right: 0;
+		z-index: 10;
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-2);
+		background: var(--color-bg);
+		border: 1px solid var(--color-border-strong);
+		padding: var(--space-2);
+	}
+
+	.actions-panel button {
+		width: 100%;
 	}
 </style>

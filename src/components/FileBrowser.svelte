@@ -576,7 +576,7 @@
 </div>
 
 {#if subfolders.length > 0}
-	<ul class={viewMode === 'grid' ? 'grid-view' : 'list-plain folder-list'}>
+	<ul class={viewMode === 'grid' ? 'grid-view' : 'folder-list'}>
 		{#each subfolders as folder (folder.id)}
 			{#if viewMode === 'grid'}
 				<li class="grid-item">
@@ -605,16 +605,29 @@
 				</li>
 			{:else}
 				<li class="folder-row">
-					<a href={hrefFor(folder.id)} onclick={(e) => handleLinkClick(e, folder.id)}>📁 {folder.name}</a>
-					{#if canEdit}
-						<button type="button" class="btn-danger" onclick={() => handleDeleteFolder(folder.id)} disabled={deletingFolderId === folder.id}>
-							{deletingFolderId === folder.id ? 'Deleting…' : 'Delete'}
-						</button>
+					<div class="folder-header" class:with-actions={canEdit}>
+						<div class="cell cell-name">
+							<a class="folder-name-link" href={hrefFor(folder.id)} onclick={(e) => handleLinkClick(e, folder.id)} title={folder.name}>
+								<span class="folder-icon">📁</span>
+								<span class="folder-name-text">{folder.name}</span>
+							</a>
+						</div>
+
+						<div class="cell cell-meta"></div>
+
+						{#if canEdit}
+							<div class="cell cell-actions">
+								<button type="button" class="btn-danger" onclick={() => handleDeleteFolder(folder.id)} disabled={deletingFolderId === folder.id}>
+									{deletingFolderId === folder.id ? 'Deleting…' : 'Delete'}
+								</button>
+							</div>
+						{/if}
+					</div>
+
+					{#if folderError?.id === folder.id}
+						<p class="row-error">{folderError.message}</p>
 					{/if}
 				</li>
-				{#if folderError?.id === folder.id}
-					<li class="row-error-item">{folderError.message}</li>
-				{/if}
 			{/if}
 		{/each}
 	</ul>
@@ -804,11 +817,98 @@
 		color: var(--color-bg);
 	}
 
-	.folder-row {
+	/* Mirrors FileList's .file-list/.file-header sizing exactly, so a folder row and a
+	   file row read as one continuous table rather than two differently-scaled lists. */
+	.folder-list {
+		list-style: none;
+		margin: 0 0 var(--space-4);
+		padding: 0;
+		font-size: 0.82rem;
+	}
+
+	.folder-list > .folder-row {
+		border-top: 1px solid var(--color-border);
+	}
+
+	.folder-list > .folder-row:first-child {
+		border-top: none;
+	}
+
+	.folder-header {
+		display: grid;
+		grid-template-columns: 220px minmax(0, 1fr);
+		align-items: center;
+		gap: var(--space-3);
+		padding: var(--space-1) var(--space-2);
+	}
+
+	.folder-header.with-actions {
+		grid-template-columns: 220px minmax(0, 1fr) auto;
+	}
+
+	.cell {
+		min-width: 0;
+	}
+
+	.cell-name {
 		display: flex;
 		align-items: center;
-		justify-content: space-between;
-		gap: var(--space-3);
+		gap: var(--space-1);
+	}
+
+	.cell-actions {
+		display: flex;
+		gap: var(--space-1);
+		justify-content: flex-end;
+	}
+
+	.cell-actions button {
+		flex-shrink: 0;
+		white-space: nowrap;
+		padding: 0 var(--space-2);
+		font-size: 0.7rem;
+		line-height: 1.8;
+	}
+
+	.folder-name-link {
+		display: flex;
+		align-items: baseline;
+		gap: var(--space-1);
+		min-width: 0;
+		max-width: 100%;
+		border-bottom: none;
+	}
+
+	.folder-name-link:hover {
+		border-bottom: none;
+		text-decoration: underline;
+		text-underline-offset: 2px;
+	}
+
+	.folder-icon {
+		flex: 0 0 auto;
+	}
+
+	.folder-name-text {
+		min-width: 0;
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+	}
+
+	@media (max-width: 640px) {
+		.folder-header,
+		.folder-header.with-actions {
+			grid-template-columns: minmax(0, 1fr) auto;
+		}
+
+		.folder-header .cell-meta {
+			display: none;
+		}
+
+		.folder-header .cell-actions {
+			justify-content: flex-start;
+		}
 	}
 
 	.grid-view {
@@ -890,14 +990,10 @@
 		width: 100%;
 	}
 
-	.row-error-item {
-		color: var(--color-danger);
-		border-top: none;
-		padding-top: 0;
-	}
-
 	.row-error {
 		color: var(--color-danger);
+		margin: 0;
+		padding: 0 var(--space-2) var(--space-2);
 	}
 
 	/* Keep this block last. Media queries add no specificity, so an override here only
