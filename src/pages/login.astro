@@ -22,6 +22,10 @@ const checkEmail = Astro.url.searchParams.get('checkEmail') === '1';
 		<form method="POST" action="/api/auth/login" data-astro-reload onsubmit="this.querySelector('button').disabled = true">
 			<input type="email" name="email" placeholder="Email" required />
 			<input type="password" name="password" placeholder="Password" required />
+			<label class="remember-me">
+				<input type="checkbox" name="rememberMe" />
+				Stay signed in for 30 days
+			</label>
 			<button type="submit">Log in</button>
 		</form>
 		<p class="auth-aside muted"><a href="/forgot-password">Forgot your password?</a></p>
@@ -49,5 +53,16 @@ const checkEmail = Astro.url.searchParams.get('checkEmail') === '1';
 
 	.auth-aside {
 		font-size: 0.85rem;
+	}
+
+	.remember-me {
+		flex-direction: row;
+		align-items: center;
+		gap: 0.5rem;
+		font-size: 0.9rem;
+	}
+
+	.remember-me input {
+		width: auto;
 	}
 </style>
