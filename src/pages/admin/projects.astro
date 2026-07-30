@@ -20,15 +20,31 @@ if (!(await isAdminUser(Astro.locals.supabase, user.id))) {
 
 const admin = getSupabaseAdmin(env);
 
-const [{ data: projects }, { data: members }, { byProject, failed }] = await Promise.all([
+// Two plain selects folded in JS, not an embedded `profiles(...)` select — PostgREST
+// resolves that embed through its schema-cache relationship graph, which silently
+// returned zero rows here (data: null, error swallowed) rather than erroring loudly.
+const [{ data: projects, error: projectsError }, { data: members }, { byProject, failed }] = await Promise.all([
 	admin
 		.from('projects')
-		.select('id, name, created_at, owner_id, profiles(display_name, email)')
-		.order('created_at', { ascending: false })
-		.overrideTypes<{ id: string; name: string; created_at: string; owner_id: string; profiles: { display_name: string; email: string } }[]>(),
+		.select('id, name, created_at, owner_id')
+		.order('created_at', { ascending: false }),
 	admin.from('project_members').select('project_id'),
 	getGlobalStorageBreakdown(admin),
 ]);
+
+if (projectsError) {
+	console.log(`[admin/projects] failed to load projects: ${projectsError.message}`);
+}
+
+const ownerIds = [...new Set((projects ?? []).map((project) => project.owner_id))];
+const { data: owners } = ownerIds.length
+	? await admin.from('profiles').select('id, display_name, email').in('id', ownerIds)
+	: { data: [] };
+
+const ownerById: Record<string, { display_name: string; email: string | null }> = {};
+for (const owner of owners ?? []) {
+	ownerById[owner.id] = owner;
+}
 
 const memberCounts: Record<string, number> = {};
 for (const row of members ?? []) {
@@ -43,6 +59,13 @@ for (const row of members ?? []) {
 	{failed && (
 		<p class="storage-error">
 			Storage totals below are unavailable (the usage read failed).
+			<a class="reload-link" href={Astro.url.pathname}>⟳ Reload</a>
+		</p>
+	)}
+
+	{projectsError && (
+		<p class="storage-error">
+			Failed to load projects.
 			<a class="reload-link" href={Astro.url.pathname}>⟳ Reload</a>
 		</p>
 	)}
@@ -64,10 +87,10 @@ for (const row of members ?? []) {
 				{projects?.map((project) => (
 					<tr>
 						<td>{project.name}</td>
-						<td>{project.profiles.display_name} <span class="muted">({project.profiles.email})</span></td>
+						<td>{ownerById[project.owner_id]?.display_name ?? '—'} <span class="muted">({ownerById[project.owner_id]?.email ?? 'unknown'})</span></td>
 						<td>{memberCounts[project.id] ?? 0}</td>
 						<td>{failed ? '—' : formatBytes(byProject[project.id] ?? 0)}</td>
-						<td>{new Date(project.created_at).toLocaleDateString()}</td>
+						<td>{project.created_at ? new Date(project.created_at).toLocaleDateString() : '—'}</td>
 					</tr>
 				))}
 			</tbody>
