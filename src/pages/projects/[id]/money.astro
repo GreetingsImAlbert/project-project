@@ -1,6 +1,5 @@
 ---
 import BaseLayout from '../../../layouts/BaseLayout.astro';
-import ProjectShell from '../../../components/ProjectShell.astro';
 import MoneySummary from '../../../components/MoneySummary.svelte';
 import BomTable from '../../../components/BomTable.svelte';
 import TransactionsTable from '../../../components/TransactionsTable.svelte';
@@ -110,36 +109,34 @@ const parties: Party[] = [
 // too so the summary strip and the table agree on first paint.
 const initialPercents = resolveContributionPercents(parties);
 ---
-<BaseLayout title={`${project.name} — Money`}>
-	<ProjectShell project={project} members={members ?? []} ghostMembers={ghostMembers} userRole={userRole} activePage="money">
-		<MoneySummary
-			client:load
-			currentUserId={user.id}
-			initialItems={bomItems ?? []}
-			initialTransactions={transactionRows}
-			initialPercents={initialPercents}
-			currency={project.currency}
-		/>
-		<BomTable client:load projectId={project.id} projectName={project.name} initialItems={bomItems ?? []} canEdit={canEdit} currency={project.currency} />
-		<TransactionsTable
-			client:load
-			projectId={project.id}
-			projectName={project.name}
-			initialTransactions={transactionRows}
-			initialBomItems={bomItems ?? []}
-			initialPercents={initialPercents}
-			initialParties={parties}
-			canEdit={canEdit}
-			currency={project.currency}
-		/>
-		<MemberContributionsTable
-			client:load
-			projectId={project.id}
-			projectName={project.name}
-			initialParties={parties}
-			transactions={transactionRows}
-			canEdit={canEdit}
-			currency={project.currency}
-		/>
-	</ProjectShell>
+<BaseLayout title={`${project.name} — Money`} projectNav={{ projectId: project.id, userRole: userRole ?? '' }}>
+	<MoneySummary
+		client:load
+		currentUserId={user.id}
+		initialItems={bomItems ?? []}
+		initialTransactions={transactionRows}
+		initialPercents={initialPercents}
+		currency={project.currency}
+	/>
+	<BomTable client:load projectId={project.id} projectName={project.name} initialItems={bomItems ?? []} canEdit={canEdit} currency={project.currency} />
+	<TransactionsTable
+		client:load
+		projectId={project.id}
+		projectName={project.name}
+		initialTransactions={transactionRows}
+		initialBomItems={bomItems ?? []}
+		initialPercents={initialPercents}
+		initialParties={parties}
+		canEdit={canEdit}
+		currency={project.currency}
+	/>
+	<MemberContributionsTable
+		client:load
+		projectId={project.id}
+		projectName={project.name}
+		initialParties={parties}
+		transactions={transactionRows}
+		canEdit={canEdit}
+		currency={project.currency}
+	/>
 </BaseLayout>

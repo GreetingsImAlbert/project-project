@@ -1,8 +1,6 @@
 ---
 import BaseLayout from '../../../layouts/BaseLayout.astro';
-import ProjectShell from '../../../components/ProjectShell.astro';
 import TrashList from '../../../components/TrashList.svelte';
-import { listGhostMembers } from '../../../lib/ghost-members';
 
 export const prerender = false;
 
@@ -13,7 +11,7 @@ if (!user) {
 
 const { id } = Astro.params;
 
-const [{ data: project, error }, { data: members }, ghostMembers] = await Promise.all([
+const [{ data: project, error }, { data: members }] = await Promise.all([
 	Astro.locals.supabase.from('projects').select('id, name, description, owner_id, currency').eq('id', id).single(),
 	Astro.locals.supabase
 		.from('project_members')
@@ -22,7 +20,6 @@ const [{ data: project, error }, { data: members }, ghostMembers] = await Promis
 		.overrideTypes<
 			{ role: string; is_auditor: boolean; user_id: string; profiles: { display_name: string; email: string } }[]
 		>(),
-	listGhostMembers(Astro.locals.supabase, id!),
 ]);
 
 if (error || !project) {
@@ -121,21 +118,19 @@ const [{ data: files }, { data: folders }, { data: tasks }, { data: bomItems }, 
 		.overrideTypes<TransactionRow[]>(),
 ]);
 ---
-<BaseLayout title={`${project.name} — Trash`}>
-	<ProjectShell project={project} members={members ?? []} ghostMembers={ghostMembers} userRole={userRole} activePage="trash">
-		<h2>Trash</h2>
-		<p class="muted">Deleted items are kept here for 10 days before they're removed for good.</p>
+<BaseLayout title={`${project.name} — Trash`} projectNav={{ projectId: project.id, userRole: userRole ?? '' }}>
+	<h2>Trash</h2>
+	<p class="muted">Deleted items are kept here for 10 days before they're removed for good.</p>
 
-		<TrashList
-			client:load
-			projectId={project.id}
-			currency={project.currency}
-			canEditMoney={canEditMoney}
-			initialFiles={files ?? []}
-			initialFolders={folders ?? []}
-			initialTasks={tasks ?? []}
-			initialBomItems={bomItems ?? []}
-			initialTransactions={transactions ?? []}
-		/>
-	</ProjectShell>
+	<TrashList
+		client:load
+		projectId={project.id}
+		currency={project.currency}
+		canEditMoney={canEditMoney}
+		initialFiles={files ?? []}
+		initialFolders={folders ?? []}
+		initialTasks={tasks ?? []}
+		initialBomItems={bomItems ?? []}
+		initialTransactions={transactions ?? []}
+	/>
 </BaseLayout>

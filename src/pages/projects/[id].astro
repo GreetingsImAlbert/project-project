@@ -1,6 +1,5 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
-import ProjectShell from '../../components/ProjectShell.astro';
 import TotalCostDisplay from '../../components/TotalCostDisplay.svelte';
 import ProjectDescriptionEditor from '../../components/ProjectDescriptionEditor.svelte';
 import ProjectStorageUsed from '../../components/ProjectStorageUsed.svelte';
@@ -23,9 +22,6 @@ if (!user) {
 
 const { id } = Astro.params;
 
-// Fired together rather than in sequence: the Worker is a long trip from
-// Postgres and none of these depend on the one before it (RLS scopes each to
-// the caller independently), so the 404 check just moves below the await.
 const [
 	{ data: project, error },
 	{ data: members },
@@ -52,9 +48,6 @@ const [
 			.eq('project_id', id)
 			.is('deleted_at', null),
 		getProjectStorageBytes(Astro.locals.supabase, id!),
-		// Only what can actually become a reminder: still open, and dated. The horizon
-		// itself isn't applied here — it's a client-side setting, and filtering by it in
-		// SQL would mean a round trip every time the reader widened the window.
 		Astro.locals.supabase
 			.from('tasks')
 			.select(TASK_COLUMNS)
@@ -66,8 +59,6 @@ const [
 			.order('deadline_time', { ascending: true })
 			.order('name', { ascending: true })
 			.overrideTypes<RawTaskRow[]>(),
-		// Same as the Tasks page: only the categories somebody picked a colour for, with
-		// everything else falling back to a hash of the name in category-color.ts.
 		Astro.locals.supabase
 			.from('task_categories')
 			.select('name, color_index')
@@ -84,7 +75,6 @@ const isOwner = userRole === 'owner';
 
 const totalCost = (bomItems ?? []).reduce((sum, item) => sum + (item.total_cost ?? 0), 0);
 
-// An index outside the palette is dropped rather than clamped — see the Tasks page.
 const categoryColors: CategoryColors = {};
 for (const row of categoryRows ?? []) {
 	if (isCategoryColorIndex(row.color_index)) categoryColors[row.name] = row.color_index;
@@ -92,61 +82,135 @@ for (const row of categoryRows ?? []) {
 
 const reminders = projectReminders((taskRows ?? []).map(normalizeTask), id!, categoryColors, user.id);
 
-// The reader's own horizon, read server-side so the list renders at the right width
-// straight away instead of widening after hydration — see lib/task-horizon.ts.
 const horizonDays = parseHorizonDays(Astro.cookies.get(HORIZON_COOKIE)?.value);
 
-// One fixed calendar for the whole app, server and client alike — see lib/today.ts.
 const serverToday = appToday();
 const serverNowTime = appNowTime();
+
+const ROLE_ORDER = ['owner', 'editor', 'viewer'];
+const ROLE_LABELS: Record<string, string> = { owner: 'Owner', editor: 'Editors', viewer: 'Viewers' };
+
+const roles = [...new Set((members ?? []).map((m) => m.role))].sort((a, b) => {
+	const ai = ROLE_ORDER.indexOf(a);
+	const bi = ROLE_ORDER.indexOf(b);
+	return (ai === -1 ? ROLE_ORDER.length : ai) - (bi === -1 ? ROLE_ORDER.length : bi);
+});
+
+const memberGroups = roles.map((role) => ({
+	role,
+	label: ROLE_LABELS[role] ?? role,
+	members: (members ?? []).filter((m) => m.role === role),
+}));
 ---
-<BaseLayout title={project.name}>
-	<ProjectShell project={project} members={members ?? []} ghostMembers={ghostMembers} userRole={userRole} activePage="overview">
-		<div class="overview-layout">
-			<div class="overview-main">
-				<ProjectDescriptionEditor
-					client:load
-					projectId={project.id}
-					initialDescription={project.description}
-					canEdit={isOwner}
-				/>
-				<UpcomingTasks
-					client:load
-					reminders={reminders}
-					initialHorizonDays={horizonDays}
-					serverToday={serverToday}
-					serverNowTime={serverNowTime}
-					showMineFilter={true}
-				/>
-			</div>
-			<div class="overview-stats">
-				<TotalCostDisplay client:load totalCost={totalCost} currency={project.currency} />
-				<ProjectStorageUsed client:load initialUsedBytes={projectStorageBytes} initialFailed={projectStorageFailed} />
-				<DownloadProjectButton client:load projectId={project.id} />
-			</div>
-		</div>
-	</ProjectShell>
+<BaseLayout title={project.name} projectNav={{ projectId: project.id, userRole: userRole ?? '' }}>
+	<section class="overview-description">
+		<ProjectDescriptionEditor
+			client:load
+			projectId={project.id}
+			initialDescription={project.description}
+			canEdit={isOwner}
+		/>
+	</section>
+
+	<div class="overview-columns">
+		<section class="overview-members">
+			<h2>Members</h2>
+			<table class="members-table">
+				<tbody>
+					{memberGroups.map((group) =>
+						group.members.map((m) => (
+							<tr>
+								<td class="member-role">{group.label === 'Owner' ? 'Owner' : group.label.replace(/s$/, '')}</td>
+								<td>
+									{m.profiles?.display_name}
+									{m.is_auditor && <span class="muted"> [auditor]</span>}
+								</td>
+							</tr>
+						))
+					)}
+					{ghostMembers.length > 0 && ghostMembers.map((g) => (
+						<tr>
+							<td class="member-role muted">Ghost</td>
+							<td class="muted">
+								{g.display_name}
+								{g.is_deleted_account && <span> [deleted]</span>}
+							</td>
+						</tr>
+					))}
+				</tbody>
+			</table>
+		</section>
+
+		<section class="overview-faqs">
+			<h2>Quick FAQs</h2>
+			<TotalCostDisplay client:load totalCost={totalCost} currency={project.currency} />
+			<ProjectStorageUsed client:load initialUsedBytes={projectStorageBytes} initialFailed={projectStorageFailed} />
+			<DownloadProjectButton client:load projectId={project.id} />
+		</section>
+	</div>
+
+	<section class="overview-reminders">
+		<UpcomingTasks
+			client:load
+			reminders={reminders}
+			initialHorizonDays={horizonDays}
+			serverToday={serverToday}
+			serverNowTime={serverNowTime}
+			showMineFilter={true}
+		/>
+	</section>
 </BaseLayout>
 
 <style>
-	.overview-layout {
+	.overview-description {
+		margin-bottom: var(--space-4);
+	}
+
+	.overview-columns {
 		display: flex;
-		gap: var(--space-5);
+		gap: var(--space-6);
 	}
 
-	.overview-main {
-		flex: 1 1 auto;
+	.overview-members {
+		flex: 1;
 		min-width: 0;
 	}
 
-	.overview-stats {
-		flex: 0 0 240px;
+	.overview-faqs {
+		flex: 0 0 280px;
 		min-width: 0;
+	}
+
+	.members-table {
+		width: 100%;
+		border-collapse: collapse;
+		margin: 0;
+	}
+
+	.members-table td {
+		padding: var(--space-1) var(--space-3);
+		border-bottom: none;
+		vertical-align: top;
+	}
+
+	.member-role {
+		white-space: nowrap;
+		color: var(--color-muted);
+		width: 80px;
+	}
+
+	.overview-reminders {
+		margin-top: var(--space-4);
 	}
 
 	@media (max-width: 768px) {
-		.overview-layout {
+		.overview-columns {
 			flex-direction: column;
+			gap: var(--space-4);
+		}
+
+		.overview-faqs {
+			flex-basis: auto;
 		}
 	}
 </style>

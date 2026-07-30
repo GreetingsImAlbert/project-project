@@ -1,6 +1,5 @@
 ---
 import BaseLayout from '../../../layouts/BaseLayout.astro';
-import ProjectShell from '../../../components/ProjectShell.astro';
 import TasksSummary from '../../../components/TasksSummary.svelte';
 import TasksTable from '../../../components/TasksTable.svelte';
 import { TASK_COLUMNS, normalizeTask, type RawTaskRow } from '../../../lib/task-columns';
@@ -89,22 +88,20 @@ const serverToday = appToday();
 const serverNowTime = appNowTime();
 ---
 
-<BaseLayout title={`${project.name} — Tasks`}>
-	<ProjectShell project={project} members={members ?? []} ghostMembers={ghostMembers} userRole={userRole} activePage="tasks">
-		<TasksSummary client:load initialTasks={tasks} serverToday={serverToday} serverNowTime={serverNowTime} />
-		<TasksTable
-			client:load
-			projectId={project.id}
-			projectName={project.name}
-			initialTasks={tasks}
-			initialCategoryColors={categoryColors}
-			initialViewMode={initialViewMode}
-			members={memberOptions}
-			ghostMembers={ghostOptions}
-			canEdit={canEdit}
-			currentUserId={user.id}
-			serverToday={serverToday}
-			serverNowTime={serverNowTime}
-		/>
-	</ProjectShell>
+<BaseLayout title={`${project.name} — Tasks`} projectNav={{ projectId: project.id, userRole: userRole ?? '' }}>
+	<TasksSummary client:load initialTasks={tasks} serverToday={serverToday} serverNowTime={serverNowTime} />
+	<TasksTable
+		client:load
+		projectId={project.id}
+		projectName={project.name}
+		initialTasks={tasks}
+		initialCategoryColors={categoryColors}
+		initialViewMode={initialViewMode}
+		members={memberOptions}
+		ghostMembers={ghostOptions}
+		canEdit={canEdit}
+		currentUserId={user.id}
+		serverToday={serverToday}
+		serverNowTime={serverNowTime}
+	/>
 </BaseLayout>

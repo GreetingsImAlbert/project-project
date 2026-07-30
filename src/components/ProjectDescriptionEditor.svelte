@@ -52,7 +52,7 @@
 </script>
 
 <div class="overview-heading">
-	<h2>Overview</h2>
+	<h2>Description</h2>
 	{#if canEdit && !editing}
 		<button type="button" class="edit-icon" aria-label="Edit description" onclick={startEdit}>✎</button>
 	{/if}

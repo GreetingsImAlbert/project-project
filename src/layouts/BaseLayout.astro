@@ -2,12 +2,33 @@
 import '../styles/global.css';
 import { ClientRouter } from 'astro:transitions';
 import Header from '../components/Header.astro';
+import AppSidebar from '../components/AppSidebar.svelte';
 
 interface Props {
 	title?: string;
+	projectNav?: {
+		projectId: string;
+		userRole: string;
+	};
 }
-const { title = 'P2' } = Astro.props;
+const { title = 'P2', projectNav } = Astro.props;
 const user = Astro.locals.user;
+const path = Astro.url.pathname;
+
+let sidebarProjects: { id: string; name: string; ownerName: string }[] = [];
+if (user) {
+	const { data } = await Astro.locals.supabase
+		.from('projects')
+		.select('id, name, project_members!inner(role, profiles(display_name))')
+		.eq('project_members.role', 'owner')
+		.order('created_at', { ascending: false })
+		.overrideTypes<{ id: string; name: string; project_members: { role: string; profiles: { display_name: string } }[] }[]>();
+	sidebarProjects = (data ?? []).map((p) => ({
+		id: p.id,
+		name: p.name,
+		ownerName: p.project_members[0]?.profiles?.display_name ?? 'Unknown',
+	}));
+}
 ---
 <html lang="en">
 	<head>
@@ -21,11 +42,6 @@ const user = Astro.locals.user;
 					}
 				} catch (e) {}
 
-				// data-theme is only ever set client-side, so no server response carries it.
-				// ClientRouter's swap clears every attribute off <html> and re-copies them
-				// from the fetched document, which would drop the theme on each navigation —
-				// and this script won't re-run to restore it, since Astro marks scripts that
-				// have already executed. Put it on the incoming document before the swap.
 				document.addEventListener('astro:before-swap', function (ev) {
 					var current = document.documentElement.getAttribute('data-theme');
 					if (current) ev.newDocument.documentElement.setAttribute('data-theme', current);
@@ -37,19 +53,56 @@ const user = Astro.locals.user;
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<meta name="generator" content={Astro.generator} />
 		<title>{title} | P2</title>
-		<!-- fallback="swap", not "none": ClientRouter turns client-side routing off entirely
-		     for browsers without view transitions when the fallback is "none", and those
-		     browsers should still get the swap — just not the simulated fade that
-		     "animate" (the default) would run. -->
 		<ClientRouter fallback="swap" />
 	</head>
 	<body>
-		<Header user={user} />
-		<main class="container">
-			<slot />
-		</main>
+		<Header user={user} projectNav={projectNav} />
+		{user ? (
+			<div class="app-shell">
+				<AppSidebar
+					client:load
+					projects={sidebarProjects}
+					currentPath={path}
+					displayName={user.displayName ?? user.email ?? ''}
+				/>
+				<main class="app-main project-main">
+					<slot />
+				</main>
+			</div>
+		) : (
+			<main class="container">
+				<slot />
+			</main>
+		)}
 		<script>
 			import '../lib/client-error-report';
 		</script>
 	</body>
 </html>
+
+<style is:global>
+	/* The sidebar scrolls independently of the content, so the shell has to be a fixed
+	   viewport-height box rather than growing with the page — otherwise both columns
+	   share the document scrollbar and the sidebar slides out of view. body becomes the
+	   flex column that hands the shell whatever height is left under the header, so no
+	   hardcoded header height is involved. */
+	body:has(.app-shell) {
+		display: flex;
+		flex-direction: column;
+		height: 100vh;
+		overflow: hidden;
+	}
+
+	.app-shell {
+		display: flex;
+		flex: 1;
+		min-height: 0;
+	}
+
+	.app-main {
+		flex: 1;
+		min-width: 0;
+		overflow-y: auto;
+		padding: var(--space-5) var(--space-5) var(--space-7);
+	}
+</style>

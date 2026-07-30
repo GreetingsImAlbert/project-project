@@ -1,12 +1,10 @@
 ---
 import BaseLayout from '../../../layouts/BaseLayout.astro';
-import ProjectShell from '../../../components/ProjectShell.astro';
 import MemberManager from '../../../components/MemberManager.svelte';
 import AddMemberForm from '../../../components/AddMemberForm.svelte';
 import AddGhostMemberForm from '../../../components/AddGhostMemberForm.svelte';
 import DeleteProjectPanel from '../../../components/DeleteProjectPanel.svelte';
 import CurrencyPicker from '../../../components/CurrencyPicker.svelte';
-import { listGhostMembers } from '../../../lib/ghost-members';
 
 export const prerender = false;
 
@@ -17,7 +15,7 @@ if (!user) {
 
 const { id } = Astro.params;
 
-const [{ data: project, error }, { data: members }, ghostMembers] = await Promise.all([
+const [{ data: project, error }, { data: members }] = await Promise.all([
 	Astro.locals.supabase.from('projects').select('id, name, description, owner_id, currency').eq('id', id).single(),
 	Astro.locals.supabase
 		.from('project_members')
@@ -26,7 +24,6 @@ const [{ data: project, error }, { data: members }, ghostMembers] = await Promis
 		.overrideTypes<
 			{ role: string; is_auditor: boolean; user_id: string; profiles: { display_name: string; email: string } }[]
 		>(),
-	listGhostMembers(Astro.locals.supabase, id!),
 ]);
 
 if (error || !project) {
@@ -51,29 +48,27 @@ const memberData = (members ?? []).map((m) => ({
 
 const returnTo = `/projects/${id}/settings`;
 ---
-<BaseLayout title={`${project.name} — Settings`}>
-	<ProjectShell project={project} members={members ?? []} ghostMembers={ghostMembers} userRole={userRole} activePage="settings">
-		<h2>Settings</h2>
+<BaseLayout title={`${project.name} — Settings`} projectNav={{ projectId: project.id, userRole: userRole ?? '' }}>
+	<h2>Settings</h2>
 
-		<section>
-			<h3>Currency</h3>
-			<CurrencyPicker client:load projectId={project.id} currency={project.currency} />
-		</section>
+	<section>
+		<h3>Currency</h3>
+		<CurrencyPicker client:load projectId={project.id} currency={project.currency} />
+	</section>
 
-		<section>
-			<h3>Members</h3>
-			<MemberManager client:load projectId={project.id} members={memberData} />
-			<div class="add-actions-row">
-				<AddMemberForm client:load projectId={project.id} returnTo={returnTo} />
-				<AddGhostMemberForm client:load projectId={project.id} />
-			</div>
-		</section>
+	<section>
+		<h3>Members</h3>
+		<MemberManager client:load projectId={project.id} members={memberData} />
+		<div class="add-actions-row">
+			<AddMemberForm client:load projectId={project.id} returnTo={returnTo} />
+			<AddGhostMemberForm client:load projectId={project.id} />
+		</div>
+	</section>
 
-		<section>
-			<h3>Danger zone</h3>
-			<DeleteProjectPanel client:load projectId={project.id} projectName={project.name} />
-		</section>
-	</ProjectShell>
+	<section>
+		<h3>Danger zone</h3>
+		<DeleteProjectPanel client:load projectId={project.id} projectName={project.name} />
+	</section>
 </BaseLayout>
 
 <style>

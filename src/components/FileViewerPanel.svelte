@@ -123,7 +123,7 @@
 	}
 
 	// Half the main column, not half the window — the sidebar isn't part of what the
-	// panel is covering. `.project-main` is authored in ProjectShell.astro, so it's
+	// panel is covering. `.project-main` is authored in BaseLayout.astro, so it's
 	// looked up rather than bound.
 	function defaultWidth(): number {
 		const main = document.querySelector('.project-main');

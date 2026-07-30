@@ -1,10 +1,8 @@
 ---
 import { env } from 'cloudflare:workers';
 import BaseLayout from '../../../layouts/BaseLayout.astro';
-import ProjectShell from '../../../components/ProjectShell.astro';
 import JournalPage from '../../../components/JournalPage.svelte';
 import { getSupabaseAdmin } from '../../../lib/supabase/admin';
-import { listGhostMembers } from '../../../lib/ghost-members';
 import { ensureJournalFile, ensureJournalDraft, readJournalObject } from '../../../lib/journal';
 import { parseJournalEntries } from '../../../lib/journal-entries';
 
@@ -17,7 +15,7 @@ if (!user) {
 
 const { id } = Astro.params;
 
-const [{ data: project, error }, { data: members }, ghostMembers] = await Promise.all([
+const [{ data: project, error }, { data: members }] = await Promise.all([
 	Astro.locals.supabase.from('projects').select('id, name, description, owner_id').eq('id', id).single(),
 	Astro.locals.supabase
 		.from('project_members')
@@ -26,7 +24,6 @@ const [{ data: project, error }, { data: members }, ghostMembers] = await Promis
 		.overrideTypes<
 			{ role: string; is_auditor: boolean; user_id: string; profiles: { display_name: string; email: string } }[]
 		>(),
-	listGhostMembers(Astro.locals.supabase, id!),
 ]);
 
 if (error || !project) {
@@ -56,16 +53,14 @@ const journalContent = await readJournalObject(env, journalFile.r2_key);
 // stays a plain append-only tail (see journal-entries.ts).
 const entries = parseJournalEntries(journalContent).reverse();
 ---
-<BaseLayout title={`${project.name} — Journal`}>
-	<ProjectShell project={project} members={members ?? []} ghostMembers={ghostMembers} userRole={userRole} activePage="journal">
-		<h2>Journal</h2>
+<BaseLayout title={`${project.name} — Journal`} projectNav={{ projectId: project.id, userRole: userRole ?? '' }}>
+	<h2>Journal</h2>
 
-		<JournalPage
-			client:load
-			projectId={project.id}
-			initialDraftDate={draft.draft_date}
-			initialDraftContent={draft.content}
-			initialEntries={entries}
-		/>
-	</ProjectShell>
+	<JournalPage
+		client:load
+		projectId={project.id}
+		initialDraftDate={draft.draft_date}
+		initialDraftContent={draft.content}
+		initialEntries={entries}
+	/>
 </BaseLayout>
