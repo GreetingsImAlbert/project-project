@@ -5,6 +5,7 @@ import AddMemberForm from '../../../components/AddMemberForm.svelte';
 import AddGhostMemberForm from '../../../components/AddGhostMemberForm.svelte';
 import DeleteProjectPanel from '../../../components/DeleteProjectPanel.svelte';
 import CurrencyPicker from '../../../components/CurrencyPicker.svelte';
+import TrashList from '../../../components/TrashList.svelte';
 
 export const prerender = false;
 
@@ -47,6 +48,85 @@ const memberData = (members ?? []).map((m) => ({
 }));
 
 const returnTo = `/projects/${id}/settings`;
+
+interface FileRow {
+	id: string;
+	filename: string;
+	size_bytes: number | null;
+	deleted_at: string;
+}
+
+interface FolderRow {
+	id: string;
+	name: string;
+	deleted_at: string;
+}
+
+interface TaskRow {
+	id: string;
+	name: string;
+	category: string | null;
+	deleted_at: string;
+}
+
+interface BomItemRow {
+	id: string;
+	part_name: string;
+	category: string | null;
+	total_cost: number | null;
+	deleted_at: string;
+}
+
+interface TransactionRow {
+	id: string;
+	type: string;
+	item_name: string | null;
+	transaction_date: string;
+	total_cost: number | null;
+	deleted_at: string;
+}
+
+// Trash lives at the bottom of this page rather than on its own project tab.
+const [{ data: files }, { data: folders }, { data: tasks }, { data: bomItems }, { data: transactions }] = await Promise.all([
+	Astro.locals.supabase
+		.from('files')
+		.select('id, filename, size_bytes, deleted_at')
+		.eq('project_id', id)
+		.not('deleted_at', 'is', null)
+		.order('deleted_at', { ascending: false })
+		.overrideTypes<FileRow[]>(),
+	Astro.locals.supabase
+		.from('folders')
+		.select('id, name, deleted_at')
+		.eq('project_id', id)
+		.not('deleted_at', 'is', null)
+		.order('deleted_at', { ascending: false })
+		.overrideTypes<FolderRow[]>(),
+	Astro.locals.supabase
+		.from('tasks')
+		.select('id, name, category, deleted_at')
+		.eq('project_id', id)
+		.not('deleted_at', 'is', null)
+		.order('deleted_at', { ascending: false })
+		.overrideTypes<TaskRow[]>(),
+	Astro.locals.supabase
+		.from('bom_items')
+		.select('id, part_name, category, total_cost, deleted_at')
+		.eq('project_id', id)
+		.not('deleted_at', 'is', null)
+		.order('deleted_at', { ascending: false })
+		.overrideTypes<BomItemRow[]>(),
+	// Lines of a trashed bulk transaction (group_id set) are restored/purged
+	// together with their parent, not listed as their own row.
+	Astro.locals.supabase
+		.from('transactions')
+		.select('id, type, item_name, transaction_date, total_cost, deleted_at')
+		.eq('project_id', id)
+		.is('group_id', null)
+		.not('deleted_at', 'is', null)
+		.order('deleted_at', { ascending: false })
+		.overrideTypes<TransactionRow[]>(),
+]);
 ---
 <BaseLayout title={`${project.name} — Settings`} projectNav={{ projectId: project.id, userRole: userRole ?? '' }}>
 	<h2>Settings</h2>
@@ -69,6 +149,22 @@ const returnTo = `/projects/${id}/settings`;
 		<h3>Danger zone</h3>
 		<DeleteProjectPanel client:load projectId={project.id} projectName={project.name} />
 	</section>
+
+	<section>
+		<h3>Trash</h3>
+		<p class="muted trash-note">Deleted items are kept here for 10 days before they're removed for good.</p>
+		<TrashList
+			client:load
+			projectId={project.id}
+			currency={project.currency}
+			canEditMoney={true}
+			initialFiles={files ?? []}
+			initialFolders={folders ?? []}
+			initialTasks={tasks ?? []}
+			initialBomItems={bomItems ?? []}
+			initialTransactions={transactions ?? []}
+		/>
+	</section>
 </BaseLayout>
 
 <style>
@@ -78,6 +174,10 @@ const returnTo = `/projects/${id}/settings`;
 
 	section h3 {
 		margin-bottom: var(--space-3);
+	}
+
+	.trash-note {
+		font-size: 0.85rem;
 	}
 
 	.add-actions-row {

@@ -39,9 +39,6 @@ function isProjectPageActive(page: string) {
 					<a href={`/projects/${projectNav.projectId}/journal`} class={isProjectPageActive('journal') ? 'active' : ''}>Journal</a>
 				)}
 				<a href={`/projects/${projectNav.projectId}/money`} class={isProjectPageActive('money') ? 'active' : ''}>Money</a>
-				{isEditorOrOwner && (
-					<a href={`/projects/${projectNav.projectId}/trash`} class={isProjectPageActive('trash') ? 'active' : ''}>Trash</a>
-				)}
 				{isOwner && (
 					<a href={`/projects/${projectNav.projectId}/settings`} class={isProjectPageActive('settings') ? 'active' : ''}>Settings</a>
 				)}
@@ -57,6 +54,7 @@ function isProjectPageActive(page: string) {
 
 <style>
 	.site-header {
+		background: var(--color-surface-nav);
 		border-bottom: 1px solid var(--color-border);
 	}
 

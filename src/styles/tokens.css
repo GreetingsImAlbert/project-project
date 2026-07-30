@@ -7,6 +7,13 @@
 	--font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
 
 	--color-bg: #ffffff;
+	/* Stacked surfaces so the chrome reads as sitting behind the content rather than
+	   beside it: content (--color-bg) is the frontmost, then the sidebar, then the
+	   navbar. Light mode stays light on purpose — sidebar is white like the content
+	   and only the navbar steps back a hair, with the 1px borders doing the rest of
+	   the separating. The dark themes carry the fuller three-step gradient. */
+	--color-surface-sidebar: #ffffff;
+	--color-surface-nav: #f7f7f7;
 	--color-fg: #111111;
 	--color-muted: #666666;
 	--color-border: #e0e0e0;
@@ -14,6 +21,8 @@
 	--color-danger: #b3261e;
 	--color-success: #2e7d4f;
 	--color-highlight: rgba(17, 17, 17, 0.035);
+	/* Selected-row fill — one step past the hover highlight, used by the sidebar nav. */
+	--color-highlight-strong: rgba(17, 17, 17, 0.08);
 	/* Conventional link blue. Reserved for links that have to advertise themselves in
 	   a dense grid of text (supplier links in the money tables) — the site's default
 	   link style is the understated one in global.css. */
@@ -79,7 +88,9 @@
 :root[data-theme='dim'] {
 	color-scheme: dark;
 
-	--color-bg: #15202b;
+	--color-bg: #1b2836;
+	--color-surface-sidebar: #15202b;
+	--color-surface-nav: #101822;
 	--color-fg: #d7dbdc;
 	--color-muted: #8b98a5;
 	--color-border: #38444d;
@@ -87,6 +98,7 @@
 	--color-danger: #ff6259;
 	--color-success: #7bd9a5;
 	--color-highlight: rgba(255, 255, 255, 0.05);
+	--color-highlight-strong: rgba(255, 255, 255, 0.11);
 	--color-link: #6ab0f3;
 
 	--color-role-owner: #ff8a80;
@@ -131,6 +143,8 @@
 	color-scheme: dark;
 
 	--color-bg: #1e1e1e;
+	--color-surface-sidebar: #181818;
+	--color-surface-nav: #121212;
 	--color-fg: #d4d4d4;
 	--color-muted: #8c8c8c;
 	--color-border: #3c3c3c;
@@ -138,6 +152,7 @@
 	--color-danger: #ff6259;
 	--color-success: #86d9a8;
 	--color-highlight: rgba(255, 255, 255, 0.055);
+	--color-highlight-strong: rgba(255, 255, 255, 0.12);
 	--color-link: #79b8ff;
 
 	--color-role-owner: #ff8a80;

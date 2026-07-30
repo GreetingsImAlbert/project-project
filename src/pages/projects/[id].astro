@@ -113,33 +113,46 @@ const memberGroups = roles.map((role) => ({
 	</section>
 
 	<div class="overview-columns">
-		<section class="overview-members">
-			<h2>Members</h2>
-			<table class="members-table">
-				<tbody>
-					{memberGroups.map((group) =>
-						group.members.map((m) => (
+		<div class="overview-column-main">
+			<section class="overview-members">
+				<h2>Members</h2>
+				<table class="members-table">
+					<tbody>
+						{memberGroups.map((group) =>
+							group.members.map((m) => (
+								<tr>
+									<td class="member-role">{group.label === 'Owner' ? 'Owner' : group.label.replace(/s$/, '')}</td>
+									<td>
+										{m.profiles?.display_name}
+										{m.is_auditor && <span class="muted"> [auditor]</span>}
+									</td>
+								</tr>
+							))
+						)}
+						{ghostMembers.length > 0 && ghostMembers.map((g) => (
 							<tr>
-								<td class="member-role">{group.label === 'Owner' ? 'Owner' : group.label.replace(/s$/, '')}</td>
-								<td>
-									{m.profiles?.display_name}
-									{m.is_auditor && <span class="muted"> [auditor]</span>}
+								<td class="member-role muted">Ghost</td>
+								<td class="muted">
+									{g.display_name}
+									{g.is_deleted_account && <span> [deleted]</span>}
 								</td>
 							</tr>
-						))
-					)}
-					{ghostMembers.length > 0 && ghostMembers.map((g) => (
-						<tr>
-							<td class="member-role muted">Ghost</td>
-							<td class="muted">
-								{g.display_name}
-								{g.is_deleted_account && <span> [deleted]</span>}
-							</td>
-						</tr>
-					))}
-				</tbody>
-			</table>
-		</section>
+						))}
+					</tbody>
+				</table>
+			</section>
+
+			<section class="overview-reminders">
+				<UpcomingTasks
+					client:load
+					reminders={reminders}
+					initialHorizonDays={horizonDays}
+					serverToday={serverToday}
+					serverNowTime={serverNowTime}
+					showMineFilter={true}
+				/>
+			</section>
+		</div>
 
 		<section class="overview-faqs">
 			<h2>Quick FAQs</h2>
@@ -148,17 +161,6 @@ const memberGroups = roles.map((role) => ({
 			<DownloadProjectButton client:load projectId={project.id} />
 		</section>
 	</div>
-
-	<section class="overview-reminders">
-		<UpcomingTasks
-			client:load
-			reminders={reminders}
-			initialHorizonDays={horizonDays}
-			serverToday={serverToday}
-			serverNowTime={serverNowTime}
-			showMineFilter={true}
-		/>
-	</section>
 </BaseLayout>
 
 <style>
@@ -169,9 +171,11 @@ const memberGroups = roles.map((role) => ({
 	.overview-columns {
 		display: flex;
 		gap: var(--space-6);
+		align-items: flex-start;
 	}
 
-	.overview-members {
+	/* Members and Reminders stack in the reading column; Quick FAQs is its own. */
+	.overview-column-main {
 		flex: 1;
 		min-width: 0;
 	}
@@ -179,6 +183,15 @@ const memberGroups = roles.map((role) => ({
 	.overview-faqs {
 		flex: 0 0 280px;
 		min-width: 0;
+	}
+
+	/* No dividers anywhere on this page — the sections are already set apart by
+	   whitespace and the column split. */
+	.overview-members h2,
+	.overview-faqs h2 {
+		margin-top: 0;
+		padding-top: 0;
+		border-top: none;
 	}
 
 	.members-table {

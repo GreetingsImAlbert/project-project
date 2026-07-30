@@ -60,6 +60,17 @@ h2 {
 	border-top: 1px solid var(--color-border);
 }
 
+/* Pages whose title is an h2 (Journal, Trash, Settings, Files, …) would otherwise open
+   with a rule across the top of the content area, which separates the title from
+   nothing. Astro slots the page's own markup straight into these containers, so the
+   title is a first child in both the app shell and the signed-out layout. */
+.app-main > h2:first-child,
+.container > h2:first-child {
+	margin-top: 0;
+	padding-top: 0;
+	border-top: none;
+}
+
 p {
 	margin: 0 0 var(--space-4);
 }
