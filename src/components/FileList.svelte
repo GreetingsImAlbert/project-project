@@ -238,18 +238,11 @@
 			</li>
 		{:else}
 			<li class="file-row" class:open={openFileId === file.id}>
-				<div class="file-header" class:with-actions={canEdit && !file.is_journal}>
+				<div class="file-header" class:with-actions={canEdit && !file.is_journal} role="button" tabindex="0" onclick={() => onFileOpen(file)} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onFileOpen(file); } }}>
 					<div class="cell cell-name">
-						<button
-							type="button"
-							class="btn-plain file-name-btn"
-							title={file.filename}
-							onclick={() => onFileOpen(file)}
-						>
-							<span class="file-icon">📄</span>
-							<span class="file-name-text">{parts.base}</span>
-							{#if parts.ext}<span class="file-ext muted">{parts.ext}</span>{/if}
-						</button>
+						<span class="file-icon">📄</span>
+						<span class="file-name-text">{parts.base}</span>
+						{#if parts.ext}<span class="file-ext muted">{parts.ext}</span>{/if}
 						{#if purgeWarning(file)}<span class="purge-warning-icon" data-tooltip={purgeWarning(file)}>⚠</span>{/if}
 					</div>
 
@@ -259,7 +252,7 @@
 					</div>
 
 					{#if canEdit && !file.is_journal}
-						<div class="cell cell-actions">
+						<div class="cell cell-actions" onclick={(e) => e.stopPropagation()}>
 							<button type="button" class="btn-plain" onclick={() => openRename(file)}>Rename</button>
 							<button type="button" class="btn-plain" onclick={() => openModal(file, 'move')}>Move</button>
 							<button type="button" class="btn-plain" onclick={() => openModal(file, 'copy')}>Copy</button>
@@ -338,6 +331,11 @@
 		align-items: center;
 		gap: var(--space-3);
 		padding: var(--space-1) var(--space-2);
+		cursor: pointer;
+	}
+
+	.file-header:hover {
+		background: var(--color-highlight);
 	}
 
 	.file-header.with-actions {
@@ -350,31 +348,10 @@
 
 	.cell-name {
 		display: flex;
-		align-items: center;
-		gap: var(--space-1);
-	}
-
-	/* A real button so the row opens from the keyboard too, styled back down to plain
-	   text — same trick as TasksTable's .task-name. */
-	.file-name-btn {
-		display: flex;
 		align-items: baseline;
 		gap: 3px;
 		min-width: 0;
 		max-width: 100%;
-		background: none;
-		border: none;
-		padding: 0;
-		margin: 0;
-		color: inherit;
-		font: inherit;
-		text-align: left;
-		cursor: pointer;
-	}
-
-	.file-name-btn:hover {
-		text-decoration: underline;
-		text-underline-offset: 2px;
 	}
 
 	.file-icon {

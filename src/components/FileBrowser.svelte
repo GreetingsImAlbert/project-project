@@ -652,25 +652,23 @@
 				</li>
 			{:else}
 				<li class="folder-row">
-					<div class="folder-header" class:with-actions={canEdit}>
+					<a class="folder-header" class:with-actions={canEdit} href={hrefFor(folder.id)} onclick={(e) => handleLinkClick(e, folder.id)}>
 						<div class="cell cell-name">
-							<a class="folder-name-link" href={hrefFor(folder.id)} onclick={(e) => handleLinkClick(e, folder.id)} title={folder.name}>
-								<span class="folder-icon">📁</span>
-								<span class="folder-name-text">{folder.name}</span>
-							</a>
+							<span class="folder-icon">📁</span>
+							<span class="folder-name-text">{folder.name}</span>
 						</div>
 
 						<div class="cell cell-meta"></div>
 
 						{#if canEdit}
-							<div class="cell cell-actions">
-								<button type="button" class="btn-plain" onclick={() => openRenameFolder(folder)}>Rename</button>
-								<button type="button" class="btn-danger" onclick={() => handleDeleteFolder(folder.id)} disabled={deletingFolderId === folder.id}>
+							<div class="cell cell-actions" onclick={(e) => e.preventDefault()}>
+								<button type="button" class="btn-plain" onclick={(e) => { e.preventDefault(); openRenameFolder(folder); }}>Rename</button>
+								<button type="button" class="btn-danger" onclick={(e) => { e.preventDefault(); handleDeleteFolder(folder.id); }} disabled={deletingFolderId === folder.id}>
 									{deletingFolderId === folder.id ? 'Deleting…' : 'Delete'}
 								</button>
 							</div>
 						{/if}
-					</div>
+					</a>
 
 					{#if folderError?.id === folder.id}
 						<p class="row-error">{folderError.message}</p>
@@ -900,6 +898,16 @@
 		align-items: center;
 		gap: var(--space-3);
 		padding: var(--space-1) var(--space-2);
+		color: inherit;
+		text-decoration: none;
+		border-bottom: none;
+		cursor: pointer;
+	}
+
+	.folder-header:hover {
+		background: var(--color-highlight);
+		border-bottom: none;
+		text-decoration: none;
 	}
 
 	.folder-header.with-actions {
@@ -928,21 +936,6 @@
 		padding: 0 var(--space-2);
 		font-size: 0.7rem;
 		line-height: 1.8;
-	}
-
-	.folder-name-link {
-		display: flex;
-		align-items: baseline;
-		gap: var(--space-1);
-		min-width: 0;
-		max-width: 100%;
-		border-bottom: none;
-	}
-
-	.folder-name-link:hover {
-		border-bottom: none;
-		text-decoration: underline;
-		text-underline-offset: 2px;
 	}
 
 	.folder-icon {
