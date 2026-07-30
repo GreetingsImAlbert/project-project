@@ -1,16 +1,16 @@
 // Off the main thread: every mesh loader here is CPU-heavy enough on a large enough file to
 // freeze the tab for seconds if parsed inline — STEP/IGES because OpenCASCADE's WASM build
-// (occt-import-js) is tessellating a boundary representation into triangles, STL/OBJ/PLY/3MF
+// (occt-import-js) is tessellating a boundary representation into triangles, STL/OBJ/PLY
 // because a big triangle soup is itself slow to parse into typed arrays. One message in, one
 // response out — CadViewer's loadModel spins up a fresh worker per file rather than keeping
 // one alive, so cancelling a load (another file opened, or the panel closed) is just
-// terminating it.
+// terminating it. 3MF is the one format not handled here — see build3mfObject in
+// CadViewer.svelte, which parses it on the main thread instead.
 import occtimportjs from 'occt-import-js';
 import * as THREE from 'three';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader.js';
-import { ThreeMFLoader } from 'three/examples/jsm/loaders/3MFLoader.js';
 
 export interface CadWorkerMesh {
 	position: Float32Array;
@@ -22,7 +22,7 @@ export interface CadWorkerMesh {
 }
 
 export interface CadWorkerRequest {
-	format: 'step' | 'iges' | 'stl' | 'obj' | 'ply' | '3mf';
+	format: 'step' | 'iges' | 'stl' | 'obj' | 'ply';
 	buffer: ArrayBuffer;
 	// Resolved by the caller against `window.location`, not here: a worker's own notion of its
 	// base URL (`import.meta.url`/`self.location`) has turned out not to be trustworthy in
@@ -76,22 +76,16 @@ function meshFromGeometry(geometry: THREE.BufferGeometry, color: [number, number
 	};
 }
 
-// OBJLoader and ThreeMFLoader hand back a Group of Meshes rather than one geometry — STL and
-// PLY parse to a single BufferGeometry instead, handled directly in the switch below.
-function meshesFromObject(obj: THREE.Object3D, keepColor: boolean): CadWorkerMesh[] {
+// OBJLoader hands back a Group of Meshes rather than one geometry — STL and PLY parse to a
+// single BufferGeometry instead, handled directly in the switch below. OBJ's own materials
+// are discarded (it's the only format here that can reference a .mtl this worker has no way
+// to fetch), so unlike the STEP/IGES branch above, colour is always null here.
+function meshesFromObject(obj: THREE.Object3D): CadWorkerMesh[] {
 	const meshes: CadWorkerMesh[] = [];
 	obj.traverse((node) => {
 		const mesh = node as THREE.Mesh;
 		if (!mesh.isMesh) return;
-
-		let color: [number, number, number] | null = null;
-		if (keepColor) {
-			const material = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
-			const c = (material as THREE.MeshStandardMaterial | undefined)?.color;
-			if (c) color = [c.r, c.g, c.b];
-		}
-
-		meshes.push(meshFromGeometry(mesh.geometry, color));
+		meshes.push(meshFromGeometry(mesh.geometry, null));
 	});
 	return meshes;
 }
@@ -115,8 +109,8 @@ ctx.onmessage = async (ev: MessageEvent<CadWorkerRequest>) => {
 
 			// One mesh per solid, same granularity occt-import-js itself hands back. Per-face
 			// colour (`brep_faces` in the raw result) isn't carried over — most mechanical STEP
-			// exports have no colour at all, and CadViewer already has a neutral fallback
-			// material for that case.
+			// exports have no colour at all, and CadViewer's resolveColor already has a theme
+			// fallback for that case.
 			meshes = result.meshes.map((mesh) => ({
 				position: Float32Array.from(mesh.attributes.position.array),
 				normal: mesh.attributes.normal ? Float32Array.from(mesh.attributes.normal.array) : null,
@@ -128,14 +122,9 @@ ctx.onmessage = async (ev: MessageEvent<CadWorkerRequest>) => {
 			meshes = [meshFromGeometry(new STLLoader().parse(buffer), null)];
 		} else if (format === 'ply') {
 			meshes = [meshFromGeometry(new PLYLoader().parse(buffer), null)];
-		} else if (format === 'obj') {
-			// The only text format here, and the only one that can reference a .mtl we have no
-			// way to fetch — so its materials are discarded, same as CadViewer did on the main
-			// thread before this moved here.
-			meshes = meshesFromObject(new OBJLoader().parse(new TextDecoder().decode(buffer)), false);
 		} else {
-			// 3MF is the one group format that carries real per-object colour worth keeping.
-			meshes = meshesFromObject(new ThreeMFLoader().parse(buffer), true);
+			// format === 'obj', the only text format here.
+			meshes = meshesFromObject(new OBJLoader().parse(new TextDecoder().decode(buffer)));
 		}
 
 		const transfer = meshes.flatMap((m) => {

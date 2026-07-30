@@ -3,16 +3,20 @@
 	// import from FileViewerPanel, which is what keeps three.js — several hundred KB — in
 	// its own chunk and out of every page that merely lists files.
 	//
-	// View-only by design: orbit, zoom, pan. Every format — STL/OBJ/PLY/3MF triangle soups
-	// and STEP/IGES boundary representations alike — is parsed off the main thread in
-	// cad-worker.ts (STEP/IGES via occt-import-js, OpenCASCADE compiled to WASM; the rest via
-	// three's own loaders), so a large file never freezes this tab while it parses — see
-	// loadModel.
+	// View-only by design: orbit, zoom, pan. STL/OBJ/PLY triangle soups and STEP/IGES
+	// boundary representations are parsed off the main thread in cad-worker.ts (STEP/IGES
+	// via occt-import-js, OpenCASCADE compiled to WASM; the rest via three's own loaders),
+	// so a large file never freezes this tab while it parses — see loadModel. 3MF is the
+	// exception, parsed here on the main thread — see build3mfObject.
 	import { onMount } from 'svelte';
 	import * as THREE from 'three';
 	import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 	import { onSwapOrDestroy } from '../lib/island-teardown';
 	import { splitFilename } from '../lib/file-kind';
+	import { CATEGORY_COLOR_COUNT, CATEGORY_COLOR_SLOTS } from '../lib/category-color';
+	// 3MF is parsed here rather than in cad-worker.ts — see build3mfObject.
+	import { ThreeMFLoader } from 'three/examples/jsm/loaders/3MFLoader.js';
+	import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 	import type { CadWorkerMesh, CadWorkerRequest, CadWorkerResponse } from '../lib/cad-worker';
 	// Resolved to an absolute URL below, on the main thread — see the comment on
 	// CadWorkerRequest.wasmUrl for why that resolution doesn't happen inside the worker.
@@ -34,6 +38,11 @@
 	let triangles = $state(0);
 	let dims = $state<{ x: number; y: number; z: number } | null>(null);
 	let wireframe = $state(false);
+	// 'default' = the site's theme ink color (--color-fg), always overriding any file
+	// color. 'original' = whatever the file carried (falls back to --color-fg when
+	// the format has no color). A number 0–9 = a category palette swatch. Persisted,
+	// not per-file: it's a viewing preference.
+	let colorSlot = $state<number | 'default' | 'original'>('default');
 
 	// Everything below is plain (non-reactive) state: it's imperative WebGL bookkeeping,
 	// and making Three's own mutable objects reactive only invites proxy overhead and
@@ -62,14 +71,21 @@
 	// cooperative abort of their own once a file is handed to them.
 	let inflightWorker: Worker | null = null;
 
-	// STEP/IGES can carry real per-solid colour, same reason 3MF keeps its own materials
-	// instead of the neutral grey below.
+	// STEP/IGES can carry real per-solid colour, same reason 3MF (handled separately, see
+	// build3mfObject) keeps its own per-object materials — both take priority over the
+	// Default swatch's theme fallback in resolveColor.
 	const BREP_EXTENSIONS = new Set(['step', 'stp', 'iges', 'igs']);
 
-	// Neutral machined-part grey, deliberately fixed rather than themed: the model is the
-	// subject, and recolouring it per theme would make the same part look like a different
-	// material. Only the grid follows the theme, since it's chrome.
-	const PART_COLOR = 0xb4bcc4;
+	// Fallback for cssColor() below, used only if the CSS variable it asks for somehow
+	// resolves to nothing. Neutral machined-part grey — the same tone the picker's
+	// Default swatch lands on before containerEl exists to read the real value from.
+	const PART_COLOR_FALLBACK = 0xb4bcc4;
+
+	const LOCAL_STORAGE_KEY = 'p2-cad-model-color';
+
+	function colorVarFor(slot: number | 'default'): string {
+		return slot === 'default' ? '--color-fg' : `--color-cat-${slot}-fg`;
+	}
 
 	// Nothing renders on a timer — a viewer that spins the GPU while sitting idle in a
 	// side panel is a laptop battery for no reason. Every path that changes what's on
@@ -170,15 +186,67 @@
 		scene.add(grid);
 	}
 
-	function partMaterial(): THREE.MeshStandardMaterial {
-		return new THREE.MeshStandardMaterial({
-			color: PART_COLOR,
+	// A swatch pick (colorSlot !== null) is a deliberate "paint the whole part this
+	// colour" and wins over whatever the file carries. Left on Default, a solid keeps
+	// its own colour when the format actually has one (STEP/IGES per-solid colour,
+	// 3MF per-object materials) and only falls back to the theme's ink colour where
+	// there's genuinely nothing to show (STL/OBJ/PLY, or a STEP/IGES solid with no
+	// colour of its own).
+	function resolveColor(fileColor: number | null): number {
+		if (colorSlot === 'original') return fileColor ?? cssColor(colorVarFor('default'), PART_COLOR_FALLBACK);
+		if (typeof colorSlot === 'number') return cssColor(colorVarFor(colorSlot), PART_COLOR_FALLBACK);
+		return cssColor(colorVarFor('default'), PART_COLOR_FALLBACK);
+	}
+
+	// fileColor is stashed on the material so a later swatch pick or theme change (see
+	// applyPartColor) can re-resolve it without re-parsing the mesh it came from.
+	// vertexColors is 3MF-only: a part painted via a <colorgroup> carries its colour
+	// on the geometry itself (a per-vertex 'color' attribute), not as a single hex —
+	// enabling MeshStandardMaterial's own vertexColors lets that through unmodified,
+	// with the base colour left neutral so it doesn't tint what the geometry already
+	// carries. Only the 'original' slot honours per-vertex data; every other slot
+	// overrides it with a uniform colour.
+	function materialFor(fileColor: number | null, vertexColors = false): THREE.MeshStandardMaterial {
+		const useVertexColors = vertexColors && colorSlot === 'original';
+		const material = new THREE.MeshStandardMaterial({
+			color: useVertexColors ? 0xffffff : resolveColor(fileColor),
+			vertexColors: useVertexColors,
 			roughness: 0.55,
 			metalness: 0.05,
-			// Meshes exported from CAD are frequently not watertight, and a flipped or
-			// missing facet would otherwise show as a hole straight through the part.
 			side: THREE.DoubleSide,
 		});
+		material.userData.fileColor = fileColor;
+		material.userData.vertexColors = vertexColors;
+		return material;
+	}
+
+	function applyPartColor() {
+		if (!model) return;
+		model.traverse((node) => {
+			const mesh = node as THREE.Mesh;
+			if (!mesh.isMesh) return;
+			const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+			for (const m of materials) {
+				const material = m as THREE.MeshStandardMaterial;
+				const fileColor = (material.userData?.fileColor ?? null) as number | null;
+				const useVertexColors = Boolean(material.userData?.vertexColors) && colorSlot === 'original';
+				if (material.vertexColors !== useVertexColors) {
+					material.vertexColors = useVertexColors;
+					material.needsUpdate = true;
+				}
+				material.color.setHex(useVertexColors ? 0xffffff : resolveColor(fileColor));
+			}
+		});
+		scheduleRender();
+	}
+
+	function selectColor(slot: number | 'default' | 'original') {
+		colorSlot = slot;
+		try {
+			if (slot === 'default') localStorage.removeItem(LOCAL_STORAGE_KEY);
+			else localStorage.setItem(LOCAL_STORAGE_KEY, String(slot));
+		} catch {}
+		applyPartColor();
 	}
 
 	// Streamed rather than awaited whole so the progress line can move. The bytes still end
@@ -218,7 +286,6 @@
 		stl: 'stl',
 		ply: 'ply',
 		obj: 'obj',
-		'3mf': '3mf',
 		step: 'step',
 		stp: 'step',
 		iges: 'iges',
@@ -226,9 +293,70 @@
 	};
 
 	async function buildModel(extension: string, buffer: ArrayBuffer): Promise<THREE.Object3D> {
+		// Not routed through cad-worker.ts like the rest: three's ThreeMFLoader parses the
+		// model XML inside the .3mf zip via the global DOMParser, which dedicated workers
+		// don't reliably expose the way Window does — off the main thread this throws
+		// "DOMParser is not defined" in browsers that haven't added it there yet. The main
+		// thread always has it, so 3MF is parsed here instead.
+		if (extension === '3mf') return build3mfObject(buffer);
+
 		const format = FORMAT_BY_EXTENSION[extension];
 		if (!format) throw new Error('Unsupported model format');
 		return loadModel(format, buffer);
+	}
+
+	// Mirrors meshesToObject below, but starting from the Group ThreeMFLoader hands back
+	// rather than cad-worker.ts's flat mesh list — 3MF is the one format that carries
+	// real per-object colour via a proper material instead of a bare [r, g, b]. Every
+	// mesh gets re-parented onto a flat group (the same shape meshesToObject produces,
+	// which frameModel/prepare expect), so each mesh's world transform — its own plus
+	// whatever its 3MF parent nodes (components, build items) applied — has to be
+	// baked into its own position/rotation/scale rather than just dropped; leaving
+	// that out was why assemblies came out with bodies scattered in the wrong places.
+	function build3mfObject(buffer: ArrayBuffer): THREE.Object3D {
+		const source = new ThreeMFLoader().parse(buffer);
+		source.updateMatrixWorld(true);
+		const group = new THREE.Group();
+
+		source.traverse((node) => {
+			const mesh = node as THREE.Mesh;
+			if (!mesh.isMesh) return;
+
+			const sourceMaterial = (
+				Array.isArray(mesh.material) ? mesh.material[0] : mesh.material
+			) as THREE.MeshPhongMaterial | undefined;
+			// A MeshPhongMaterial's .color defaults to white, and ThreeMFLoader leaves it
+			// at that default for three of its four mesh shapes — untextured/uncoloured
+			// triangles, a texture map, or a per-vertex colour attribute — so reading
+			// .color unconditionally was treating that default as if it were real file
+			// colour and painting those parts white. Only a resolved <basematerials>
+			// reference (name !== the loader's own DEFAULT_MATERIAL_NAME sentinel, no
+			// map, no vertexColors) is an actual colour choice from the file.
+			const hasVertexColors = Boolean(sourceMaterial?.vertexColors);
+			const isPlaceholder = !sourceMaterial || sourceMaterial.name === THREE.Loader.DEFAULT_MATERIAL_NAME;
+			const fileColor =
+				!isPlaceholder && !hasVertexColors && !sourceMaterial.map ? sourceMaterial.color.getHex() : null;
+
+			// ThreeMFLoader hands back an unindexed triangle soup with no normals of its
+			// own — every vertex belongs to exactly one triangle, so computing normals
+			// straight off that (as prepare() would for the other formats) gives each
+			// triangle its own flat, unshared normal. On a curved surface that reads as
+			// a grid of visible facet edges lined up exactly on the triangle edges,
+			// i.e. the model looking seamed wherever wireframe mode would draw a line.
+			// Welding the coincident vertices back into an indexed geometry first (kept
+			// separate wherever another attribute — a UV seam, a per-vertex colour
+			// boundary — genuinely differs) lets computeVertexNormals blend normals
+			// across shared vertices instead, the same smooth shading a slicer preview
+			// or the STEP/IGES tessellation already gives those formats.
+			const geometry = mergeVertices(mesh.geometry);
+			geometry.computeVertexNormals();
+
+			const built = new THREE.Mesh(geometry, materialFor(fileColor, hasVertexColors));
+			built.matrix.copy(mesh.matrixWorld).decompose(built.position, built.quaternion, built.scale);
+			group.add(built);
+		});
+
+		return group;
 	}
 
 	// Hands the raw bytes to cad-worker.ts and turns its mesh list back into a
@@ -271,35 +399,35 @@
 		});
 	}
 
-	// Colour, when cad-worker.ts found one on the solid (STEP/IGES) or the object (3MF); the
-	// same neutral material as the other formats otherwise. Most mechanical STEP/IGES
-	// exports carry no colour at all.
+	// Colour, when cad-worker.ts found one on the solid (STEP/IGES); resolveColor's
+	// theme fallback otherwise. Most mechanical STEP/IGES exports carry no colour at all.
 	function meshesToObject(meshes: CadWorkerMesh[]): THREE.Object3D {
 		const group = new THREE.Group();
 		for (const mesh of meshes) {
 			const geometry = new THREE.BufferGeometry();
 			geometry.setAttribute('position', new THREE.BufferAttribute(mesh.position, 3));
 			if (mesh.normal) geometry.setAttribute('normal', new THREE.BufferAttribute(mesh.normal, 3));
-			// STL/OBJ/PLY commonly parse to non-indexed geometry; STEP/IGES/3MF always have one.
+			// STL/OBJ/PLY commonly parse to non-indexed geometry; STEP/IGES always does.
 			if (mesh.index) geometry.setIndex(new THREE.BufferAttribute(mesh.index, 1));
 
-			const material = mesh.color
-				? new THREE.MeshStandardMaterial({
-						color: new THREE.Color(mesh.color[0], mesh.color[1], mesh.color[2]),
-						roughness: 0.55,
-						metalness: 0.05,
-						side: THREE.DoubleSide,
-					})
-				: partMaterial();
-
-			group.add(new THREE.Mesh(geometry, material));
+			// occt-import-js's triple is a plain display RGB fraction, the same space STEP
+			// itself stores colour in — it has to be tagged SRGBColorSpace explicitly.
+			// The bare `new THREE.Color(r, g, b)` constructor instead reads its arguments
+			// as three.js's own working space (linear), so an unlabelled near-black like
+			// (0.05, 0.05, 0.05) was being lightened noticeably (to ~0.35 sRGB) rather
+			// than left alone — true (0,0,0)/(1,1,1) round-trip correctly either way,
+			// which is why the effect only ever showed up on off-black/off-white parts.
+			const fileColor = mesh.color
+				? new THREE.Color().setRGB(mesh.color[0], mesh.color[1], mesh.color[2], THREE.SRGBColorSpace).getHex()
+				: null;
+			group.add(new THREE.Mesh(geometry, materialFor(fileColor)));
 		}
 		return group;
 	}
 
 	// Counts triangles, gives every mesh usable normals and (for the group formats) a
-	// consistent material. 3MF is the one exception: it carries real per-object colour, so
-	// what it came with is kept.
+	// consistent material. STEP/IGES and 3MF are the exception: they carry real
+	// per-solid colour, so what they came with is kept.
 	function prepare(obj: THREE.Object3D, keepMaterials: boolean) {
 		let count = 0;
 
@@ -313,7 +441,7 @@
 
 			if (!keepMaterials) {
 				const old = mesh.material;
-				mesh.material = partMaterial();
+				mesh.material = materialFor(null);
 				if (Array.isArray(old)) {
 					for (const m of old) m.dispose();
 				} else {
@@ -449,6 +577,16 @@
 		if (!containerEl) return;
 
 		try {
+			const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
+			if (stored === 'original') {
+				colorSlot = 'original';
+			} else if (stored !== null) {
+				const n = Number(stored);
+				if (Number.isInteger(n) && n >= 0 && n < CATEGORY_COLOR_COUNT) colorSlot = n;
+			}
+		} catch {}
+
+		try {
 			renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 		} catch {
 			error = 'This browser cannot show 3D previews (WebGL unavailable)';
@@ -489,11 +627,13 @@
 		const observer = new ResizeObserver(resize);
 		observer.observe(containerEl);
 
-		// The grid is the one part of the scene painted in theme colours, so it has to be
-		// rebuilt when the theme changes under it.
+		// The grid and the picker's own materials are both painted in theme colours —
+		// the grid because it's chrome, the picker because Default and every -fg swatch
+		// are theme-dependent CSS variables — so both need rebuilding when the theme
+		// changes under them.
 		const themeWatcher = new MutationObserver(() => {
-			if (!grid) return;
-			buildGrid();
+			if (grid) buildGrid();
+			applyPartColor();
 			scheduleRender();
 		});
 		themeWatcher.observe(document.documentElement, {
@@ -547,6 +687,44 @@
 </script>
 
 <div class="cad">
+	<!-- Default plus the ten task-category slots' -fg swatches. Default is styled from
+	     --color-fg directly rather than a category slot, since it's the one option that
+	     isn't "pick a colour" but "use the site's own ink colour for this theme". -->
+	<div class="color-bar" role="group" aria-label="Model colour">
+		<button
+			type="button"
+			class="swatch swatch-default"
+			class:active={colorSlot === 'default'}
+			aria-label="Default colour"
+			title="Default (follows theme)"
+			onclick={() => selectColor('default')}
+		></button>
+		{#each CATEGORY_COLOR_SLOTS as slot (slot)}
+			<button
+				type="button"
+				class="swatch"
+				class:active={colorSlot === slot}
+				style={`--swatch-color: var(--color-cat-${slot}-fg)`}
+				aria-label={`Colour ${slot + 1}`}
+				title={`Colour ${slot + 1}`}
+				onclick={() => selectColor(slot)}
+			></button>
+		{/each}
+		<button
+			type="button"
+			class="swatch swatch-original"
+			class:active={colorSlot === 'original'}
+			aria-label="Original file colour"
+			title="Original (from file)"
+			onclick={() => selectColor('original')}
+		>
+			<svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+				<circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5" fill="none"/>
+				<path d="M8 4 A4 4 0 0 1 8 12 Z" fill="currentColor"/>
+			</svg>
+		</button>
+	</div>
+
 	<div class="stage" bind:this={containerEl} aria-label={`3D preview of ${filename}`} role="img"></div>
 
 	{#if loading}
@@ -585,6 +763,50 @@
 		flex-direction: column;
 		height: 100%;
 		min-height: 0;
+	}
+
+	.color-bar {
+		display: flex;
+		flex-wrap: wrap;
+		flex: 0 0 auto;
+		gap: var(--space-1);
+		padding-bottom: var(--space-2);
+		margin-bottom: var(--space-2);
+		border-bottom: 1px solid var(--color-border);
+	}
+
+	.swatch {
+		width: 18px;
+		height: 18px;
+		flex: 0 0 auto;
+		padding: 0;
+		border-radius: 3px;
+		border: 1px solid var(--color-border);
+		background: var(--swatch-color);
+		cursor: pointer;
+	}
+
+	.swatch-default {
+		background: var(--color-fg);
+	}
+
+	.swatch-original {
+		background: var(--color-bg);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		color: var(--color-fg);
+	}
+
+	.swatch-original svg {
+		width: 12px;
+		height: 12px;
+	}
+
+	.swatch.active {
+		border-color: var(--color-border-strong);
+		outline: 1px solid var(--color-border-strong);
+		outline-offset: -3px;
 	}
 
 	.stage {
