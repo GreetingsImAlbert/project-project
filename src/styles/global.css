@@ -92,7 +92,7 @@ a:hover {
 .container {
 	max-width: var(--max-width);
 	margin: 0 auto;
-	padding: 0 var(--space-5) var(--space-7);
+	padding: var(--space-6) var(--space-7) var(--space-8);
 }
 
 /* Forms */
@@ -695,7 +695,7 @@ thead th {
 
 @media (max-width: 640px) {
 	.container {
-		padding: 0 var(--space-4) var(--space-6);
+		padding: var(--space-5) var(--space-4) var(--space-6);
 	}
 
 	h1 {

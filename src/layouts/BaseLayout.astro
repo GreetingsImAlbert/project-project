@@ -104,6 +104,21 @@ if (user) {
 		min-width: 0;
 		background: var(--color-bg);
 		overflow-y: auto;
-		padding: var(--space-5) var(--space-5) var(--space-7);
+		padding: var(--space-7) var(--space-7) var(--space-8);
+	}
+
+	/* The generous content gutter is what makes the app feel roomy, but below ~1200px it
+	   starts eating the tables and BOM grids, so it steps back down before the sidebar
+	   drops out entirely. */
+	@media (max-width: 1200px) {
+		.app-main {
+			padding: var(--space-6) var(--space-5) var(--space-7);
+		}
+	}
+
+	@media (max-width: 640px) {
+		.app-main {
+			padding: var(--space-5) var(--space-4) var(--space-6);
+		}
 	}
 </style>

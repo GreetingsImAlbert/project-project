@@ -51,7 +51,7 @@
 
 <style>
 	.app-sidebar {
-		flex: 0 0 240px;
+		flex: 0 0 280px;
 		display: flex;
 		background: var(--color-surface-sidebar);
 		border-right: 1px solid var(--color-border);
@@ -63,13 +63,13 @@
 		min-width: 0;
 		overflow-y: auto;
 		overflow-x: hidden;
-		padding: var(--space-4) var(--space-3) var(--space-7);
+		padding: var(--space-6) var(--space-4) var(--space-8);
 	}
 
 	.sidebar-welcome {
 		font-size: 0.82rem;
-		margin: 0 0 var(--space-5);
-		padding: 0 var(--space-2);
+		margin: 0 0 var(--space-6);
+		padding: 0 var(--space-3);
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -78,7 +78,7 @@
 	.sidebar-nav {
 		display: flex;
 		flex-direction: column;
-		gap: 2px;
+		gap: var(--space-1);
 		font-size: 0.85rem;
 	}
 
@@ -86,7 +86,7 @@
 	   entry made the whole nav read as selected. */
 	.nav-link {
 		display: block;
-		padding: var(--space-1) var(--space-2);
+		padding: var(--space-2) var(--space-3);
 		border-bottom: none;
 		white-space: nowrap;
 		overflow: hidden;
@@ -104,8 +104,11 @@
 
 	.project-list {
 		list-style: none;
-		margin: 2px 0 0;
+		margin: var(--space-1) 0 0;
 		padding: 0 0 0 var(--space-3);
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-1);
 	}
 
 	.project-link {
