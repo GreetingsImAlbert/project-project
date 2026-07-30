@@ -1,5 +1,6 @@
 ---
 import ThemeToggle from './ThemeToggle.svelte';
+import ReportIssueButton from './ReportIssueButton.svelte';
 
 interface Props {
 	user: { id: string; email: string | undefined; displayName: string | undefined } | null;
@@ -29,7 +30,10 @@ function isActive(href: string) {
 			{user && (
 				<nav class="site-nav">
 					{navLinks.map((link) => (
-						<a href={link.href} class={isActive(link.href) ? 'active' : ''}>{link.label}</a>
+						<Fragment>
+							{link.label === 'Dashboard' && <ReportIssueButton client:load />}
+							<a href={link.href} class={isActive(link.href) ? 'active' : ''}>{link.label}</a>
+						</Fragment>
 					))}
 				</nav>
 			)}

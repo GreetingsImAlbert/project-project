@@ -18,7 +18,7 @@ export function generateReportId(): string {
 export interface ErrorReportInput {
 	message: string;
 	stack?: string | null;
-	source: 'server' | 'client';
+	source: 'server' | 'client' | 'feedback';
 	method?: string | null;
 	path?: string | null;
 	url?: string | null;
