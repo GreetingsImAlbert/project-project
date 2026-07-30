@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+Whenever reporting information to the user, be extremely concise and sacrifice grammar for concision.
+
 ## What this is
 
 P2 is a small collaborative engineering-project manager. The developer is a mechanical engineering student hoping to use this web app to aid in projects.

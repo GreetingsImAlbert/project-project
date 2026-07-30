@@ -70,6 +70,53 @@ export type Database = {
           },
         ]
       }
+      error_reports: {
+        Row: {
+          context: Json | null
+          created_at: string
+          id: string
+          message: string
+          method: string | null
+          path: string | null
+          source: string
+          stack: string | null
+          url: string | null
+          user_id: string | null
+        }
+        Insert: {
+          context?: Json | null
+          created_at?: string
+          id: string
+          message: string
+          method?: string | null
+          path?: string | null
+          source: string
+          stack?: string | null
+          url?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          context?: Json | null
+          created_at?: string
+          id?: string
+          message?: string
+          method?: string | null
+          path?: string | null
+          source?: string
+          stack?: string | null
+          url?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "error_reports_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       files: {
         Row: {
           created_at: string | null

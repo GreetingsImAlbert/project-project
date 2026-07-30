@@ -48,5 +48,8 @@ const user = Astro.locals.user;
 		<main class="container">
 			<slot />
 		</main>
+		<script>
+			import '../lib/client-error-report';
+		</script>
 	</body>
 </html>

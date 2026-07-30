@@ -1,6 +1,9 @@
 import type { APIRoute } from 'astro';
+import { env } from 'cloudflare:workers';
 import { createStatelessSupabaseClient } from '../../../lib/supabase/stateless';
 import { passwordProblem } from '../../../lib/account-validation';
+import { getSupabaseAdmin } from '../../../lib/supabase/admin';
+import { logError } from '../../../lib/error-report';
 
 export const prerender = false;
 
@@ -52,8 +55,15 @@ export const POST: APIRoute = async ({ request, locals }) => {
 	const { error: revokeError } = await locals.supabase.auth.signOut({ scope: 'others' });
 
 	if (revokeError) {
+		const reportId = await logError(getSupabaseAdmin(env), {
+			message: `Failed to sign out other sessions after password change: ${revokeError.message}`,
+			source: 'server',
+			method: request.method,
+			path: new URL(request.url).pathname,
+			userId: locals.user.id,
+		});
 		return new Response(
-			'Password changed, but the other sessions could not be signed out. Change it again to retry the sign-out.',
+			`Password changed, but the other sessions could not be signed out. Change it again to retry the sign-out. Reference ID: ${reportId}`,
 			{ status: 500 }
 		);
 	}

@@ -1,6 +1,9 @@
 import type { APIRoute } from 'astro';
+import { env } from 'cloudflare:workers';
 import { createStatelessSupabaseClient } from '../../../lib/supabase/stateless';
 import { passwordProblem } from '../../../lib/account-validation';
+import { getSupabaseAdmin } from '../../../lib/supabase/admin';
+import { logError } from '../../../lib/error-report';
 
 export const prerender = false;
 
@@ -46,8 +49,15 @@ export const POST: APIRoute = async ({ request, locals }) => {
 	const { error: revokeError } = await supabase.auth.signOut({ scope: 'global' });
 
 	if (revokeError) {
+		const reportId = await logError(getSupabaseAdmin(env), {
+			message: `Failed to revoke sessions after password reset: ${revokeError.message}`,
+			source: 'server',
+			method: request.method,
+			path: new URL(request.url).pathname,
+			userId: locals.user?.id ?? null,
+		});
 		return new Response(
-			'Password changed, but the existing sessions could not be revoked. Sign in and change it again from the account page.',
+			`Password changed, but the existing sessions could not be revoked. Sign in and change it again from the account page. Reference ID: ${reportId}`,
 			{ status: 500 }
 		);
 	}

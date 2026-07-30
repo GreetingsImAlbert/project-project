@@ -1,0 +1,91 @@
+---
+import { env } from 'cloudflare:workers';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getSupabaseAdmin } from '../../lib/supabase/admin';
+import { isAdminUser } from '../../lib/admin-guard';
+
+export const prerender = false;
+
+const user = Astro.locals.user;
+
+if (!user) {
+	return Astro.redirect('/login');
+}
+
+if (!(await isAdminUser(Astro.locals.supabase, user.id))) {
+	return Astro.redirect('/');
+}
+
+const admin = getSupabaseAdmin(env);
+
+const { data: reports, error: reportsError } = await admin
+	.from('error_reports')
+	.select('id, message, stack, source, method, path, url, created_at, profiles(display_name, email)')
+	.order('created_at', { ascending: false })
+	.limit(100);
+---
+
+<BaseLayout title="Admin · Error reports">
+	<h1>Error reports</h1>
+	<p><a href="/admin">← Back to dashboard</a></p>
+
+	{reportsError && <p class="load-error">Couldn't load error reports.</p>}
+
+	{!reportsError && (reports ?? []).length === 0 && <p>No errors logged yet.</p>}
+
+	{!reportsError && (reports ?? []).length > 0 && (
+		<div class="table-scroll">
+			<table>
+				<thead>
+					<tr>
+						<th>ID</th>
+						<th>When</th>
+						<th>Source</th>
+						<th>User</th>
+						<th>Where</th>
+						<th>Message</th>
+					</tr>
+				</thead>
+				<tbody>
+					{(reports ?? []).map((report) => (
+						<tr>
+							<td><code>{report.id}</code></td>
+							<td>{new Date(report.created_at).toLocaleString()}</td>
+							<td>{report.source}</td>
+							<td>{report.profiles?.display_name ?? '—'}</td>
+							<td>{report.method ? `${report.method} ` : ''}{report.path ?? report.url ?? '—'}</td>
+							<td>
+								<details>
+									<summary>{report.message}</summary>
+									{report.stack && <pre class="stack">{report.stack}</pre>}
+								</details>
+							</td>
+						</tr>
+					))}
+				</tbody>
+			</table>
+		</div>
+	)}
+</BaseLayout>
+
+<style>
+	.load-error {
+		color: var(--color-danger);
+	}
+
+	td code {
+		font-size: 0.85rem;
+	}
+
+	summary {
+		cursor: pointer;
+	}
+
+	.stack {
+		margin-top: var(--space-2);
+		max-width: 40rem;
+		white-space: pre-wrap;
+		font-size: 0.8rem;
+		color: var(--color-muted);
+	}
+</style>

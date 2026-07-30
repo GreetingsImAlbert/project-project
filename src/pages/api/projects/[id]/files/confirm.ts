@@ -4,6 +4,7 @@ import { env } from 'cloudflare:workers';
 import { getSupabaseAdmin } from '../../../../../lib/supabase/admin';
 import { wouldExceedUserStorageQuota } from '../../../../../lib/r2-quota';
 import { MAX_FILENAME_LENGTH } from '../../../../../lib/file-kind';
+import { logError } from '../../../../../lib/error-report';
 
 export const prerender = false;
 
@@ -96,9 +97,18 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 			console.error(`Failed to clean up orphaned R2 object ${body.r2Key}:`, cleanupError);
 		}
 
+		const reportId = await logError(admin, {
+			message: `Failed to save file record: ${error.message}`,
+			source: 'server',
+			method: request.method,
+			path: new URL(request.url).pathname,
+			userId: locals.user.id,
+			context: { r2Key: body.r2Key, cleanedUp },
+		});
+
 		return Response.json(
 			{
-				error: `Failed to save file record: ${error.message}`,
+				error: `Failed to save file record: ${error.message}. Reference ID: ${reportId}`,
 				cleanedUp,
 			},
 			{ status: 500 }

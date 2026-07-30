@@ -1,5 +1,8 @@
 import { defineMiddleware } from "astro:middleware";
+import { env } from "cloudflare:workers";
 import { createSupabaseServerClient } from "./lib/supabase/server";
+import { getSupabaseAdmin } from "./lib/supabase/admin";
+import { logError } from "./lib/error-report";
 
 // Prefixes for routes that actually need auth context. Everything else
 // (bot noise probing /.env, /wp-admin, etc.) skips the Supabase round trip.
@@ -37,33 +40,75 @@ function withSecurityHeaders(response: Response): Response {
     return response;
 }
 
+// API routes already return their own plain-text 4xx/5xx for errors they saw
+// coming (see e.g. files/[id]/confirm.ts) — those never throw, so they never
+// reach here. This is only for what nothing upstream anticipated. Plain text
+// for /api so it lands directly in the `toastError(await res.text())` calls
+// components already make; a small HTML page everywhere else since a page
+// nav has no such handler to catch a bare error response.
+function unexpectedErrorResponse(pathname: string, reportId: string): Response {
+    if (pathname.startsWith('/api')) {
+        return new Response(`Something went wrong on our end. Reference ID: ${reportId}`, { status: 500 });
+    }
+
+    return new Response(
+        `<!doctype html><html lang="en"><head><meta charset="utf-8" />` +
+        `<title>Something went wrong | P2</title>` +
+        `<meta name="viewport" content="width=device-width, initial-scale=1" /></head>` +
+        `<body style="font-family: system-ui, sans-serif; max-width: 32rem; margin: 4rem auto; padding: 0 1rem;">` +
+        `<h1>Something went wrong</h1>` +
+        `<p>Sorry about that — it's been logged. If it keeps happening, send this reference to the developer:</p>` +
+        `<p><code style="font-size: 1.1rem;">${reportId}</code></p>` +
+        `<p><a href="/">Go back home</a></p>` +
+        `</body></html>`,
+        { status: 500, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
+    );
+}
+
 export const onRequest = defineMiddleware(async (context, next) => {
     if (!isAppPath(context.url.pathname)) {
         return withSecurityHeaders(await next());
     }
 
-    const supabase = createSupabaseServerClient(context.request, context.cookies);
+    try {
+        const supabase = createSupabaseServerClient(context.request, context.cookies);
 
-    const { data, error} = await supabase.auth.getClaims();
+        const { data, error} = await supabase.auth.getClaims();
 
-    context.locals.supabase = supabase;
-    // display_name is written into user_metadata at signup (see api/auth/signup.ts),
-    // so the JWT already carries it — no profiles round trip just to name the user.
-    const displayName = data?.claims.user_metadata?.display_name;
+        context.locals.supabase = supabase;
+        // display_name is written into user_metadata at signup (see api/auth/signup.ts),
+        // so the JWT already carries it — no profiles round trip just to name the user.
+        const displayName = data?.claims.user_metadata?.display_name;
 
-    context.locals.user = error || !data ? null : {
-        id: data.claims.sub,
-        email: data.claims.email,
-        displayName: typeof displayName === 'string' && displayName ? displayName : undefined,
-    };
+        context.locals.user = error || !data ? null : {
+            id: data.claims.sub,
+            email: data.claims.email,
+            displayName: typeof displayName === 'string' && displayName ? displayName : undefined,
+        };
 
-    // app_metadata is admin-only to write (see api/account/delete.ts), so this claim
-    // can't be forged by the member it's about. Everywhere else in the app redirects
-    // to the pending-deletion page while it's set.
-    const pendingDeletionAt = data?.claims.app_metadata?.pending_deletion_at;
-    if (context.locals.user && pendingDeletionAt && !isPendingDeletionAllowed(context.url.pathname)) {
-        return withSecurityHeaders(context.redirect('/account/pending-deletion'));
+        // app_metadata is admin-only to write (see api/account/delete.ts), so this claim
+        // can't be forged by the member it's about. Everywhere else in the app redirects
+        // to the pending-deletion page while it's set.
+        const pendingDeletionAt = data?.claims.app_metadata?.pending_deletion_at;
+        if (context.locals.user && pendingDeletionAt && !isPendingDeletionAllowed(context.url.pathname)) {
+            return withSecurityHeaders(context.redirect('/account/pending-deletion'));
+        }
+
+        return withSecurityHeaders(await next());
+    } catch (err) {
+        // Catch-all for everything no route or page explicitly handled — see
+        // src/lib/error-report.ts. This is the one place in the whole app an
+        // uncaught server-side exception can't slip past without a reference id.
+        const reportId = await logError(getSupabaseAdmin(env), {
+            message: err instanceof Error ? err.message : String(err),
+            stack: err instanceof Error ? err.stack : null,
+            source: 'server',
+            method: context.request.method,
+            path: context.url.pathname,
+            url: context.request.url,
+            userId: context.locals.user?.id ?? null,
+        });
+
+        return withSecurityHeaders(unexpectedErrorResponse(context.url.pathname, reportId));
     }
-
-    return withSecurityHeaders(await next());
 });
