@@ -80,8 +80,6 @@ const storedViewMode = Astro.cookies.get('p2-file-view-mode')?.value;
 const initialViewMode = storedViewMode === 'list' ? 'list' : 'grid';
 ---
 <BaseLayout title={`${project.name} — Files`} projectNav={{ projectId: project.id, userRole: userRole ?? '' }}>
-	<h2>Files</h2>
-
 	<FileBrowser
 		client:load
 		projectId={project.id}

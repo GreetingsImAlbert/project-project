@@ -1,0 +1,59 @@
+---
+interface Props {
+	projectId: string;
+	userRole: string;
+}
+const { projectId, userRole } = Astro.props;
+const path = Astro.url.pathname;
+
+const isOwner = userRole === 'owner';
+const isEditorOrOwner = userRole === 'owner' || userRole === 'editor';
+
+function isActive(page: string) {
+	const base = `/projects/${projectId}`;
+	if (page === 'overview') return path === base || path === base + '/';
+	return path.startsWith(`${base}/${page}`);
+}
+---
+
+<nav class="project-nav">
+	<a href={`/projects/${projectId}`} class={isActive('overview') ? 'active' : ''}>Overview</a>
+	<a href={`/projects/${projectId}/tasks`} class={isActive('tasks') ? 'active' : ''}>Tasks</a>
+	<a href={`/projects/${projectId}/files`} class={isActive('files') ? 'active' : ''}>Files</a>
+	{isEditorOrOwner && (
+		<a href={`/projects/${projectId}/journal`} class={isActive('journal') ? 'active' : ''}>Journal</a>
+	)}
+	<a href={`/projects/${projectId}/money`} class={isActive('money') ? 'active' : ''}>Money</a>
+	{isOwner && (
+		<a href={`/projects/${projectId}/settings`} class={isActive('settings') ? 'active' : ''}>Settings</a>
+	)}
+</nav>
+
+<style>
+	.project-nav {
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		gap: var(--space-5);
+		margin-bottom: var(--space-7);
+	}
+
+	.project-nav a {
+		border-bottom: 1px solid transparent;
+		line-height: 1.4;
+		white-space: nowrap;
+	}
+
+	.project-nav a.active {
+		text-decoration: underline;
+		text-underline-offset: 4px;
+	}
+
+	@media (max-width: 768px) {
+		.project-nav {
+			gap: var(--space-3);
+			flex-wrap: wrap;
+			margin-bottom: var(--space-4);
+		}
+	}
+</style>

@@ -54,8 +54,6 @@ const journalContent = await readJournalObject(env, journalFile.r2_key);
 const entries = parseJournalEntries(journalContent).reverse();
 ---
 <BaseLayout title={`${project.name} — Journal`} projectNav={{ projectId: project.id, userRole: userRole ?? '' }}>
-	<h2>Journal</h2>
-
 	<JournalPage
 		client:load
 		projectId={project.id}

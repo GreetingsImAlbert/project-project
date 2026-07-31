@@ -129,8 +129,6 @@ const [{ data: files }, { data: folders }, { data: tasks }, { data: bomItems }, 
 ]);
 ---
 <BaseLayout title={`${project.name} — Settings`} projectNav={{ projectId: project.id, userRole: userRole ?? '' }}>
-	<h2>Settings</h2>
-
 	<section>
 		<h3>Currency</h3>
 		<CurrencyPicker client:load projectId={project.id} currency={project.currency} />
@@ -170,6 +168,10 @@ const [{ data: files }, { data: folders }, { data: tasks }, { data: bomItems }, 
 <style>
 	section {
 		margin-top: var(--space-6);
+	}
+
+	section:first-child {
+		margin-top: 0;
 	}
 
 	section h3 {

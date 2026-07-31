@@ -4,23 +4,8 @@ import NavMenu from './NavMenu.svelte';
 
 interface Props {
 	user: { id: string; email: string | undefined; displayName: string | undefined } | null;
-	projectNav?: {
-		projectId: string;
-		userRole: string;
-	};
 }
-const { user, projectNav } = Astro.props;
-const path = Astro.url.pathname;
-
-const isOwner = projectNav?.userRole === 'owner';
-const isEditorOrOwner = projectNav?.userRole === 'owner' || projectNav?.userRole === 'editor';
-
-function isProjectPageActive(page: string) {
-	if (!projectNav) return false;
-	const base = `/projects/${projectNav.projectId}`;
-	if (page === 'overview') return path === base || path === base + '/';
-	return path.startsWith(`${base}/${page}`);
-}
+const { user } = Astro.props;
 ---
 
 <header class="site-header">
@@ -29,21 +14,6 @@ function isProjectPageActive(page: string) {
 			<span class="lockup-title">P2</span>
 			<span class="lockup-subtitle muted">Engineering Workspace</span>
 		</a>
-
-		{projectNav && (
-			<nav class="project-nav">
-				<a href={`/projects/${projectNav.projectId}`} class={isProjectPageActive('overview') ? 'active' : ''}>Overview</a>
-				<a href={`/projects/${projectNav.projectId}/tasks`} class={isProjectPageActive('tasks') ? 'active' : ''}>Tasks</a>
-				<a href={`/projects/${projectNav.projectId}/files`} class={isProjectPageActive('files') ? 'active' : ''}>Files</a>
-				{isEditorOrOwner && (
-					<a href={`/projects/${projectNav.projectId}/journal`} class={isProjectPageActive('journal') ? 'active' : ''}>Journal</a>
-				)}
-				<a href={`/projects/${projectNav.projectId}/money`} class={isProjectPageActive('money') ? 'active' : ''}>Money</a>
-				{isOwner && (
-					<a href={`/projects/${projectNav.projectId}/settings`} class={isProjectPageActive('settings') ? 'active' : ''}>Settings</a>
-				)}
-			</nav>
-		)}
 
 		<div class="header-right">
 			<ThemeToggle client:load />
@@ -62,7 +32,7 @@ function isProjectPageActive(page: string) {
 		align-items: center;
 		justify-content: space-between;
 		gap: var(--space-6);
-		padding: var(--space-5) var(--space-6);
+		padding: var(--space-3) var(--space-6);
 		max-width: var(--max-width);
 		margin: 0 auto;
 		border-bottom: 1px solid var(--color-border);
@@ -89,24 +59,6 @@ function isProjectPageActive(page: string) {
 		font-size: 0.8rem;
 	}
 
-	.project-nav {
-		display: flex;
-		align-items: center;
-		gap: var(--space-6);
-		flex-wrap: wrap;
-	}
-
-	.project-nav a {
-		border-bottom: 1px solid transparent;
-		line-height: 1.4;
-		white-space: nowrap;
-	}
-
-	.project-nav a.active {
-		text-decoration: underline;
-		text-underline-offset: 4px;
-	}
-
 	.header-right {
 		display: flex;
 		align-items: center;
@@ -116,15 +68,7 @@ function isProjectPageActive(page: string) {
 
 	@media (max-width: 768px) {
 		.site-header-inner {
-			flex-wrap: wrap;
-			gap: var(--space-3);
-			padding: var(--space-3) var(--space-4);
-		}
-
-		.project-nav {
-			order: 3;
-			width: 100%;
-			gap: var(--space-3);
+			padding: var(--space-2) var(--space-4);
 		}
 	}
 </style>
