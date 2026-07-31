@@ -8,7 +8,12 @@ Whenever reporting information to the user, be extremely concise and sacrifice g
 
 P2 is a small collaborative engineering-project manager. The developer is a mechanical engineering student hoping to use this web app to aid in projects.
 
-Refer to SCHEMA.md for the full Supabase schema
+Refer to @SCHEMA.md for the full Supabase schema
+
+## General Preferences
+Choose the simplest implementation that fully meets the requirements
+
+Prefer established, well-maintained libraries over custom implementations
 
 ## Testing
 

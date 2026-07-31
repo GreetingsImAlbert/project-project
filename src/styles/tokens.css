@@ -83,7 +83,9 @@
 	--space-7: 48px;
 	--space-8: 64px;
 
-	--max-width: 1600px;
+	/* Below the narrowest common laptop (1280px CSS) so the empty side rails in
+	   BaseLayout/Header actually show up there, not just on desktop monitors. */
+	--max-width: 1200px;
 }
 
 :root[data-theme='dim'] {
