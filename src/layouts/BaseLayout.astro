@@ -91,12 +91,16 @@ if (user) {
 		flex-direction: column;
 		height: 100vh;
 		overflow: hidden;
+		background: var(--color-surface-nav);
 	}
 
 	.app-shell {
 		display: flex;
 		flex: 1;
 		min-height: 0;
+		max-width: var(--max-width);
+		width: 100%;
+		margin: 0 auto;
 	}
 
 	.app-main {
