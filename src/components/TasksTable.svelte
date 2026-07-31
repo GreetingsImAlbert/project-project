@@ -1203,8 +1203,9 @@
 		--task-cols: minmax(0, 1.2fr) minmax(0, 0.8fr) 178px 14px;
 		/* What the row reserves on its right edge while its controls are showing — the
 		   width of the two buttons (Edit having moved into the panel), so they land in
-		   space of their own rather than on top of the cells. */
-		--row-actions: 112px;
+		   space of their own rather than on top of the cells. Sized against the *wider*
+		   toggle label ('Reopen'), which the min-width below makes every row's. */
+		--row-actions: 126px;
 		border-top: 1px solid var(--color-border);
 	}
 
@@ -1448,12 +1449,14 @@
 		color: var(--color-danger);
 	}
 
+	/* Green is the live state, grey the finished one: a task still being worked on is
+	   what the list is for, and a done one is settled and out of the way. */
 	.status-done {
-		color: var(--color-success);
+		color: var(--color-muted);
 	}
 
 	.status-ongoing {
-		color: var(--color-muted);
+		color: var(--color-success);
 	}
 
 	.cell-actions {
@@ -1462,8 +1465,14 @@
 		justify-content: flex-end;
 	}
 
+	/* Fixed width rather than sized to the label: the toggle says 'Done' on one row and
+	   'Reopen' on the next, and a block that's right-aligned inside a fixed reserve grew
+	   leftwards under the wider word — so the gap between the status dot and the button
+	   changed from row to row, and on a done row the button ran into the dot. Both
+	   buttons take the same box now, so the pair sits in the same place on every row. */
 	.cell-actions button {
-		flex-shrink: 0;
+		flex: 0 0 auto;
+		min-width: 58px;
 		white-space: nowrap;
 		padding: 0 var(--space-2);
 		font-size: 0.7rem;

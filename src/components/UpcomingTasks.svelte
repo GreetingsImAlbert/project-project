@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { categoryColorStyle } from '../lib/category-color';
-	import { daysUntil, deadlinePassed, formatDeadline, relativeDeadline } from '../lib/task-status';
+	import { daysUntil, deadlinePassed, formatDeadline } from '../lib/task-status';
 import { formatDeadlineTime } from '../lib/deadline-time';
 	import { HORIZON_COOKIE, HORIZON_OPTIONS, horizonLabel } from '../lib/task-horizon';
 	import type { Reminder } from '../lib/reminders';
@@ -96,9 +96,12 @@ import { formatDeadlineTime } from '../lib/deadline-time';
 		<ul class="reminder-list">
 			{#each due as reminder (reminder.id)}
 				{@const late = deadlinePassed(reminder.deadline, reminder.deadlineTime, today, nowTime)}
-				<!-- One line per reminder: the name, the context it belongs to, then the date
-				     and how far off it is. The stacked version said the same things in twice
-				     the height, and this list is read at a glance. -->
+				<!-- Three things per reminder and nothing else: the category's colour, the
+				     task's name, and when it's due — the date and time carrying the status
+				     in their colour, green while it's still ahead and red once it isn't.
+				     The category name, the appointed members and the 'in 3 days' restatement
+				     of the date all moved out: the panel behind the link says every one of
+				     them, and this list is read at a glance. -->
 				<li class="reminder" class:late style={categoryColorStyle(reminder.colorIndex)}>
 					<span class="band" aria-hidden="true"></span>
 					<!-- Straight to the task, not just to the page it lives on: the hash is what
@@ -108,16 +111,17 @@ import { formatDeadlineTime } from '../lib/deadline-time';
 					<a class="reminder-name" href={`/projects/${reminder.projectId}/tasks#task-${reminder.id}`}>
 						{reminder.name}
 					</a>
-					<span class="reminder-sub">
-						{#if reminder.projectName}{reminder.projectName} · {/if}
-						{reminder.category?.trim() || 'Uncategorized'}
-						{#if reminder.assignees}· {reminder.assignees}{/if}
-					</span>
+					<!-- The one piece of context that survives the trim, and only where there
+					     is one: the Dashboard's list spans every project the reader is in, so
+					     without it two identically-named tasks are indistinguishable. A
+					     project's own Overview passes null and renders nothing. -->
+					{#if reminder.projectName}
+						<span class="reminder-project">{reminder.projectName}</span>
+					{/if}
 					<span class="reminder-date">
 						{formatDeadline(reminder.deadline, today)}
 						<span class="reminder-time">{formatDeadlineTime(reminder.deadlineTime)}</span>
 					</span>
-					<span class="reminder-rel">{late ? 'overdue' : ''} {relativeDeadline(reminder.deadline, today)}</span>
 				</li>
 			{/each}
 		</ul>
@@ -275,10 +279,9 @@ import { formatDeadlineTime } from '../lib/deadline-time';
 		border-bottom-color: currentColor;
 	}
 
-	/* `flex: 1 1 0` rather than `auto`: the context line takes the leftover space and
-	   gives it back first, so a long project or category name truncates before the task
-	   name it belongs to does. */
-	.reminder-sub {
+	/* `flex: 1 1 0` rather than `auto`: it takes the leftover space and gives it back
+	   first, so a long project name truncates before the task name it belongs to does. */
+	.reminder-project {
 		flex: 1 1 0;
 		min-width: 0;
 		font-size: 0.72rem;
@@ -288,39 +291,34 @@ import { formatDeadlineTime } from '../lib/deadline-time';
 		white-space: nowrap;
 	}
 
+	/* Green while the deadline is still ahead, red once it has passed — the same two
+	   colours the Tasks list's status dot uses for ongoing and overdue, which are the
+	   only two states a reminder can be in (a done task never becomes one). */
 	.reminder-date {
 		flex: 0 0 auto;
 		margin-left: auto;
 		font-size: 0.8rem;
 		font-variant-numeric: tabular-nums;
 		white-space: nowrap;
+		color: var(--color-success);
 	}
 
 	/* Rides along with the date rather than taking a column of its own — it's the same
-	   value, and a fourth track would be what pushes the row into wrapping. */
+	   value, and a track of its own would be what pushes the row into wrapping. Inherits
+	   the date's status colour; only its size sets it apart. */
 	.reminder-time {
 		font-size: 0.72rem;
-		color: var(--color-muted);
 	}
 
-	.reminder-rel {
-		flex: 0 0 auto;
-		font-size: 0.72rem;
-		color: var(--color-muted);
-		white-space: nowrap;
-	}
-
-	.reminder.late .reminder-date,
-	.reminder.late .reminder-time,
-	.reminder.late .reminder-rel {
+	.reminder.late .reminder-date {
 		color: var(--color-danger);
 	}
 
-	/* Narrow enough that four things can't share a line: the context drops out rather
-	   than squeezing the name and the date into slivers, and the detail panel behind
-	   the link has all of it anyway. */
+	/* Narrow enough that three things can't share a line: the project drops out rather
+	   than squeezing the name and the date into slivers, and the panel behind the link
+	   names it anyway. */
 	@media (max-width: 560px) {
-		.reminder-sub {
+		.reminder-project {
 			display: none;
 		}
 	}

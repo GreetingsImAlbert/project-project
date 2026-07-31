@@ -17,7 +17,6 @@ import type { Task } from './task-columns';
 export interface Reminder {
 	id: string;
 	name: string;
-	category: string | null;
 	// Never null: a task with no deadline can't come due, so it never becomes a reminder.
 	deadline: string;
 	// 'HH:MM', the time of day that deadline falls at — see deadline-time.ts.
@@ -27,28 +26,23 @@ export interface Reminder {
 	// The project's name, or null on a page that's already about one project and would
 	// only be repeating itself.
 	projectName: string | null;
-	// Joined display names, '' when nobody is appointed. Empty on the Dashboard, where
-	// every task is the reader's own and naming them would say the same thing on every row.
-	assignees: string;
 	// Whether the reader is appointed to it — what the 'Just my tasks' filter reads.
 	mine: boolean;
 }
 
 // The Overview's mapping: full task rows for one project, with that project's colours.
-// The Dashboard builds its own, since its rows carry a project name and no assignees.
+// The Dashboard builds its own, since its rows carry a project name and this one doesn't.
 export function projectReminders(tasks: Task[], projectId: string, colors: CategoryColors, currentUserId: string): Reminder[] {
 	return tasks
 		.filter((task) => task.deadline !== null)
 		.map((task) => ({
 			id: task.id,
 			name: task.name,
-			category: task.category,
 			deadline: task.deadline!,
 			deadlineTime: task.deadline_time,
 			colorIndex: categoryColorIndex(task.category, colors),
 			projectId,
 			projectName: null,
-			assignees: task.assignees.map((a) => a.display_name).join(', '),
 			mine: task.assignees.some((a) => a.user_id === currentUserId),
 		}));
 }

@@ -76,13 +76,11 @@ for (const row of categoryRows ?? []) {
 const reminders: Reminder[] = (taskRows ?? []).map((row) => ({
 	id: row.id,
 	name: row.name,
-	category: row.category,
 	deadline: row.deadline,
 	deadlineTime: normalizeDeadlineTime(row.deadline_time),
 	colorIndex: categoryColorIndex(row.category, colorsByProject.get(row.project_id) ?? {}),
 	projectId: row.project_id,
 	projectName: row.projects?.name ?? null,
-	assignees: '',
 	mine: true,
 }));
 

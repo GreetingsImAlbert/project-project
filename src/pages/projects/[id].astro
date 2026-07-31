@@ -5,6 +5,7 @@ import ProjectDescriptionEditor from '../../components/ProjectDescriptionEditor.
 import ProjectStorageUsed from '../../components/ProjectStorageUsed.svelte';
 import DownloadProjectButton from '../../components/DownloadProjectButton.svelte';
 import UpcomingTasks from '../../components/UpcomingTasks.svelte';
+import Avatar from '../../components/Avatar.svelte';
 import { getProjectStorageBytes } from '../../lib/r2-quota';
 import { TASK_COLUMNS, normalizeTask, type RawTaskRow } from '../../lib/task-columns';
 import { isCategoryColorIndex, type CategoryColors } from '../../lib/category-color';
@@ -38,9 +39,9 @@ const [
 			.single(),
 		Astro.locals.supabase
 			.from('project_members')
-			.select('role, is_auditor, user_id, profiles(display_name, email)')
+			.select('role, is_auditor, user_id, profiles(display_name, email, avatar)')
 			.eq('project_id', id)
-			.overrideTypes<{ role: string; is_auditor: boolean; user_id: string; profiles: { display_name: string; email: string } }[]>(),
+			.overrideTypes<{ role: string; is_auditor: boolean; user_id: string; profiles: { display_name: string; email: string; avatar: string | null } }[]>(),
 		listGhostMembers(Astro.locals.supabase, id!),
 		Astro.locals.supabase
 			.from('bom_items')
@@ -116,30 +117,40 @@ const memberGroups = roles.map((role) => ({
 		<div class="overview-column-main">
 			<section class="overview-members">
 				<h2>Members</h2>
-				<table class="members-table">
-					<tbody>
-						{memberGroups.map((group) =>
-							group.members.map((m) => (
-								<tr>
-									<td class="member-role">{group.label === 'Owner' ? 'Owner' : group.label.replace(/s$/, '')}</td>
-									<td>
-										{m.profiles?.display_name}
-										{m.is_auditor && <span class="muted"> [auditor]</span>}
-									</td>
-								</tr>
-							))
-						)}
-						{ghostMembers.length > 0 && ghostMembers.map((g) => (
-							<tr>
-								<td class="member-role muted">Ghost</td>
-								<td class="muted">
-									{g.display_name}
-									{g.is_deleted_account && <span> [deleted]</span>}
-								</td>
-							</tr>
-						))}
-					</tbody>
-				</table>
+				<!-- The role is said once, as the heading of its own group, and the members
+				     under it are indented rather than each repeating it in a column of its
+				     own. Each carries their picture ahead of the name — Avatar falls back to
+				     the initial, so a member who never picked one still gets the same shape. -->
+				<div class="member-groups">
+					{memberGroups.map((group) => (
+						<div class="member-group">
+							<p class="member-role">{group.label}</p>
+							<ul class="member-list">
+								{group.members.map((m) => (
+									<li class="member">
+										<Avatar avatar={m.profiles?.avatar} displayName={m.profiles?.display_name ?? ''} size={24} />
+										<span class="member-name">{m.profiles?.display_name}</span>
+										{m.is_auditor && <span class="member-tag">auditor</span>}
+									</li>
+								))}
+							</ul>
+						</div>
+					))}
+					{ghostMembers.length > 0 && (
+						<div class="member-group">
+							<p class="member-role">Ghosts</p>
+							<ul class="member-list">
+								{ghostMembers.map((g) => (
+									<li class="member">
+										<Avatar avatar={null} displayName={g.display_name} size={24} />
+										<span class="member-name muted">{g.display_name}</span>
+										{g.is_deleted_account && <span class="member-tag">deleted</span>}
+									</li>
+								))}
+							</ul>
+						</div>
+					)}
+				</div>
 			</section>
 
 			<section class="overview-reminders">
@@ -194,22 +205,48 @@ const memberGroups = roles.map((role) => ({
 		border-top: none;
 	}
 
-	.members-table {
-		width: 100%;
-		border-collapse: collapse;
-		margin: 0;
+	.member-groups {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-3);
 	}
 
-	.members-table td {
-		padding: var(--space-1) var(--space-3);
-		border-bottom: none;
-		vertical-align: top;
-	}
-
+	/* Same small-caps label the panels elsewhere use for a field name — it's a heading
+	   for the rows under it, not a value beside them. */
 	.member-role {
-		white-space: nowrap;
+		margin: 0 0 var(--space-1);
 		color: var(--color-muted);
-		width: 80px;
+		font-size: 0.68rem;
+		font-weight: 700;
+		letter-spacing: 0.05em;
+		text-transform: uppercase;
+	}
+
+	.member-list {
+		list-style: none;
+		margin: 0;
+		padding-left: var(--space-3);
+	}
+
+	.member {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+		padding: 2px 0;
+		min-width: 0;
+	}
+
+	.member-name {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.member-tag {
+		color: var(--color-muted);
+		font-size: 0.68rem;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
 	}
 
 	.overview-reminders {
