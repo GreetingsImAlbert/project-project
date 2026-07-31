@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import Avatar from './Avatar.svelte';
 
 	interface SidebarProject {
@@ -31,23 +30,24 @@
 	// the content reflows beside it instead of sitting under it. Persisted because the
 	// component remounts on every page navigation (client:load + ClientRouter), and a
 	// sidebar that silently re-folds on the next click would be worse than no pin at all.
+	//
+	// The attribute on <html>, not this state, is what the CSS below keys off: the inline
+	// script in BaseLayout stamps it before first paint, whereas this component only
+	// hydrates after it, so driving the width from a class here would paint the folded
+	// rail for a frame on every navigation. The state is only the toggle's own copy of it.
 	const PIN_KEY = 'p2-sidebar-pinned';
-	let pinned = $state(false);
-
-	onMount(() => {
-		try {
-			pinned = localStorage.getItem(PIN_KEY) === '1';
-		} catch {
-			// Private mode / storage disabled: the pin just doesn't survive navigation.
-		}
-	});
+	const PIN_ATTR = 'data-sidebar-pinned';
+	let pinned = $state(
+		typeof document !== 'undefined' && document.documentElement.hasAttribute(PIN_ATTR),
+	);
 
 	function setPinned(next: boolean) {
 		pinned = next;
+		document.documentElement.toggleAttribute(PIN_ATTR, next);
 		try {
 			localStorage.setItem(PIN_KEY, next ? '1' : '0');
 		} catch {
-			// See above.
+			// Private mode / storage disabled: the pin just doesn't survive navigation.
 		}
 	}
 
@@ -69,7 +69,7 @@
 	right edge, so a pointer drifting in from off-screen opens the sidebar before it ever
 	touches a link. The panel outranks it in z-order, so once open every link is clickable.
 -->
-<div class="sidebar-rail" class:pinned>
+<div class="sidebar-rail">
 	<div class="hover-zone"></div>
 
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -153,7 +153,7 @@
 
 	/* Pinned takes real width in the shell, so the open panel sits beside the content
 	   rather than over it. */
-	.sidebar-rail.pinned {
+	:global(html[data-sidebar-pinned]) .sidebar-rail {
 		flex-basis: var(--panel-width);
 	}
 
@@ -195,7 +195,7 @@
 
 	/* Pinned is in-flow, so it has content on one side and the page edge on the other —
 	   the border is enough, and a shadow would read as a floating overlay it isn't. */
-	.sidebar-rail.pinned .sidebar-panel {
+	:global(html[data-sidebar-pinned]) .sidebar-panel {
 		width: var(--panel-width);
 		box-shadow: none;
 	}
@@ -239,7 +239,7 @@
 
 	.sidebar-rail:hover .row-label,
 	.sidebar-rail:focus-within .row-label,
-	.sidebar-rail.pinned .row-label {
+	:global(html[data-sidebar-pinned]) .row-label {
 		opacity: 1;
 	}
 
@@ -296,7 +296,7 @@
 
 	.sidebar-rail:hover .project-list,
 	.sidebar-rail:focus-within .project-list,
-	.sidebar-rail.pinned .project-list {
+	:global(html[data-sidebar-pinned]) .project-list {
 		padding-left: var(--space-4);
 	}
 

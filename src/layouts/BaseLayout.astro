@@ -68,11 +68,21 @@ if (user) {
 					if (theme === 'dark' || theme === 'dim') {
 						document.documentElement.setAttribute('data-theme', theme);
 					}
+					// Same reason as the theme above: AppSidebar hydrates after first paint, so
+					// a pin read in the component would paint the folded rail first and expand
+					// a frame later. The attribute is what the panel's CSS keys off, so it is
+					// already correct in the very first frame.
+					if (localStorage.getItem('p2-sidebar-pinned') === '1') {
+						document.documentElement.setAttribute('data-sidebar-pinned', '');
+					}
 				} catch (e) {}
 
 				document.addEventListener('astro:before-swap', function (ev) {
 					var current = document.documentElement.getAttribute('data-theme');
 					if (current) ev.newDocument.documentElement.setAttribute('data-theme', current);
+					if (document.documentElement.hasAttribute('data-sidebar-pinned')) {
+						ev.newDocument.documentElement.setAttribute('data-sidebar-pinned', '');
+					}
 				});
 			})();
 		</script>
