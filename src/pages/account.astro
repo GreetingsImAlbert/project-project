@@ -3,10 +3,12 @@ import { env } from 'cloudflare:workers';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import StorageUsageBar from '../components/StorageUsageBar.astro';
 import AccountDisplayNameForm from '../components/AccountDisplayNameForm.svelte';
+import AccountAvatarPicker from '../components/AccountAvatarPicker.svelte';
 import AccountPasswordForm from '../components/AccountPasswordForm.svelte';
 import DeleteAccountPanel from '../components/DeleteAccountPanel.svelte';
 import { getSupabaseAdmin } from '../lib/supabase/admin';
 import { getUserStorageBytes, MAX_USER_STORAGE_BYTES } from '../lib/r2-quota';
+import { normalizeAvatar } from '../lib/avatars';
 
 export const prerender = false;
 
@@ -18,7 +20,7 @@ if (!user) {
 
 const [{ data: profile }, { count: projectCount }, { count: ownedProjectCount }] = await Promise.all([
 	// RLS scopes this to the caller's own row, so the session client is the right one.
-	Astro.locals.supabase.from('profiles').select('display_name, email, created_at').eq('id', user.id).single(),
+	Astro.locals.supabase.from('profiles').select('display_name, email, created_at, avatar').eq('id', user.id).single(),
 	Astro.locals.supabase.from('project_members').select('project_id', { count: 'exact', head: true }).eq('user_id', user.id),
 	Astro.locals.supabase.from('projects').select('id', { count: 'exact', head: true }).eq('owner_id', user.id),
 ]);
@@ -31,10 +33,16 @@ const { totalBytes, failed } = await getUserStorageBytes(admin, user.id);
 const displayName = profile?.display_name ?? user.displayName ?? '';
 const email = profile?.email ?? user.email ?? '—';
 const createdAt = profile?.created_at ? new Date(profile.created_at).toLocaleDateString() : '—';
+// profiles is the source here too, for the same reason as the name — the JWT copy is
+// only what the navbar reads.
+const avatar = normalizeAvatar(profile?.avatar ?? user.avatar);
 ---
 
 <BaseLayout title="Account">
 	<h1>Account</h1>
+
+	<h2>Profile picture</h2>
+	<AccountAvatarPicker client:load initialAvatar={avatar} displayName={displayName} />
 
 	<h2>Details</h2>
 	<!-- A plain grid rather than a <dl>: the display-name field is a Svelte island, and

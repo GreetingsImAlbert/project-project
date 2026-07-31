@@ -1,6 +1,12 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { onSwapOrDestroy } from '../lib/island-teardown';
+	import Avatar from './Avatar.svelte';
+
+	let {
+		avatar = null,
+		displayName = '',
+	}: { avatar?: string | null; displayName?: string } = $props();
 
 	let open = $state(false);
 	let reportOpen = $state(false);
@@ -74,10 +80,8 @@
 </script>
 
 <div class="nav-menu">
-	<button type="button" class="menu-trigger" onclick={toggleMenu} aria-label="Menu" aria-expanded={open}>
-		<span class="hamburger-line"></span>
-		<span class="hamburger-line"></span>
-		<span class="hamburger-line"></span>
+	<button type="button" class="menu-trigger" onclick={toggleMenu} aria-label="Account menu" aria-expanded={open}>
+		<Avatar {avatar} {displayName} size={32} />
 	</button>
 
 	{#if open}
@@ -124,28 +128,24 @@
 		position: relative;
 	}
 
+	/* The avatar is the whole control — the ring is what a hover/focus has to move, since
+	   the picture itself must not change. */
 	.menu-trigger {
 		display: flex;
-		flex-direction: column;
+		align-items: center;
 		justify-content: center;
-		gap: 4px;
-		width: 32px;
-		height: 32px;
-		padding: 6px;
+		padding: 0;
 		background: none;
-		border: 1px solid var(--color-border);
+		border: none;
+		border-radius: 50%;
+		box-shadow: 0 0 0 1px var(--color-border);
 		cursor: pointer;
+		line-height: 0;
 	}
 
-	.menu-trigger:hover {
-		border-color: var(--color-border-strong);
-	}
-
-	.hamburger-line {
-		display: block;
-		width: 100%;
-		height: 1.5px;
-		background: var(--color-fg);
+	.menu-trigger:hover,
+	.menu-trigger[aria-expanded='true'] {
+		box-shadow: 0 0 0 2px var(--color-border-strong);
 	}
 
 	.menu-dropdown {
