@@ -20,10 +20,15 @@ const [{ data: project, error }, { data: members }] = await Promise.all([
 	Astro.locals.supabase.from('projects').select('id, name, description, owner_id, currency').eq('id', id).single(),
 	Astro.locals.supabase
 		.from('project_members')
-		.select('role, is_auditor, user_id, profiles(display_name, email)')
+		.select('role, is_auditor, user_id, profiles(display_name, email, avatar)')
 		.eq('project_id', id)
 		.overrideTypes<
-			{ role: string; is_auditor: boolean; user_id: string; profiles: { display_name: string; email: string } }[]
+			{
+				role: string;
+				is_auditor: boolean;
+				user_id: string;
+				profiles: { display_name: string; email: string; avatar: string | null };
+			}[]
 		>(),
 ]);
 
@@ -45,6 +50,7 @@ const memberData = (members ?? []).map((m) => ({
 	role: m.role,
 	is_auditor: m.is_auditor,
 	display_name: m.profiles?.display_name ?? '',
+	avatar: m.profiles?.avatar ?? null,
 }));
 
 const returnTo = `/projects/${id}/settings`;

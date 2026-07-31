@@ -2,6 +2,7 @@
 	import { onMount, tick } from 'svelte';
 	import { slide } from 'svelte/transition';
 	import TasksCalendar from './TasksCalendar.svelte';
+	import Avatar from './Avatar.svelte';
 	import { tasksState, initTasks, addTask, updateTask, removeTask, type Task } from '../lib/tasks-store.svelte';
 	import {
 		CATEGORY_COLOR_SLOTS,
@@ -231,10 +232,6 @@
 	// what leaves the var() fallbacks in the CSS to do it.
 	function styleForTask(task: Task): string {
 		return styleFor(task.category);
-	}
-
-	function assigneeNames(task: Task): string {
-		return task.assignees.map((a) => a.display_name).join(', ');
 	}
 
 	function toggleDetail(id: string) {
@@ -549,6 +546,23 @@
 	</div>
 {/snippet}
 
+<!-- Appointed members are pictures only — a name would double the width of the
+     column for something the hover title (and the edit form's picker) already says.
+     A ghost or a deleted account has no avatar and falls back to its initial. -->
+{#snippet assigneeAvatars(task: Task)}
+	{#if task.assignees.length === 0}
+		<span class="muted">—</span>
+	{:else}
+		<span class="assignee-avatars">
+			{#each task.assignees as assignee (assignee.id)}
+				<span class="assignee-avatar" title={assignee.display_name}>
+					<Avatar avatar={assignee.avatar} displayName={assignee.display_name} size={22} />
+				</span>
+			{/each}
+		</span>
+	{/if}
+{/snippet}
+
 <!-- The three below are shared by the list rows and the calendar's selected-task
      panel: the calendar has no row of its own to hang them off, and two copies of an
      edit form is exactly how the two views would drift apart. -->
@@ -577,7 +591,7 @@
 			{/if}
 		</dd>
 		<dt>Appointed</dt>
-		<dd>{assigneeNames(task) || '—'}</dd>
+		<dd>{@render assigneeAvatars(task)}</dd>
 		<dt>Deadline</dt>
 		<dd>
 			{#if task.deadline}
@@ -871,7 +885,7 @@
 									{task.description?.trim() || '—'}
 								</div>
 
-								<div class="cell cell-people">{assigneeNames(task) || '—'}</div>
+								<div class="cell cell-people">{@render assigneeAvatars(task)}</div>
 
 								<div class="cell cell-deadline">
 									{#if task.deadline}
@@ -1162,6 +1176,31 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+
+	/* The row aligns on the text baseline, which a row of pictures doesn't have — this
+	   centres the faces against the line instead of hanging them off it. */
+	.cell-people {
+		align-self: center;
+	}
+
+	/* In the row the faces stay on the one line and clip like the description does; in
+	   the detail panel below they may wrap, since there's height to spare there. */
+	.cell-people .assignee-avatars {
+		flex-wrap: nowrap;
+	}
+
+	.assignee-avatars {
+		display: flex;
+		align-items: center;
+		gap: var(--space-1);
+		flex-wrap: wrap;
+	}
+
+	.assignee-avatar {
+		display: flex;
+		border-radius: 50%;
+		box-shadow: 0 0 0 1px var(--color-border);
 	}
 
 	.cell-deadline {

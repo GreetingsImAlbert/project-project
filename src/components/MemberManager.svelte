@@ -1,11 +1,13 @@
 <script lang="ts">
 	import { slide } from 'svelte/transition';
+	import Avatar from './Avatar.svelte';
 
 	interface Member {
 		user_id: string;
 		role: string;
 		is_auditor: boolean;
 		display_name: string;
+		avatar: string | null;
 	}
 
 	let {
@@ -146,6 +148,9 @@
 				{#each group.members as m (m.user_id)}
 					<li class="member-row">
 						<div class="member-header">
+							<span class="member-avatar">
+								<Avatar avatar={m.avatar} displayName={m.display_name} size={24} />
+							</span>
 							<span class="member-name">
 								{m.display_name}{#if m.is_auditor}<span class="capability"> [auditor]</span>{/if}
 							</span>
@@ -203,6 +208,13 @@
 		align-items: center;
 		gap: var(--space-2);
 		min-width: 0;
+	}
+
+	.member-avatar {
+		display: flex;
+		flex: 0 0 auto;
+		border-radius: 50%;
+		box-shadow: 0 0 0 1px var(--color-border);
 	}
 
 	.member-name {

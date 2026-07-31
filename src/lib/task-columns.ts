@@ -9,7 +9,7 @@ import type { TaskStatus } from './task-status';
 // ghost_members (ghost_member_id), so both bare embeds are unambiguous here — no
 // hint needed the way transactions' two-FKs-to-the-same-table pairs need one.
 export const TASK_COLUMNS =
-	'id, name, category, description, deadline, deadline_time, status, task_assignees(id, user_id, ghost_member_id, deleted_display_name, profiles(display_name), ghost_members(display_name))';
+	'id, name, category, description, deadline, deadline_time, status, task_assignees(id, user_id, ghost_member_id, deleted_display_name, profiles(display_name, avatar), ghost_members(display_name))';
 
 export interface TaskAssignee {
 	// The task_assignees row's own id — the only stable key once user_id has gone
@@ -19,6 +19,9 @@ export interface TaskAssignee {
 	user_id: string | null;
 	ghost_member_id: string | null;
 	display_name: string;
+	// Null for a ghost and for a deleted account as well as for a member who never
+	// picked one — all three render as the initial (see Avatar.svelte).
+	avatar: string | null;
 }
 
 export interface Task {
@@ -52,7 +55,7 @@ export interface RawTaskRow {
 		user_id: string | null;
 		ghost_member_id: string | null;
 		deleted_display_name: string | null;
-		profiles: { display_name: string } | null;
+		profiles: { display_name: string; avatar: string | null } | null;
 		ghost_members: { display_name: string } | null;
 	}[];
 }
@@ -77,6 +80,7 @@ export function normalizeTask(row: RawTaskRow): Task {
 				user_id: a.user_id,
 				ghost_member_id: a.ghost_member_id,
 				display_name: a.profiles?.display_name ?? a.ghost_members?.display_name ?? a.deleted_display_name ?? '',
+				avatar: a.profiles?.avatar ?? null,
 			}))
 			.sort((a, b) => a.display_name.localeCompare(b.display_name)),
 	};

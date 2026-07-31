@@ -1,8 +1,16 @@
 <script lang="ts">
+	import Avatar from './Avatar.svelte';
+
+	interface SidebarMember {
+		displayName: string;
+		avatar: string | null;
+	}
+
 	interface SidebarProject {
 		id: string;
 		name: string;
-		ownerName: string;
+		// Owner first — the order is fixed by the layout that loads them.
+		members: SidebarMember[];
 	}
 
 	let {
@@ -14,6 +22,10 @@
 		currentPath: string;
 		displayName: string;
 	} = $props();
+
+	// Owner plus two others; past that the row has no width left for the project name,
+	// which is the thing being navigated to, so the rest become a count.
+	const MAX_AVATARS = 3;
 
 	let currentProjectId = $derived.by(() => {
 		const match = currentPath.match(/^\/projects\/([^/]+)/);
@@ -37,7 +49,17 @@
 							class="nav-link project-link"
 							class:active={currentProjectId === project.id}
 						>
-							{project.ownerName}/{project.name}
+							<span class="project-name">{project.name}</span>
+							<span class="project-members">
+								{#each project.members.slice(0, MAX_AVATARS) as member}
+									<span class="member-avatar" title={member.displayName}>
+										<Avatar avatar={member.avatar} displayName={member.displayName} size={18} />
+									</span>
+								{/each}
+								{#if project.members.length > MAX_AVATARS}
+									<span class="member-more">+{project.members.length - MAX_AVATARS}</span>
+								{/if}
+							</span>
 						</a>
 					</li>
 				{/each}
@@ -111,8 +133,39 @@
 		gap: var(--space-1);
 	}
 
+	/* Name and faces share one line: the faces sit directly after the name rather than
+	   against the far edge, so the gap here is the only thing separating the two — it has
+	   to be wide enough that the owner's picture doesn't read as part of the name. */
 	.project-link {
+		display: flex;
+		align-items: center;
+		gap: var(--space-3);
 		font-size: 0.82rem;
+	}
+
+	.project-name {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.project-members {
+		display: flex;
+		align-items: center;
+		gap: var(--space-1);
+		flex: 0 0 auto;
+	}
+
+	.member-avatar {
+		display: flex;
+		border-radius: 50%;
+		box-shadow: 0 0 0 1px var(--color-border);
+	}
+
+	.member-more {
+		font-size: 0.7rem;
+		color: var(--color-muted);
+		line-height: 1;
 	}
 
 	.add-project {

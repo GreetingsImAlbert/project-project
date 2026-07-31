@@ -16,18 +16,29 @@ const { title = 'P2', projectNav } = Astro.props;
 const user = Astro.locals.user;
 const path = Astro.url.pathname;
 
-let sidebarProjects: { id: string; name: string; ownerName: string }[] = [];
+type SidebarMember = { displayName: string; avatar: string | null };
+let sidebarProjects: { id: string; name: string; members: SidebarMember[] }[] = [];
 if (user) {
 	const { data } = await Astro.locals.supabase
 		.from('projects')
-		.select('id, name, project_members!inner(role, profiles(display_name))')
-		.eq('project_members.role', 'owner')
+		.select('id, name, project_members(role, joined_at, profiles(display_name, avatar))')
 		.order('created_at', { ascending: false })
-		.overrideTypes<{ id: string; name: string; project_members: { role: string; profiles: { display_name: string } }[] }[]>();
+		.overrideTypes<{ id: string; name: string; project_members: { role: string; joined_at: string | null; profiles: { display_name: string; avatar: string | null } | null }[] }[]>();
 	sidebarProjects = (data ?? []).map((p) => ({
 		id: p.id,
 		name: p.name,
-		ownerName: p.project_members[0]?.profiles?.display_name ?? 'Unknown',
+		// Owner first, then everyone else in join order — the row reads as "whose project
+		// this is, and who else is on it".
+		members: [...(p.project_members ?? [])]
+			.sort((a, b) => {
+				if (a.role === 'owner') return -1;
+				if (b.role === 'owner') return 1;
+				return (a.joined_at ?? '').localeCompare(b.joined_at ?? '');
+			})
+			.map((m) => ({
+				displayName: m.profiles?.display_name ?? 'Unknown',
+				avatar: m.profiles?.avatar ?? null,
+			})),
 	}));
 }
 ---
