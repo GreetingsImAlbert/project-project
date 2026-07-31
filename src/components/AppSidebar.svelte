@@ -68,7 +68,7 @@
 
 	.sidebar-welcome {
 		font-size: 0.82rem;
-		margin: 0 0 var(--space-6);
+		margin: 0 0 var(--space-8);
 		padding: 0 var(--space-3);
 		white-space: nowrap;
 		overflow: hidden;
