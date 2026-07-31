@@ -548,17 +548,27 @@
 
 <!-- Appointed members are pictures only — a name would double the width of the
      column for something the hover title (and the edit form's picker) already says.
-     A ghost or a deleted account has no avatar and falls back to its initial. -->
-{#snippet assigneeAvatars(task: Task)}
+     A ghost or a deleted account has no avatar and falls back to its initial.
+     `limit` caps how many faces show before the rest collapse into a +N chip whose
+     hover title names them; 0 means show every one, which is what the detail panel
+     below passes since it has the width to spare. -->
+{#snippet assigneeAvatars(task: Task, limit: number)}
 	{#if task.assignees.length === 0}
 		<span class="muted">—</span>
 	{:else}
+		{@const shown = limit > 0 ? task.assignees.slice(0, limit) : task.assignees}
+		{@const rest = task.assignees.slice(shown.length)}
 		<span class="assignee-avatars">
-			{#each task.assignees as assignee (assignee.id)}
+			{#each shown as assignee (assignee.id)}
 				<span class="assignee-avatar" title={assignee.display_name}>
 					<Avatar avatar={assignee.avatar} displayName={assignee.display_name} size={22} />
 				</span>
 			{/each}
+			{#if rest.length > 0}
+				<span class="assignee-more" title={rest.map((a) => a.display_name).join(', ')}>
+					+{rest.length}
+				</span>
+			{/if}
 		</span>
 	{/if}
 {/snippet}
@@ -591,7 +601,7 @@
 			{/if}
 		</dd>
 		<dt>Appointed</dt>
-		<dd>{@render assigneeAvatars(task)}</dd>
+		<dd>{@render assigneeAvatars(task, 0)}</dd>
 		<dt>Deadline</dt>
 		<dd>
 			{#if task.deadline}
@@ -838,11 +848,9 @@
 		<div class="task-list" class:with-actions={canEdit}>
 			<div class="list-head">
 				<span>Task</span>
-				<span>Description</span>
 				<span>Appointed</span>
 				<span>Deadline</span>
-				<span>Status</span>
-				{#if canEdit}<span></span>{/if}
+				<span class="head-status">Status</span>
 			</div>
 
 			{#each groups as group (group.category)}
@@ -878,30 +886,40 @@
 									}}>{task.name}</button>
 								</div>
 
-								<!-- One line only, truncated: the full text is a click away in the
-								     detail panel, and letting it wrap here would break the row grid's
-								     baseline alignment. -->
-								<div class="cell cell-description" title={task.description?.trim() || ''}>
-									{task.description?.trim() || '—'}
-								</div>
+								<!-- Two faces, then a +N chip that names the rest on hover — the
+								     detail panel below shows every one. -->
+								<div class="cell cell-people">{@render assigneeAvatars(task, 2)}</div>
 
-								<div class="cell cell-people">{@render assigneeAvatars(task)}</div>
-
+								<!-- Date and time on the one line: the relative form ('in 3 days')
+								     moved to the detail panel, since the date already says it. -->
 								<div class="cell cell-deadline">
 									{#if task.deadline}
-										<span class="deadline-date">{formatDeadline(task.deadline, today)}</span>
-										<span class="task-sub">{formatDeadlineTime(task.deadline_time)} · {relativeDeadline(task.deadline, today)}</span>
+										{formatDeadline(task.deadline, today)}, {formatDeadlineTime(task.deadline_time)}
 									{:else}
 										<span class="task-sub">no deadline</span>
 									{/if}
 								</div>
 
+								<!-- The status is a dot, not a word: three states in a fixed set read
+								     faster as colour, and the label stays as its hover title and its
+								     accessible name. -->
 								<div class="cell cell-status">
-									<span class="status status-{status}">{TASK_STATUS_LABELS[status]}</span>
+									<span
+										class="status-dot status-{status}"
+										title={TASK_STATUS_LABELS[status]}
+										aria-label={TASK_STATUS_LABELS[status]}
+										role="img"
+									></span>
 								</div>
 
+								<!-- Overlaid on the row's right edge rather than holding a column of
+								     its own: the controls only matter for the row under the pointer,
+								     and a permanent 170px track for them was most of the row's
+								     bloat. Still in the DOM at all times so the keyboard reaches
+								     them (:focus-within reveals it) — hidden ones are inert instead
+								     of absent. -->
 								{#if canEdit}
-									<div class="cell cell-actions-wrap">{@render taskActions(task)}</div>
+									<div class="cell-actions-wrap">{@render taskActions(task)}</div>
 								{/if}
 							</div>
 
@@ -1025,16 +1043,17 @@
 
 	/* List */
 
-	/* The deadline track fits 'September 27' over '11:59 PM · in 3 days' at the cell's
-	   font sizes, with the year only ever added for a deadline outside this one — where
-	   a little truncation is the right trade for keeping every other row tight. */
+	/* The deadline track fits 'September 27, 11:59 PM' on one line at the cell's font
+	   size, with the year only ever added for a deadline outside this one — where a
+	   little truncation is the right trade for keeping every other row tight. The
+	   status track is only as wide as its dot. */
 	.task-list {
-		--task-cols: minmax(0, 1.5fr) minmax(0, 1.6fr) minmax(0, 1fr) 142px 84px;
+		--task-cols: minmax(0, 1.2fr) minmax(0, 0.8fr) 178px 14px;
+		/* What the row reserves on its right edge while its controls are showing — the
+		   width of the three buttons, so they land in space of their own rather than on
+		   top of the cells. */
+		--row-actions: 168px;
 		border-top: 1px solid var(--color-border);
-	}
-
-	.task-list.with-actions {
-		--task-cols: minmax(0, 1.5fr) minmax(0, 1.6fr) minmax(0, 1fr) 142px 84px 170px;
 	}
 
 	.list-head,
@@ -1112,14 +1131,25 @@
 	   a two-line deadline cell was spending most of a row's height on air. The padding
 	   still has to clear the row controls, which set their own line-height. */
 	.task-row {
+		position: relative;
 		padding: var(--space-2);
 		cursor: pointer;
-		transition: background 0.12s ease;
+		transition: background 0.12s ease, padding-right 0.12s ease;
 	}
 
 	.task-row:hover,
 	.task-item.open .task-row {
 		background: var(--color-highlight);
+	}
+
+	/* The cells give the controls room instead of being covered by them: the extra
+	   right padding narrows the two flexible tracks, which slides everything left as
+	   the buttons come in. Only the rows do this — the head keeps its own widths, so
+	   the column labels stay put while the row under the pointer shifts. */
+	.task-list.with-actions .task-row:hover,
+	.task-list.with-actions .task-row:focus-within,
+	.task-list.with-actions .task-item.open .task-row {
+		padding-right: calc(var(--space-2) + var(--row-actions));
 	}
 
 	.cell {
@@ -1170,7 +1200,6 @@
 		white-space: nowrap;
 	}
 
-	.cell-description,
 	.cell-people {
 		color: var(--color-muted);
 		overflow: hidden;
@@ -1203,19 +1232,57 @@
 		box-shadow: 0 0 0 1px var(--color-border);
 	}
 
-	.cell-deadline {
-		display: flex;
-		flex-direction: column;
-		gap: 1px;
+	/* Same 22px circle as a face, so the row of avatars keeps its rhythm when the
+	   overflow chip stands in for the last of them. */
+	.assignee-more {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		flex: 0 0 auto;
+		width: 22px;
+		height: 22px;
+		border-radius: 50%;
+		box-shadow: 0 0 0 1px var(--color-border);
+		background: var(--color-highlight-strong);
+		color: var(--color-fg);
+		font-size: 0.62rem;
+		font-weight: 700;
+		line-height: 1;
+		cursor: default;
 	}
 
 	/* One line whatever the month is called: a wrap here would put back the height the
 	   row just gave up. */
-	.deadline-date {
+	.cell-deadline {
 		font-variant-numeric: tabular-nums;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+
+	/* The dot's track is only as wide as the dot, so the column's heading would spill
+	   into the one beside it — it stays for screen readers only. */
+	.head-status {
+		overflow: hidden;
+		white-space: nowrap;
+		text-indent: -9999px;
+	}
+
+	/* Takes its fill from the same .status-* colours the panel's text label uses, so
+	   the two views can never disagree about what overdue looks like. */
+	.status-dot {
+		display: block;
+		align-self: center;
+		width: 10px;
+		height: 10px;
+		border-radius: 50%;
+		background: currentColor;
+	}
+
+	.cell-status {
+		display: flex;
+		align-items: center;
+		align-self: center;
 	}
 
 	.status {
@@ -1249,6 +1316,38 @@
 		padding: 0 var(--space-2);
 		font-size: 0.7rem;
 		line-height: 1.8;
+	}
+
+	/* Slides into the gap the row's padding opens for it on hover. Absolute rather than
+	   a grid track of its own so the head above keeps its column widths whatever the
+	   row beneath is doing. `visibility` rides the same transition so the hidden state
+	   is not just invisible but untabbable, which `opacity: 0` alone would not be. */
+	.cell-actions-wrap {
+		position: absolute;
+		top: 50%;
+		right: var(--space-2);
+		width: var(--row-actions);
+		opacity: 0;
+		visibility: hidden;
+		transform: translate(var(--space-3), -50%);
+		transition: opacity 0.12s ease, transform 0.12s ease, visibility 0.12s;
+	}
+
+	/* Also while the row's panel is open: the controls belong to whatever task is being
+	   looked at, and the pointer has usually left the row by then. */
+	.task-row:hover .cell-actions-wrap,
+	.task-row:focus-within .cell-actions-wrap,
+	.task-item.open .cell-actions-wrap {
+		opacity: 1;
+		visibility: visible;
+		transform: translate(0, -50%);
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.cell-actions-wrap {
+			transition: none;
+			transform: translate(0, -50%);
+		}
 	}
 
 	.row-error {
@@ -1474,15 +1573,14 @@
 	}
 
 	/* Below this the columns stop fitting, so each row becomes a small block: the name
-	   heads it, then description, appointment and deadline stacked under it, controls
-	   last. */
+	   and its status dot head it, then appointment and deadline stacked under it,
+	   controls last. */
 	@media (max-width: 900px) {
 		.list-head {
 			display: none;
 		}
 
-		.task-list,
-		.task-list.with-actions {
+		.task-list {
 			--task-cols: minmax(0, 1fr) auto;
 		}
 
@@ -1491,21 +1589,46 @@
 			align-items: start;
 		}
 
-		.cell-description,
+		/* Pinned beside the name rather than left to auto-placement, which would give a
+		   lone dot a row of its own under the stacked cells. */
+		.cell-status {
+			grid-column: 2;
+			grid-row: 1;
+			align-self: start;
+			padding-top: 4px;
+		}
+
 		.cell-people,
 		.cell-deadline {
 			grid-column: 1 / -1;
 			font-size: 0.76rem;
 		}
 
-		.cell-deadline {
-			flex-direction: row;
-			gap: var(--space-2);
+		/* There is no hover on a touch screen, so the controls come back out of the
+		   overlay and sit under the row as their own line. */
+		.cell-actions-wrap {
+			position: static;
+			grid-column: 1 / -1;
+			width: auto;
+			margin-top: var(--space-1);
+			opacity: 1;
+			visibility: visible;
+			transform: none;
 		}
 
-		.cell-actions-wrap {
-			grid-column: 1 / -1;
-			margin-top: var(--space-1);
+		/* The reveal rules above still match on a hybrid device; without this their
+		   translate(0, -50%) would lift the now-static block half its own height, and
+		   the row would keep reserving a gap for controls that are no longer in it. */
+		.task-row:hover .cell-actions-wrap,
+		.task-row:focus-within .cell-actions-wrap,
+		.task-item.open .cell-actions-wrap {
+			transform: none;
+		}
+
+		.task-list.with-actions .task-row:hover,
+		.task-list.with-actions .task-row:focus-within,
+		.task-list.with-actions .task-item.open .task-row {
+			padding-right: var(--space-2);
 		}
 
 		.cell-actions-wrap .cell-actions {
