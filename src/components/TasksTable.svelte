@@ -47,7 +47,7 @@
 		initialTasks: Task[];
 		initialCategoryColors: CategoryColors;
 		initialViewMode: 'list' | 'calendar';
-		members: { id: string; displayName: string }[];
+		members: { id: string; displayName: string; avatar: string | null }[];
 		ghostMembers: { id: string; displayName: string }[];
 		canEdit: boolean;
 		currentUserId: string;
@@ -88,7 +88,7 @@
 		collapsed = collapsed.filter((c) => c !== (task.category?.trim() || UNCATEGORIZED));
 
 		openId = id;
-		openMode = 'detail';
+		editingField = null;
 
 		// The row may only exist after those two land, so the scroll waits for the render
 		// rather than looking for an element that isn't there yet. In Calendar mode the
@@ -115,9 +115,23 @@
 	// the whole audience.
 	let categoryColors = $state<CategoryColors>({ ...initialCategoryColors });
 
-	// One panel is open at a time: either a task's read-only detail or its edit form.
+	// One task's panel is open at a time. There is no separate edit mode anymore: the
+	// panel is the edit surface, one field at a time (see editingField below).
 	let openId = $state<string | null>(null);
-	let openMode = $state<'detail' | 'edit'>('detail');
+
+	// Which single field of which task is currently being edited in the open panel.
+	// One at a time on purpose — each field saves the whole row through the update
+	// endpoint, so two open fields would race each other's values.
+	type EditField = 'name' | 'category' | 'appointed' | 'deadline' | 'description';
+	let editingField = $state<{ id: string; field: EditField } | null>(null);
+
+	// Drafts for the field being edited. Plain state rather than form inputs read on
+	// submit: the check/cancel icons aren't a form, and a draft has to survive the
+	// swatch clicks that sit next to the category select.
+	let draftName = $state('');
+	let draftDeadline = $state('');
+	let draftDeadlineTime = $state(DEFAULT_DEADLINE_TIME);
+	let draftDescription = $state('');
 
 	let savingId = $state<string | null>(null);
 	let deletingId = $state<string | null>(null);
@@ -141,7 +155,6 @@
 
 	let editCategorySelect = $state('');
 	let editCategoryNew = $state('');
-	let editAssignees = $state<string[]>([]);
 
 	let savingColor = $state<string | null>(null);
 	let colorError = $state<string | null>(null);
@@ -235,12 +248,13 @@
 	}
 
 	function toggleDetail(id: string) {
-		if (openId === id && openMode === 'detail') {
+		editingField = null;
+		rowError = null;
+		if (openId === id) {
 			openId = null;
 			return;
 		}
 		openId = id;
-		openMode = 'detail';
 	}
 
 	// The whole row is clickable for convenience, but the name is a real button so the
@@ -251,22 +265,36 @@
 		toggleDetail(id);
 	}
 
-	function startEdit(task: Task) {
-		if (openId === task.id && openMode === 'edit') {
-			openId = null;
-			return;
-		}
-		openId = task.id;
-		openMode = 'edit';
-		editCategorySelect = task.category?.trim() || '';
-		editCategoryNew = '';
-		editAssignees = task.assignees.map(assigneeToken);
-		rowError = null;
-		colorError = null;
+	function isEditing(id: string, field: EditField): boolean {
+		return editingField?.id === id && editingField.field === field;
 	}
 
-	function cancelEdit() {
-		openId = null;
+	// The pencil beside a value toggles: a second click on the same one closes it, and
+	// clicking another field's pencil moves the edit rather than opening a second.
+	function startField(task: Task, field: EditField) {
+		if (isEditing(task.id, field)) {
+			editingField = null;
+			return;
+		}
+
+		rowError = null;
+		colorError = null;
+		editingField = { id: task.id, field };
+
+		if (field === 'name') draftName = task.name;
+		if (field === 'category') {
+			editCategorySelect = task.category?.trim() || '';
+			editCategoryNew = '';
+		}
+		if (field === 'deadline') {
+			draftDeadline = task.deadline ?? '';
+			draftDeadlineTime = task.deadline_time;
+		}
+		if (field === 'description') draftDescription = task.description ?? '';
+	}
+
+	function cancelField() {
+		editingField = null;
 		rowError = null;
 	}
 
@@ -299,52 +327,79 @@
 		savingColor = null;
 	}
 
-	async function handleSave(e: SubmitEvent, id: string) {
-		e.preventDefault();
-		const form = e.currentTarget as HTMLFormElement;
-
-		rowError = null;
-		savingId = id;
-
-		const res = await fetch(form.action, { method: 'POST', body: new FormData(form) });
-
-		if (!res.ok) {
-			rowError = { id, message: await res.text() };
-			savingId = null;
-			return;
-		}
-
-		updateTask(await res.json());
-		openId = null;
-		savingId = null;
-	}
-
 	// The update endpoint writes the whole row — an absent field clears it, and an
-	// absent `assignees` would drop every appointment — so flipping the status means
-	// resubmitting the task exactly as it stands with only that one value changed.
-	async function toggleDone(task: Task) {
+	// absent `assignees` would drop every appointment — so every edit resubmits the
+	// task exactly as it stands with only the changed values swapped in. That's what
+	// lets a single field (or the Done button) save on its own.
+	async function saveField(
+		task: Task,
+		changes: Partial<{
+			name: string;
+			category: string;
+			description: string;
+			deadline: string;
+			deadline_time: string;
+			status: 'ongoing' | 'done';
+			assignees: string[];
+		}>,
+	): Promise<boolean> {
 		rowError = null;
-		togglingId = task.id;
+		savingId = task.id;
 
 		const body = new FormData();
-		body.set('name', task.name);
-		body.set('category', task.category ?? '');
-		body.set('description', task.description ?? '');
-		body.set('deadline', task.deadline ?? '');
-		body.set('deadline_time', task.deadline_time);
-		body.set('status', task.status === 'done' ? 'ongoing' : 'done');
-		for (const assignee of task.assignees) body.append('assignees', assigneeToken(assignee));
+		body.set('name', changes.name ?? task.name);
+		body.set('category', changes.category ?? task.category ?? '');
+		body.set('description', changes.description ?? task.description ?? '');
+		body.set('deadline', changes.deadline ?? task.deadline ?? '');
+		body.set('deadline_time', changes.deadline_time ?? task.deadline_time);
+		body.set('status', changes.status ?? task.status);
+		for (const token of changes.assignees ?? task.assignees.map(assigneeToken)) body.append('assignees', token);
 
 		const res = await fetch(`/api/tasks/${task.id}/update`, { method: 'POST', body });
 
 		if (!res.ok) {
 			rowError = { id: task.id, message: await res.text() };
-			togglingId = null;
-			return;
+			savingId = null;
+			return false;
 		}
 
 		updateTask(await res.json());
+		savingId = null;
+		return true;
+	}
+
+	// Closes the field on success only: a rejected save keeps the draft on screen with
+	// the reason under it, rather than throwing the typing away.
+	async function commitField(task: Task, changes: Parameters<typeof saveField>[1]) {
+		if (await saveField(task, changes)) editingField = null;
+	}
+
+	async function toggleDone(task: Task) {
+		togglingId = task.id;
+		await saveField(task, { status: task.status === 'done' ? 'ongoing' : 'done' });
 		togglingId = null;
+	}
+
+	// Appointments have no check/cancel of their own — the ✕ and + are the action, and
+	// each one saves on the click. The list stays open afterwards so several people can
+	// be added in a row.
+	async function toggleAppointee(task: Task, token: string, on: boolean) {
+		const current = task.assignees.map(assigneeToken);
+		await saveField(task, { assignees: on ? [...current, token] : current.filter((t) => t !== token) });
+	}
+
+	// Every party the task could be appointed to: project members, ghost members, and
+	// the former members it still carries an appointment for (those can only be
+	// removed — there's no account left to appoint again).
+	function appointOptions(task: Task) {
+		const appointed = new Set(task.assignees.map(assigneeToken));
+		return [
+			...members.map((m) => ({ token: m.id, displayName: m.displayName, avatar: m.avatar })),
+			...ghostMembers.map((g) => ({ token: ghostPartyId(g.id), displayName: g.displayName, avatar: null })),
+			...task.assignees
+				.filter((a) => !a.user_id && !a.ghost_member_id)
+				.map((a) => ({ token: assigneeToken(a), displayName: a.display_name, avatar: null })),
+		].map((option) => ({ ...option, appointed: appointed.has(option.token) }));
 	}
 
 	async function handleDelete(id: string) {
@@ -468,25 +523,55 @@
 			/>
 		{/if}
 
-		<!-- Ten fixed slots. The active one is whichever the category resolves to right
-		     now, picked or hashed, so the row always shows the colour the list and the
-		     calendar are actually painting rather than 'nothing chosen'. -->
-		<div class="swatches" role="group" aria-label="Category colour">
-			{#each CATEGORY_COLOR_SLOTS as slot (slot)}
-				<button
-					type="button"
-					class="swatch"
-					class:active={effective.trim() !== '' && categoryColorIndex(effective, categoryColors) === slot}
-					style={categoryColorStyle(slot)}
-					disabled={effective.trim() === '' || savingColor !== null}
-					aria-label={`Colour ${slot + 1}`}
-					title={effective.trim() === '' ? 'Pick a category first' : `Colour ${slot + 1}`}
-					onclick={() => setCategoryColor(effective, slot)}
-				></button>
-			{/each}
-		</div>
+		{@render colorSwatches(effective)}
 		{#if colorError}<span class="swatch-error">{colorError}</span>{/if}
 	</div>
+{/snippet}
+
+<!-- Ten fixed slots. The active one is whichever the category resolves to right now,
+     picked or hashed, so the row always shows the colour the list and the calendar are
+     actually painting rather than 'nothing chosen'. -->
+{#snippet colorSwatches(effective: string)}
+	<div class="swatches" role="group" aria-label="Category colour">
+		{#each CATEGORY_COLOR_SLOTS as slot (slot)}
+			<button
+				type="button"
+				class="swatch"
+				class:active={effective.trim() !== '' && categoryColorIndex(effective, categoryColors) === slot}
+				style={categoryColorStyle(slot)}
+				disabled={effective.trim() === '' || savingColor !== null}
+				aria-label={`Colour ${slot + 1}`}
+				title={effective.trim() === '' ? 'Pick a category first' : `Colour ${slot + 1}`}
+				onclick={() => setCategoryColor(effective, slot)}
+			></button>
+		{/each}
+	</div>
+{/snippet}
+
+<!-- The three icon buttons the panel edits are driven by: the pencil that opens a
+     field, and the check/✕ pair that closes it. Buttons rather than links so they're
+     tabbable in place, and 20px squares so a line of text keeps its height. -->
+{#snippet editIcon(label: string, onclick: () => void)}
+	<button type="button" class="icon-btn icon-edit" title={label} aria-label={label} onclick={onclick}>
+		<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+			<path d="M11.1 1.4a1.4 1.4 0 0 1 2 0l1.5 1.5a1.4 1.4 0 0 1 0 2l-.9.9-3.5-3.5zM9.3 3.2l3.5 3.5-6.6 6.6-3.5.7.7-3.5z" />
+		</svg>
+	</button>
+{/snippet}
+
+{#snippet confirmIcons(onSave: () => void, busy: boolean)}
+	<span class="confirm-icons">
+		<button type="button" class="icon-btn icon-ok" title="Save" aria-label="Save" onclick={onSave} disabled={busy}>
+			<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+				<path d="M6.2 12.4 2 8.2l1.4-1.4 2.8 2.8 6.4-6.4L14 4.6z" />
+			</svg>
+		</button>
+		<button type="button" class="icon-btn icon-cancel" title="Cancel" aria-label="Cancel" onclick={cancelField} disabled={busy}>
+			<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+				<path d="M12.7 4.7 9.4 8l3.3 3.3-1.4 1.4L8 9.4l-3.3 3.3-1.4-1.4L6.6 8 3.3 4.7l1.4-1.4L8 6.6l3.3-3.3z" />
+			</svg>
+		</button>
+	</span>
 {/snippet}
 
 {#snippet assigneeField(selected: string[], onToggle: (id: string, on: boolean) => void, deletedAssignees: Task['assignees'] = [])}
@@ -579,102 +664,181 @@
 {#snippet taskActions(task: Task)}
 	<div class="cell-actions">
 		<!-- Reopen rather than a second Done: the button has to say what the click will
-		     do, and a task's status is editable from the edit form either way. -->
+		     do. No Edit button — editing is per-field inside the panel below. -->
 		<button type="button" class="btn-plain" onclick={() => toggleDone(task)} disabled={togglingId === task.id}>
 			{togglingId === task.id ? '…' : task.status === 'done' ? 'Reopen' : 'Done'}
 		</button>
-		<button type="button" class="btn-plain" onclick={() => startEdit(task)}>Edit</button>
 		<button type="button" class="btn-danger" onclick={() => handleDelete(task.id)} disabled={deletingId === task.id}>
 			{deletingId === task.id ? '…' : 'Delete'}
 		</button>
 	</div>
 {/snippet}
 
+<!-- The panel is both the read view and the edit surface: every value carries a pencil
+     that swaps that one line for its input, and nothing else on the panel moves while
+     it's open — the controls are sized to the line height they replace. -->
 {#snippet detailBody(task: Task)}
+	{@const busy = savingId === task.id}
 	<dl class="detail">
+		<dt>Name</dt>
+		<dd>
+			{#if isEditing(task.id, 'name')}
+				<div class="detail-line">
+					<input class="inline-input" type="text" maxlength="200" bind:value={draftName} aria-label="Task name" />
+					{@render confirmIcons(() => commitField(task, { name: draftName.trim() }), busy)}
+				</div>
+			{:else}
+				<div class="detail-line">
+					<span>{task.name}</span>
+					{#if canEdit}{@render editIcon('Edit name', () => startField(task, 'name'))}{/if}
+				</div>
+			{/if}
+		</dd>
+
 		<dt>Category</dt>
 		<dd>
-			{#if task.category?.trim()}
-				<span class="category-chip" style={styleFor(task.category)}>{task.category.trim()}</span>
+			{#if isEditing(task.id, 'category')}
+				<!-- The select stands exactly where the chip was and the swatches sit to its
+				     right, so opening this doesn't reflow the rows under it. -->
+				<div class="detail-line">
+					<select class="inline-select" aria-label="Category" bind:value={editCategorySelect}>
+						<option value="">None</option>
+						{#each existingCategories as cat (cat)}
+							<option value={cat}>{cat}</option>
+						{/each}
+						<option value={NEW_CATEGORY_VALUE}>+ Add category</option>
+					</select>
+					{#if editCategorySelect === NEW_CATEGORY_VALUE}
+						<input
+							class="inline-input"
+							type="text"
+							placeholder="New category name"
+							maxlength="100"
+							bind:value={editCategoryNew}
+						/>
+					{/if}
+					{@render colorSwatches(editCategoryEffective)}
+					{@render confirmIcons(() => commitField(task, { category: editCategoryEffective.trim() }), busy)}
+				</div>
+				{#if colorError}<span class="swatch-error">{colorError}</span>{/if}
 			{:else}
-				—
+				<div class="detail-line">
+					{#if task.category?.trim()}
+						<span class="category-chip" style={styleFor(task.category)}>{task.category.trim()}</span>
+					{:else}
+						<span>—</span>
+					{/if}
+					{#if canEdit}{@render editIcon('Edit category', () => startField(task, 'category'))}{/if}
+				</div>
 			{/if}
 		</dd>
+
 		<dt>Appointed</dt>
-		<dd>{@render assigneeAvatars(task, 0)}</dd>
+		<dd>
+			{#if isEditing(task.id, 'appointed')}
+				<!-- Everyone the task could be appointed to, in one list: the appointed ones
+				     in full colour with a ✕, the rest greyed with a +. Each click saves on
+				     its own, so there's no check/cancel pair here — the pencil closes it. -->
+				<div class="appoint-list">
+					{#each appointOptions(task) as option (option.token)}
+						<div class="appoint-row">
+							<span class="appoint-who" class:off={!option.appointed}>
+								<Avatar avatar={option.avatar} displayName={option.displayName} size={22} />
+								<span class="appoint-name">{option.displayName}</span>
+							</span>
+							{#if option.appointed}
+								<button
+									type="button"
+									class="icon-btn icon-remove"
+									title={`Remove ${option.displayName}`}
+									aria-label={`Remove ${option.displayName}`}
+									disabled={busy}
+									onclick={() => toggleAppointee(task, option.token, false)}
+								>
+									<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+										<path d="M12.7 4.7 9.4 8l3.3 3.3-1.4 1.4L8 9.4l-3.3 3.3-1.4-1.4L6.6 8 3.3 4.7l1.4-1.4L8 6.6l3.3-3.3z" />
+									</svg>
+								</button>
+							{:else}
+								<button
+									type="button"
+									class="icon-btn icon-add"
+									title={`Appoint ${option.displayName}`}
+									aria-label={`Appoint ${option.displayName}`}
+									disabled={busy}
+									onclick={() => toggleAppointee(task, option.token, true)}
+								>
+									<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+										<path d="M7 2h2v5h5v2H9v5H7V9H2V7h5z" />
+									</svg>
+								</button>
+							{/if}
+						</div>
+					{:else}
+						<span class="muted">No members to appoint.</span>
+					{/each}
+				</div>
+			{:else}
+				<div class="detail-line">
+					{@render assigneeAvatars(task, 0)}
+					{#if canEdit}{@render editIcon('Edit appointed members', () => startField(task, 'appointed'))}{/if}
+				</div>
+			{/if}
+		</dd>
+
 		<dt>Deadline</dt>
 		<dd>
-			{#if task.deadline}
-				{formatDeadline(task.deadline, today)}, {formatDeadlineTime(task.deadline_time)}
-				<span class="muted">({relativeDeadline(task.deadline, today)})</span>
+			{#if isEditing(task.id, 'deadline')}
+				<div class="detail-line">
+					<div class="deadline-inputs">
+						<input class="inline-input" type="date" bind:value={draftDeadline} aria-label="Deadline date" />
+						<input class="inline-input" type="time" bind:value={draftDeadlineTime} aria-label="Deadline time" />
+					</div>
+					{@render confirmIcons(
+						() => commitField(task, { deadline: draftDeadline, deadline_time: draftDeadlineTime }),
+						busy,
+					)}
+				</div>
 			{:else}
-				—
+				<div class="detail-line">
+					{#if task.deadline}
+						<span>
+							{formatDeadline(task.deadline, today)}, {formatDeadlineTime(task.deadline_time)}
+							<span class="muted">({relativeDeadline(task.deadline, today)})</span>
+						</span>
+					{:else}
+						<span>—</span>
+					{/if}
+					{#if canEdit}{@render editIcon('Edit deadline', () => startField(task, 'deadline'))}{/if}
+				</div>
 			{/if}
 		</dd>
+
 		<dt>Description</dt>
-		<dd>{task.description || '—'}</dd>
-	</dl>
-{/snippet}
-
-{#snippet editForm(task: Task)}
-	<form method="POST" action={`/api/tasks/${task.id}/update`} onsubmit={(e) => handleSave(e, task.id)}>
-		<div class="panel-grid">
-			<label class="field">
-				<span class="field-label">Task name</span>
-				<input type="text" name="name" value={task.name} maxlength="200" required />
-			</label>
-
-			{@render categoryField(
-				editCategorySelect,
-				editCategoryNew,
-				editCategoryEffective,
-				(v) => (editCategorySelect = v),
-				(v) => (editCategoryNew = v),
-			)}
-			<input type="hidden" name="category" value={editCategoryEffective} />
-
-			<!-- Date and time in one field: they're halves of one deadline, and splitting
-			     them across two panel-grid tracks would let the grid put them on separate
-			     rows. -->
-			<label class="field">
-				<span class="field-label">Deadline</span>
-				<div class="deadline-inputs">
-					<input type="date" name="deadline" value={task.deadline ?? ''} />
-					<input type="time" name="deadline_time" value={task.deadline_time} aria-label="Deadline time" />
+		<dd>
+			{#if isEditing(task.id, 'description')}
+				<!-- The one field with worded buttons rather than icons: it's a multi-line
+				     box, so its controls sit under it where there's room for words. -->
+				<div class="description-edit">
+					<textarea class="inline-textarea" rows="4" maxlength="1000" bind:value={draftDescription} aria-label="Description"
+					></textarea>
+					<div class="inline-actions">
+						<button type="button" disabled={busy} onclick={() => commitField(task, { description: draftDescription })}>
+							{busy ? 'Saving…' : 'Save'}
+						</button>
+						<button type="button" class="btn-plain" disabled={busy} onclick={cancelField}>Cancel</button>
+					</div>
 				</div>
-			</label>
+			{:else}
+				<div class="detail-line">
+					<span>{task.description || '—'}</span>
+					{#if canEdit}{@render editIcon('Edit description', () => startField(task, 'description'))}{/if}
+				</div>
+			{/if}
+		</dd>
+	</dl>
 
-			<!-- Only the two storable states. Overdue is derived from the deadline, so it
-			     is never something to pick here. -->
-			<label class="field">
-				<span class="field-label">Status</span>
-				<select name="status" value={task.status}>
-					<option value="ongoing">Ongoing</option>
-					<option value="done">Done</option>
-				</select>
-			</label>
-
-			{@render assigneeField(
-				editAssignees,
-				(id, on) => {
-					editAssignees = on ? [...editAssignees, id] : editAssignees.filter((a) => a !== id);
-				},
-				task.assignees.filter((a) => !a.user_id && !a.ghost_member_id),
-			)}
-
-			<label class="field field-wide">
-				<span class="field-label">Description</span>
-				<input type="text" name="description" value={task.description ?? ''} maxlength="1000" />
-			</label>
-		</div>
-
-		{#if rowError?.id === task.id}<p class="panel-error">{rowError.message}</p>{/if}
-
-		<div class="panel-actions">
-			<button type="submit" disabled={savingId === task.id}>{savingId === task.id ? 'Saving…' : 'Save'}</button>
-			<button type="button" class="btn-plain" onclick={cancelEdit}>Cancel</button>
-		</div>
-	</form>
+	{#if rowError?.id === task.id}<p class="panel-error">{rowError.message}</p>{/if}
 {/snippet}
 
 <section class="tasks-section">
@@ -817,24 +981,17 @@
 		<!-- The grid has no rows, so the open task's panel lands under it — with the
 		     row controls it would otherwise have nowhere to live. -->
 		{#if selectedTask}
-			{#if openMode === 'edit' && canEdit}
-				<div class="task-panel calendar-panel" transition:slide={{ duration: 150 }}>
-					{@render editForm(selectedTask)}
+			<!-- Carries the `#task-<id>` anchor in this mode: the grid has no row to put it
+			     on, and a linked task's deadline may not even be in the month on screen,
+			     but its panel always renders here. -->
+			<div class="task-panel calendar-panel" id={`task-${selectedTask.id}`} transition:slide={{ duration: 150 }}>
+				<div class="panel-head">
+					<strong class="panel-title" class:done={statusOf(selectedTask) === 'done'}>{selectedTask.name}</strong>
+					<span class="status status-{statusOf(selectedTask)}">{TASK_STATUS_LABELS[statusOf(selectedTask)]}</span>
+					{#if canEdit}{@render taskActions(selectedTask)}{/if}
 				</div>
-			{:else}
-				<!-- Carries the `#task-<id>` anchor in this mode: the grid has no row to put
-				     it on, and a linked task's deadline may not even be in the month on
-				     screen, but its panel always renders here. -->
-				<div class="task-panel calendar-panel" id={`task-${selectedTask.id}`} transition:slide={{ duration: 150 }}>
-					<div class="panel-head">
-						<strong class="panel-title" class:done={statusOf(selectedTask) === 'done'}>{selectedTask.name}</strong>
-						<span class="status status-{statusOf(selectedTask)}">{TASK_STATUS_LABELS[statusOf(selectedTask)]}</span>
-						{#if canEdit}{@render taskActions(selectedTask)}{/if}
-					</div>
-					{@render detailBody(selectedTask)}
-					{#if rowError?.id === selectedTask.id}<p class="panel-error">{rowError.message}</p>{/if}
-				</div>
-			{/if}
+				{@render detailBody(selectedTask)}
+			</div>
 		{/if}
 	{:else if tasksState.tasks.length === 0}
 		<p class="muted empty">No tasks yet.</p>
@@ -923,19 +1080,14 @@
 								{/if}
 							</div>
 
-							{#if openId === task.id && openMode === 'detail'}
+							{#if openId === task.id}
 								<div class="task-panel" transition:slide={{ duration: 150 }}>
 									{@render detailBody(task)}
 								</div>
 							{/if}
 
-							{#if canEdit && openId === task.id && openMode === 'edit'}
-								<div class="task-panel" transition:slide={{ duration: 150 }}>
-									{@render editForm(task)}
-								</div>
-							{/if}
-
-							{#if rowError?.id === task.id && !(openId === task.id && openMode === 'edit')}
+							<!-- A row-level failure (Done, Delete) with no panel open to carry it. -->
+							{#if rowError?.id === task.id && openId !== task.id}
 								<p class="row-error">{rowError.message}</p>
 							{/if}
 						</div>
@@ -1050,9 +1202,9 @@
 	.task-list {
 		--task-cols: minmax(0, 1.2fr) minmax(0, 0.8fr) 178px 14px;
 		/* What the row reserves on its right edge while its controls are showing — the
-		   width of the three buttons, so they land in space of their own rather than on
-		   top of the cells. */
-		--row-actions: 168px;
+		   width of the two buttons (Edit having moved into the panel), so they land in
+		   space of their own rather than on top of the cells. */
+		--row-actions: 112px;
 		border-top: 1px solid var(--color-border);
 	}
 
@@ -1401,13 +1553,6 @@
 		margin-left: auto;
 	}
 
-	/* Undo the global flex-row form styling — in a panel the form is just a block
-	   wrapper around its grid and action row. */
-	.task-panel form {
-		display: block;
-		margin: 0;
-	}
-
 	.detail {
 		display: grid;
 		grid-template-columns: max-content minmax(0, 1fr);
@@ -1430,6 +1575,169 @@
 		font-size: 0.82rem;
 		overflow-wrap: break-word;
 		word-break: break-word;
+	}
+
+	/* A value and its pencil (or its inputs and their check/✕) on one line. The line's
+	   min-height is the read state's own height, so swapping in a control can't push
+	   the rows under it around. */
+	.detail-line {
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: var(--space-2);
+		min-height: 1.65rem;
+	}
+
+	/* Only shows once its line is hovered or the button itself is focused — a column of
+	   pencils down the panel would read as the loudest thing on it. */
+	.icon-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		flex: 0 0 auto;
+		width: 20px;
+		height: 20px;
+		padding: 0;
+		background: none;
+		border: 1px solid transparent;
+		color: var(--color-muted);
+		cursor: pointer;
+	}
+
+	.icon-btn svg {
+		width: 11px;
+		height: 11px;
+		fill: currentColor;
+	}
+
+	.icon-btn:hover:not(:disabled) {
+		border-color: var(--color-border);
+		color: var(--color-fg);
+	}
+
+	.icon-btn:disabled {
+		opacity: 0.45;
+		cursor: not-allowed;
+	}
+
+	.detail-line .icon-edit:not(:focus-visible) {
+		opacity: 0;
+	}
+
+	.detail-line:hover .icon-edit {
+		opacity: 1;
+	}
+
+	/* No hover to reveal them with on a touch screen. */
+	@media (hover: none) {
+		.detail-line .icon-edit {
+			opacity: 1;
+		}
+	}
+
+	.confirm-icons {
+		display: inline-flex;
+		gap: var(--space-1);
+		flex: 0 0 auto;
+	}
+
+	/* The save/cancel pair and the appoint/remove pair keep their colour at rest —
+	   unlike the pencil, they're the only thing to do once a field is open. */
+	.icon-ok,
+	.icon-add {
+		color: var(--color-success);
+	}
+
+	.icon-cancel,
+	.icon-remove {
+		color: var(--color-danger);
+	}
+
+	.icon-ok:hover:not(:disabled),
+	.icon-add:hover:not(:disabled) {
+		color: var(--color-success);
+	}
+
+	.icon-cancel:hover:not(:disabled),
+	.icon-remove:hover:not(:disabled) {
+		color: var(--color-danger);
+	}
+
+	/* Sized down to the line they stand in rather than the panel's form controls, so an
+	   open field is the same height as the text it replaced. */
+	.inline-input,
+	.inline-select {
+		min-width: 0;
+		padding: 0 var(--space-1);
+		font-size: 0.78rem;
+		line-height: 1.5;
+	}
+
+	.inline-select {
+		max-width: 220px;
+	}
+
+	.inline-input[type='text'] {
+		width: 100%;
+		max-width: 320px;
+	}
+
+	.appoint-list {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		padding: 2px 0;
+	}
+
+	.appoint-row {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+		font-size: 0.8rem;
+	}
+
+	.appoint-who {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-2);
+		min-width: 0;
+	}
+
+	/* Greyed, not hidden: an unappointed member is still a name you're picking from. */
+	.appoint-who.off {
+		opacity: 0.45;
+	}
+
+	.appoint-name {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.description-edit {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-2);
+		padding: 2px 0;
+	}
+
+	.inline-textarea {
+		width: 100%;
+		max-width: 520px;
+		padding: var(--space-1) var(--space-2);
+		font: inherit;
+		font-size: 0.82rem;
+		resize: vertical;
+	}
+
+	.inline-actions {
+		display: flex;
+		gap: var(--space-2);
+	}
+
+	.inline-actions button {
+		padding: var(--space-1) var(--space-3);
+		font-size: 0.78rem;
 	}
 
 	/* The detail panel is the one place the category is named in full, so it carries
