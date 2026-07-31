@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import Avatar from './Avatar.svelte';
 
 	interface SidebarProject {
@@ -25,6 +26,39 @@
 		const match = currentPath.match(/^\/projects\/([^/]+)/);
 		return match ? match[1] : null;
 	});
+
+	// Pinned = stays open without the pointer, and the rail widens to the full panel so
+	// the content reflows beside it instead of sitting under it. Persisted because the
+	// component remounts on every page navigation (client:load + ClientRouter), and a
+	// sidebar that silently re-folds on the next click would be worse than no pin at all.
+	const PIN_KEY = 'p2-sidebar-pinned';
+	let pinned = $state(false);
+
+	onMount(() => {
+		try {
+			pinned = localStorage.getItem(PIN_KEY) === '1';
+		} catch {
+			// Private mode / storage disabled: the pin just doesn't survive navigation.
+		}
+	});
+
+	function setPinned(next: boolean) {
+		pinned = next;
+		try {
+			localStorage.setItem(PIN_KEY, next ? '1' : '0');
+		} catch {
+			// See above.
+		}
+	}
+
+	// The same click pins and unpins, and it's the same target either way — the panel
+	// itself. Clicking out in the content deliberately does nothing: the sidebar is a
+	// fixture, not a menu, so working in the page shouldn't put it away.
+	// A click on a link is a navigation and leaves the pin alone.
+	function onPanelClick(event: MouseEvent) {
+		if (event.target instanceof Element && event.target.closest('a')) return;
+		setPinned(!pinned);
+	}
 </script>
 
 <!--
@@ -35,10 +69,16 @@
 	right edge, so a pointer drifting in from off-screen opens the sidebar before it ever
 	touches a link. The panel outranks it in z-order, so once open every link is clickable.
 -->
-<div class="sidebar-rail">
+<div class="sidebar-rail" class:pinned>
 	<div class="hover-zone"></div>
 
-	<aside class="sidebar-panel">
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+	<aside
+		class="sidebar-panel"
+		title={pinned ? 'Click to unpin the sidebar' : 'Click to pin the sidebar open'}
+		onclick={onPanelClick}
+	>
 		<div class="sidebar-content">
 			<p class="sidebar-welcome row">
 				<span class="row-icon">
@@ -104,6 +144,17 @@
 		min-height: 0;
 		--rail-width: 56px;
 		--panel-width: 280px;
+		--icon-size: 26px;
+		/* Centres the icon slot in the folded rail, which is also what makes the active
+		   row's highlight sit square around it. */
+		--row-inset: calc((var(--rail-width) - var(--icon-size)) / 2);
+		transition: flex-basis 0.15s ease;
+	}
+
+	/* Pinned takes real width in the shell, so the open panel sits beside the content
+	   rather than over it. */
+	.sidebar-rail.pinned {
+		flex-basis: var(--panel-width);
 	}
 
 	/* Reaches leftward out of the shell to the viewport edge — that empty margin is
@@ -133,10 +184,20 @@
 		transition: width 0.15s ease;
 	}
 
+	/* Offset past the blur radius (16px out, 16px blur, -8px spread) so the shadow only
+	   ever falls to the right of the panel — with a smaller offset the blur spills back
+	   over the panel's left edge and darkens the margin beside it. */
 	.sidebar-rail:hover .sidebar-panel,
-	.sidebar-panel:focus-within {
+	.sidebar-rail:focus-within .sidebar-panel {
 		width: var(--panel-width);
-		box-shadow: var(--space-1) 0 var(--space-4) rgba(0, 0, 0, 0.12);
+		box-shadow: var(--space-4) 0 var(--space-4) calc(-1 * var(--space-2)) rgba(0, 0, 0, 0.12);
+	}
+
+	/* Pinned is in-flow, so it has content on one side and the page edge on the other —
+	   the border is enough, and a shadow would read as a floating overlay it isn't. */
+	.sidebar-rail.pinned .sidebar-panel {
+		width: var(--panel-width);
+		box-shadow: none;
 	}
 
 	.sidebar-content {
@@ -144,7 +205,7 @@
 		width: var(--panel-width);
 		overflow-y: auto;
 		overflow-x: hidden;
-		padding: var(--space-6) var(--space-3) var(--space-8);
+		padding: var(--space-6) 0 var(--space-8);
 	}
 
 	/* Every entry is an icon in a fixed-width slot plus a label: the slot is the only
@@ -154,7 +215,7 @@
 		display: flex;
 		align-items: center;
 		gap: var(--space-3);
-		padding: var(--space-2);
+		padding: var(--space-2) var(--row-inset);
 	}
 
 	.row-icon {
@@ -162,8 +223,8 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		width: 26px;
-		height: 26px;
+		width: var(--icon-size);
+		height: var(--icon-size);
 		color: var(--color-muted);
 	}
 
@@ -177,7 +238,8 @@
 	}
 
 	.sidebar-rail:hover .row-label,
-	.sidebar-panel:focus-within .row-label {
+	.sidebar-rail:focus-within .row-label,
+	.sidebar-rail.pinned .row-label {
 		opacity: 1;
 	}
 
@@ -220,6 +282,8 @@
 		color: var(--color-fg);
 	}
 
+	/* Indented only once open — folded, the owner pictures have to stay on the same
+	   centre line as the icons above them or the rail reads as crooked. */
 	.project-list {
 		list-style: none;
 		margin: var(--space-1) 0 0;
@@ -227,6 +291,13 @@
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-1);
+		transition: padding-left 0.15s ease;
+	}
+
+	.sidebar-rail:hover .project-list,
+	.sidebar-rail:focus-within .project-list,
+	.sidebar-rail.pinned .project-list {
+		padding-left: var(--space-4);
 	}
 
 	.project-link {
