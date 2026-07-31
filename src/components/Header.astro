@@ -3,7 +3,7 @@ import ThemeToggle from './ThemeToggle.svelte';
 import NavMenu from './NavMenu.svelte';
 
 interface Props {
-	user: { id: string; email: string | undefined; displayName: string | undefined } | null;
+	user: { id: string; email: string | undefined; displayName: string | undefined; avatar: string | null } | null;
 	projectNav?: {
 		projectId: string;
 		userRole: string;
@@ -47,7 +47,7 @@ function isProjectPageActive(page: string) {
 
 		<div class="header-right">
 			<ThemeToggle client:load />
-			{user && <NavMenu client:load />}
+			{user && <NavMenu client:load avatar={user.avatar} displayName={user.displayName ?? user.email ?? ''} />}
 		</div>
 	</div>
 </header>

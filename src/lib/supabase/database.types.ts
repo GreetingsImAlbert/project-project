@@ -308,6 +308,7 @@ export type Database = {
       }
       profiles: {
         Row: {
+          avatar: string | null
           created_at: string | null
           display_name: string
           email: string | null
@@ -316,6 +317,7 @@ export type Database = {
           pending_deletion_at: string | null
         }
         Insert: {
+          avatar?: string | null
           created_at?: string | null
           display_name: string
           email?: string | null
@@ -324,6 +326,7 @@ export type Database = {
           pending_deletion_at?: string | null
         }
         Update: {
+          avatar?: string | null
           created_at?: string | null
           display_name?: string
           email?: string | null
