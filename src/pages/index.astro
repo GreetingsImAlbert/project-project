@@ -1,15 +1,6 @@
 ---
-import { env } from 'cloudflare:workers';
 import BaseLayout from '../layouts/BaseLayout.astro';
-import StorageUsageBar from '../components/StorageUsageBar.astro';
-import UpcomingTasks from '../components/UpcomingTasks.svelte';
-import { getSupabaseAdmin } from '../lib/supabase/admin';
-import { getUserStorageBytes, MAX_USER_STORAGE_BYTES } from '../lib/r2-quota';
-import { isCategoryColorIndex, categoryColorIndex, type CategoryColors } from '../lib/category-color';
-import { HORIZON_COOKIE, parseHorizonDays } from '../lib/task-horizon';
-import type { Reminder } from '../lib/reminders';
-import { normalizeDeadlineTime } from '../lib/deadline-time';
-import { appNowTime, appToday } from '../lib/today';
+import ForumPage from '../components/ForumPage.svelte';
 
 export const prerender = false;
 
@@ -18,95 +9,12 @@ const user = Astro.locals.user;
 if (!user) {
 	return Astro.redirect('/login');
 }
-
-const displayName = user.displayName;
-
-const admin = getSupabaseAdmin(env);
-
-// The reminders here are the reader's own tasks across every project they're in, so
-// `task_assignees!inner` filtered to them does both jobs at once: it drops the tasks
-// nobody appointed them to, and it's the join the filter is applied through. The
-// embedded array comes back holding only their own row as a result — which is why
-// these reminders carry no assignee names, only the project each task belongs to.
-//
-// All three go out together; none depends on the one before it, and RLS scopes the two
-// task queries to the caller independently (the storage total goes through the admin
-// client, which is why it can't be one of them).
-const [{ totalBytes, failed }, { data: taskRows }, { data: categoryRows }] = await Promise.all([
-	getUserStorageBytes(admin, user.id),
-	Astro.locals.supabase
-		.from('tasks')
-		.select('id, name, category, deadline, deadline_time, project_id, projects(name), task_assignees!inner(user_id)')
-		.eq('task_assignees.user_id', user.id)
-		.is('deleted_at', null)
-		.neq('status', 'done')
-		.not('deadline', 'is', null)
-		.order('deadline', { ascending: true })
-		.order('deadline_time', { ascending: true })
-		.order('name', { ascending: true })
-		.overrideTypes<
-			{
-				id: string;
-				name: string;
-				category: string | null;
-				deadline: string;
-				deadline_time: string;
-				project_id: string;
-				projects: { name: string } | null;
-			}[]
-		>(),
-	// Colours for every project the reader is in, not just one — `task_categories` is
-	// keyed by project, so the same category name can be a different colour in each and
-	// the lookup below has to stay per-project.
-	Astro.locals.supabase
-		.from('task_categories')
-		.select('project_id, name, color_index')
-		.overrideTypes<{ project_id: string; name: string; color_index: number }[]>(),
-]);
-
-// project_id -> that project's picked colours. An index outside the palette is dropped
-// rather than clamped, so it falls back to the name hash — see the Tasks page.
-const colorsByProject = new Map<string, CategoryColors>();
-for (const row of categoryRows ?? []) {
-	if (!isCategoryColorIndex(row.color_index)) continue;
-	if (!colorsByProject.has(row.project_id)) colorsByProject.set(row.project_id, {});
-	colorsByProject.get(row.project_id)![row.name] = row.color_index;
-}
-
-const reminders: Reminder[] = (taskRows ?? []).map((row) => ({
-	id: row.id,
-	name: row.name,
-	deadline: row.deadline,
-	deadlineTime: normalizeDeadlineTime(row.deadline_time),
-	colorIndex: categoryColorIndex(row.category, colorsByProject.get(row.project_id) ?? {}),
-	projectId: row.project_id,
-	projectName: row.projects?.name ?? null,
-	mine: true,
-}));
-
-// The reader's own horizon, read server-side so the list renders at the right width
-// straight away instead of widening after hydration — see lib/task-horizon.ts. The same
-// cookie the project Overview reads: it's one person's sense of what counts as soon,
-// not a per-page setting.
-const horizonDays = parseHorizonDays(Astro.cookies.get(HORIZON_COOKIE)?.value);
-
-// One fixed calendar for the whole app, server and client alike — see lib/today.ts.
-const serverToday = appToday();
-const serverNowTime = appNowTime();
 ---
 <BaseLayout title="Dashboard">
-	<h1>Dashboard</h1>
-	<p class="muted">Welcome, {displayName ?? user.email}</p>
-	<p><a href="/projects">Go to Projects →</a></p>
-	<StorageUsageBar usedBytes={totalBytes} capBytes={MAX_USER_STORAGE_BYTES} failed={failed} />
-
-	{/* No 'Just my tasks' filter: this list is already only the reader's own. */}
-	<UpcomingTasks
+	<ForumPage
 		client:load
-		reminders={reminders}
-		initialHorizonDays={horizonDays}
-		serverToday={serverToday}
-		serverNowTime={serverNowTime}
-		emptyLabel="None of your tasks are due"
+		currentUserId={user.id}
+		currentDisplayName={user.displayName ?? user.email ?? 'You'}
+		currentAvatar={user.avatar}
 	/>
 </BaseLayout>
