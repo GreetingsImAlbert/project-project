@@ -3,9 +3,11 @@ import BaseLayout from '../../../layouts/BaseLayout.astro';
 import MemberManager from '../../../components/MemberManager.svelte';
 import AddMemberForm from '../../../components/AddMemberForm.svelte';
 import AddGhostMemberForm from '../../../components/AddGhostMemberForm.svelte';
+import GhostMemberManager from '../../../components/GhostMemberManager.svelte';
 import DeleteProjectPanel from '../../../components/DeleteProjectPanel.svelte';
 import CurrencyPicker from '../../../components/CurrencyPicker.svelte';
 import TrashList from '../../../components/TrashList.svelte';
+import { listGhostMembers } from '../../../lib/ghost-members';
 
 export const prerender = false;
 
@@ -16,7 +18,7 @@ if (!user) {
 
 const { id } = Astro.params;
 
-const [{ data: project, error }, { data: members }] = await Promise.all([
+const [{ data: project, error }, { data: members }, ghostMembers] = await Promise.all([
 	Astro.locals.supabase.from('projects').select('id, name, description, owner_id, currency').eq('id', id).single(),
 	Astro.locals.supabase
 		.from('project_members')
@@ -30,6 +32,7 @@ const [{ data: project, error }, { data: members }] = await Promise.all([
 				profiles: { display_name: string; email: string; avatar: string | null };
 			}[]
 		>(),
+	listGhostMembers(Astro.locals.supabase, id!),
 ]);
 
 if (error || !project) {
@@ -143,6 +146,7 @@ const [{ data: files }, { data: folders }, { data: tasks }, { data: bomItems }, 
 	<section>
 		<h3>Members</h3>
 		<MemberManager client:load projectId={project.id} members={memberData} />
+		<GhostMemberManager client:load projectId={project.id} ghostMembers={ghostMembers} />
 		<div class="add-actions-row">
 			<AddMemberForm client:load projectId={project.id} returnTo={returnTo} />
 			<AddGhostMemberForm client:load projectId={project.id} />
