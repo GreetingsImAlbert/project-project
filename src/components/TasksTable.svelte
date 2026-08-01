@@ -150,7 +150,6 @@
 	// of its day, and showing that up front beats storing it silently — see
 	// deadline-time.ts.
 	let addDeadlineTime = $state(DEFAULT_DEADLINE_TIME);
-	let addStatus = $state<'ongoing' | 'done'>('ongoing');
 	let addAssignees = $state<string[]>([]);
 
 	let editCategorySelect = $state('');
@@ -457,7 +456,6 @@
 		addDescription = '';
 		addDeadline = '';
 		addDeadlineTime = DEFAULT_DEADLINE_TIME;
-		addStatus = 'ongoing';
 		addAssignees = [];
 		showAddForm = false;
 		adding = false;
@@ -841,6 +839,121 @@
 	{#if rowError?.id === task.id}<p class="panel-error">{rowError.message}</p>{/if}
 {/snippet}
 
+<!-- Creation uses the same detail panel as an expanded task.
+     Status is intentionally fixed: a task cannot be finished before it exists. -->
+{#snippet addTaskEditor()}
+	<form
+		method="POST"
+		action={`/api/projects/${projectId}/tasks/create`}
+		onsubmit={handleAddSubmit}
+		class="task-item add-task-item open"
+	>
+		<input type="hidden" name="status" value="ongoing" />
+		<div class="task-panel add-task-panel" transition:slide={{ duration: 150 }}>
+			<dl class="detail">
+				<dt>Name</dt>
+				<dd>
+					<div class="detail-line">
+						<input class="inline-input add-name-input" type="text" name="name" maxlength="200" placeholder="Task name" aria-label="Task name" bind:value={addName} required />
+					</div>
+				</dd>
+
+				<dt>Category</dt>
+				<dd>
+					<div class="detail-line add-category-line">
+						<select
+							class="inline-select"
+							aria-label="Category"
+							value={addCategorySelect}
+							onchange={(e) => (addCategorySelect = (e.currentTarget as HTMLSelectElement).value)}
+						>
+							<option value="">None</option>
+							{#each existingCategories as cat (cat)}
+								<option value={cat}>{cat}</option>
+							{/each}
+							<option value={NEW_CATEGORY_VALUE}>+ Add category</option>
+						</select>
+						{#if addCategorySelect === NEW_CATEGORY_VALUE}
+							<input
+								class="inline-input"
+								type="text"
+								placeholder="New category name"
+								maxlength="100"
+								value={addCategoryNew}
+								oninput={(e) => (addCategoryNew = (e.currentTarget as HTMLInputElement).value)}
+							/>
+						{/if}
+						{@render colorSwatches(addCategoryEffective)}
+					</div>
+					<input type="hidden" name="category" value={addCategoryEffective} />
+				</dd>
+
+				<dt>Appointed</dt>
+				<dd>
+					<div class="assignee-picker add-assignee-picker">
+						{#each members as member (member.id)}
+							<label class="assignee-option">
+								<input
+									type="checkbox"
+									name="assignees"
+									value={member.id}
+									checked={addAssignees.includes(member.id)}
+									onchange={(e) => {
+										const on = (e.currentTarget as HTMLInputElement).checked;
+										addAssignees = on ? [...addAssignees, member.id] : addAssignees.filter((id) => id !== member.id);
+									}}
+								/>
+								<span>{member.displayName}</span>
+							</label>
+						{/each}
+						{#each ghostMembers as ghost (ghost.id)}
+							{@const token = ghostPartyId(ghost.id)}
+							<label class="assignee-option">
+								<input
+									type="checkbox"
+									name="assignees"
+									value={token}
+									checked={addAssignees.includes(token)}
+									onchange={(e) => {
+										const on = (e.currentTarget as HTMLInputElement).checked;
+										addAssignees = on ? [...addAssignees, token] : addAssignees.filter((id) => id !== token);
+									}}
+								/>
+								<span>{ghost.displayName}</span>
+							</label>
+						{/each}
+						{#if members.length === 0 && ghostMembers.length === 0}<span class="muted">No members to appoint.</span>{/if}
+					</div>
+				</dd>
+
+				<dt>Deadline</dt>
+				<dd>
+					<div class="detail-line">
+						<div class="deadline-inputs">
+							<input class="inline-input" type="date" name="deadline" bind:value={addDeadline} aria-label="Deadline date" />
+							<input class="inline-input" type="time" name="deadline_time" bind:value={addDeadlineTime} aria-label="Deadline time" />
+						</div>
+					</div>
+				</dd>
+
+				<dt>Description</dt>
+				<dd>
+					<div class="description-edit">
+						<textarea class="inline-textarea" name="description" rows="4" maxlength="1000" placeholder="Description" bind:value={addDescription} aria-label="Description"></textarea>
+					</div>
+				</dd>
+			</dl>
+
+			<div class="inline-actions add-panel-actions">
+				<button type="submit" disabled={adding}>{adding ? 'Adding…' : 'Add task'}</button>
+				<button type="button" class="btn-plain" onclick={closeAddForm} disabled={adding}>Cancel</button>
+			</div>
+
+			{#if addError}<p class="panel-error">{addError}</p>{/if}
+		</div>
+	</form>
+{/snippet}
+
 <section class="tasks-section">
 	<div class="tasks-head">
 		<h2>Tasks</h2>
@@ -918,61 +1031,7 @@
 	</div>
 
 	{#if canEdit && showAddForm}
-		<form
-			method="POST"
-			action={`/api/projects/${projectId}/tasks/create`}
-			onsubmit={handleAddSubmit}
-			class="task-panel add-panel"
-			transition:slide={{ duration: 150 }}
-		>
-			<div class="panel-grid">
-				<label class="field">
-					<span class="field-label">Task name</span>
-					<input type="text" name="name" placeholder="Task name" maxlength="200" required bind:value={addName} />
-				</label>
-
-				{@render categoryField(
-					addCategorySelect,
-					addCategoryNew,
-					addCategoryEffective,
-					(v) => (addCategorySelect = v),
-					(v) => (addCategoryNew = v),
-				)}
-				<input type="hidden" name="category" value={addCategoryEffective} />
-
-				<label class="field">
-					<span class="field-label">Deadline</span>
-					<div class="deadline-inputs">
-						<input type="date" name="deadline" bind:value={addDeadline} />
-						<input type="time" name="deadline_time" bind:value={addDeadlineTime} aria-label="Deadline time" />
-					</div>
-				</label>
-
-				<label class="field">
-					<span class="field-label">Status</span>
-					<select name="status" bind:value={addStatus}>
-						<option value="ongoing">Ongoing</option>
-						<option value="done">Done</option>
-					</select>
-				</label>
-
-				{@render assigneeField(addAssignees, (id, on) => {
-					addAssignees = on ? [...addAssignees, id] : addAssignees.filter((a) => a !== id);
-				})}
-
-				<label class="field field-wide">
-					<span class="field-label">Description</span>
-					<input type="text" name="description" placeholder="Description" maxlength="1000" bind:value={addDescription} />
-				</label>
-			</div>
-
-			{#if addError}<p class="panel-error">{addError}</p>{/if}
-
-			<div class="panel-actions">
-				<button type="submit" disabled={adding}>{adding ? 'Adding…' : 'Add task'}</button>
-				<button type="button" class="btn-plain" onclick={closeAddForm}>Cancel</button>
-			</div>
-		</form>
+		{@render addTaskEditor()}
 	{/if}
 
 	{#if viewMode === 'calendar'}
@@ -993,9 +1052,9 @@
 				{@render detailBody(selectedTask)}
 			</div>
 		{/if}
-	{:else if tasksState.tasks.length === 0}
+	{:else if tasksState.tasks.length === 0 && !showAddForm}
 		<p class="muted empty">No tasks yet.</p>
-	{:else if visibleTasks.length === 0}
+	{:else if visibleTasks.length === 0 && !showAddForm}
 		<p class="muted empty">No tasks are appointed to you.</p>
 	{:else}
 		<!-- A list, not a table: no outer frame, no vertical rules and no scroller of its
@@ -1524,14 +1583,27 @@
 		padding: var(--space-1) var(--space-2) var(--space-4);
 	}
 
-	/* The add form is itself the panel, so it also has to undo the global flex-row
-	   form styling that .task-panel form undoes for the nested edit forms. */
-	.add-panel {
+	.add-task-item {
 		display: block;
-		padding: var(--space-3) var(--space-2) var(--space-4);
-		border-top: 1px solid var(--color-border);
 		border-bottom: 1px solid var(--color-border);
-		margin: 0 0 var(--space-4);
+		margin-bottom: var(--space-4);
+	}
+
+	.add-name-input {
+		max-width: 320px;
+	}
+
+	.add-category-line {
+		align-items: flex-start;
+	}
+
+	.add-assignee-picker {
+		min-height: 1.65rem;
+		padding: 2px 0;
+	}
+
+	.add-panel-actions {
+		margin-top: var(--space-3);
 	}
 
 	/* The calendar's panel is a block on open space rather than a slot between rows, so
@@ -1869,18 +1941,6 @@
 		min-width: 0;
 		padding: 0;
 		margin: 0;
-	}
-
-	.panel-actions {
-		display: flex;
-		gap: var(--space-2);
-		align-items: center;
-		margin-top: var(--space-3);
-	}
-
-	.panel-actions button {
-		padding: var(--space-1) var(--space-3);
-		font-size: 0.8rem;
 	}
 
 	.panel-error {

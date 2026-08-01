@@ -3,7 +3,7 @@ import { env } from "cloudflare:workers";
 import { createSupabaseServerClient } from "./lib/supabase/server";
 import { getSupabaseAdmin } from "./lib/supabase/admin";
 import { logError } from "./lib/error-report";
-import { normalizeAvatar } from "./lib/avatars";
+import { CUSTOM_AVATAR_MARKER, normalizeAvatar } from "./lib/avatars";
 
 // Prefixes for routes that actually need auth context. Everything else
 // (bot noise probing /.env, /wp-admin, etc.) skips the Supabase round trip.
@@ -80,16 +80,20 @@ export const onRequest = defineMiddleware(async (context, next) => {
         // display_name is written into user_metadata at signup (see api/auth/signup.ts),
         // so the JWT already carries it — no profiles round trip just to name the user.
         const displayName = data?.claims.user_metadata?.display_name;
-        // Same idea for the profile picture: it's an id out of a fixed list (see
-        // lib/avatars.ts), mirrored into user_metadata by api/account/update-avatar.ts
-        // so the navbar avatar costs nothing per request either.
-        const avatar = data?.claims.user_metadata?.avatar;
+        // Built-in pictures are copied into the JWT. Custom pictures stay in profiles
+        // because putting the image in auth metadata would bloat every auth cookie.
+        const avatarClaim = data?.claims.user_metadata?.avatar;
+        let avatar = normalizeAvatar(avatarClaim);
+        if (avatarClaim === CUSTOM_AVATAR_MARKER && data?.claims.sub) {
+            const { data: profile } = await supabase.from('profiles').select('avatar').eq('id', data.claims.sub).maybeSingle();
+            avatar = normalizeAvatar(profile?.avatar);
+        }
 
         context.locals.user = error || !data ? null : {
             id: data.claims.sub,
             email: data.claims.email,
             displayName: typeof displayName === 'string' && displayName ? displayName : undefined,
-            avatar: normalizeAvatar(avatar),
+            avatar,
         };
 
         // app_metadata is admin-only to write (see api/account/delete.ts), so this claim

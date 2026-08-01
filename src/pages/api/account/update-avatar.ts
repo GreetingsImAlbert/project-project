@@ -1,7 +1,12 @@
 import type { APIRoute } from 'astro';
 import { env } from 'cloudflare:workers';
 import { getSupabaseAdmin } from '../../../lib/supabase/admin';
-import { isAvatarId } from '../../../lib/avatars';
+import {
+	CUSTOM_AVATAR_MARKER,
+	isAvatarId,
+	isCustomAvatarDataUrl,
+	parseCustomAvatarDataUrl,
+} from '../../../lib/avatars';
 
 export const prerender = false;
 
@@ -12,17 +17,19 @@ export const POST: APIRoute = async ({ request, locals }) => {
 
 	const formData = await request.formData();
 	const raw = formData.get('avatar')?.toString() ?? '';
-	// '' clears the picture back to the initial fallback; anything else has to be one of
-	// the ids we ship, so the value that ends up in an <img src> is never user-authored.
+	// '' clears the picture back to the initial fallback. Built-ins use their fixed id;
+	// custom pictures must pass the data-url, byte-size, and file-signature checks.
 	const avatar = raw === '' ? null : raw;
 
-	if (avatar !== null && !isAvatarId(avatar)) {
-		return new Response('Unknown profile picture', { status: 400 });
+	if (avatar !== null && !isAvatarId(avatar) && !parseCustomAvatarDataUrl(avatar)) {
+		return new Response('Use a JPEG, PNG, or WebP image no larger than 120 KB after compression', { status: 400 });
 	}
 
+	const authAvatar = avatar && isCustomAvatarDataUrl(avatar) ? CUSTOM_AVATAR_MARKER : avatar;
+
 	// Same two-places-one-write shape as update-display-name.ts: profiles.avatar is what
-	// other members read, auth user_metadata.avatar is what the JWT carries so the navbar
-	// can render it without a profiles round trip on every request (see middleware.ts).
+	// other members read. The JWT carries either a built-in id or the small custom marker
+	// so the navbar can resolve the current picture without carrying the image in a cookie.
 	// profiles still has no UPDATE policy — this half goes through the service-role client
 	// with the column list and the row both pinned server-side.
 	const admin = getSupabaseAdmin(env);
@@ -47,11 +54,13 @@ export const POST: APIRoute = async ({ request, locals }) => {
 	}
 
 	const { error: authError } = await locals.supabase.auth.updateUser({
-		data: { avatar },
+		data: { avatar: authAvatar },
 	});
 
 	if (authError) {
 		await admin.from('profiles').update({ avatar: previous.avatar }).eq('id', locals.user.id);
+		const previousAuthAvatar = previous.avatar && isCustomAvatarDataUrl(previous.avatar) ? CUSTOM_AVATAR_MARKER : previous.avatar;
+		await locals.supabase.auth.updateUser({ data: { avatar: previousAuthAvatar } });
 		return new Response(`Failed to update profile picture: ${authError.message}`, { status: 500 });
 	}
 
