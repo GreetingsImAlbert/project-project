@@ -2,10 +2,14 @@ import type { APIRoute } from 'astro';
 import { env } from 'cloudflare:workers';
 import { getSupabaseAdmin } from '../../../lib/supabase/admin';
 import {
+	CUSTOM_AVATAR_BUCKET,
 	CUSTOM_AVATAR_MARKER,
 	CUSTOM_AVATAR_MAX_REQUEST_BYTES,
+	avatarStoragePath,
+	avatarUploadMimeType,
 	isAvatarId,
 	isCustomAvatarDataUrl,
+	isStoredAvatarPath,
 	parseCustomAvatarDataUrl,
 } from '../../../lib/avatars';
 
@@ -47,6 +51,15 @@ async function readRequestBody(request: Request, maxBytes: number): Promise<Uint
 	return body;
 }
 
+async function removeStoredAvatar(admin: ReturnType<typeof getSupabaseAdmin>, avatar: string | null) {
+	if (!avatar || !isStoredAvatarPath(avatar)) return;
+	await admin.storage.from(CUSTOM_AVATAR_BUCKET).remove([avatar]);
+}
+
+function isUploadedFile(value: FormDataEntryValue | null): value is File {
+	return value !== null && typeof value !== 'string' && typeof value.size === 'number' && typeof value.type === 'string' && typeof value.arrayBuffer === 'function';
+}
+
 export const POST: APIRoute = async ({ request, locals }) => {
 	if (!locals.user) {
 		return new Response('Unauthorized', { status: 401 });
@@ -58,24 +71,36 @@ export const POST: APIRoute = async ({ request, locals }) => {
 	}
 
 	const formData = await new Request(request, { body: requestBody.buffer }).formData();
-	const raw = formData.get('avatar')?.toString() ?? '';
-	// '' clears the picture back to the initial fallback. Built-ins use their fixed id;
-	// custom pictures must pass the data-url, byte-size, and file-signature checks.
-	const avatar = raw === '' ? null : raw;
+	const submitted = formData.get('avatar');
+	let avatar: string | null = null;
+	let uploadedFile: { bytes: Uint8Array; mimeType: string } | null = null;
 
-	if (avatar !== null && !isAvatarId(avatar) && !parseCustomAvatarDataUrl(avatar)) {
-		return new Response('Use a JPEG, PNG, or WebP image no larger than 120 KB after compression', { status: 400 });
+	if (typeof submitted === 'string') {
+		if (submitted !== '') {
+			if (isAvatarId(submitted)) {
+				avatar = submitted;
+			} else {
+				const legacyImage = parseCustomAvatarDataUrl(submitted);
+				if (!legacyImage) {
+					return new Response('Choose a JPEG, PNG, or WebP image no larger than 5 MB.', { status: 400 });
+				}
+				uploadedFile = { bytes: legacyImage.bytes, mimeType: legacyImage.mimeType };
+			}
+		}
+	} else if (isUploadedFile(submitted)) {
+		if (submitted.size > 5 * 1024 * 1024) {
+			return new Response(`This image is ${(submitted.size / (1024 * 1024)).toFixed(2)} MB. The maximum is 5.00 MB.`, { status: 400 });
+		}
+		const mimeType = avatarUploadMimeType(submitted.type, submitted.name);
+		if (!mimeType) {
+			return new Response('Choose an image file. The maximum size is 5.00 MB.', { status: 400 });
+		}
+		uploadedFile = { bytes: new Uint8Array(await submitted.arrayBuffer()), mimeType };
+	} else {
+		return new Response('No image file was received. Choose a JPEG, PNG, or WebP image.', { status: 400 });
 	}
 
-	const authAvatar = avatar && isCustomAvatarDataUrl(avatar) ? CUSTOM_AVATAR_MARKER : avatar;
-
-	// Same two-places-one-write shape as update-display-name.ts: profiles.avatar is what
-	// other members read. The JWT carries either a built-in id or the small custom marker
-	// so the navbar can resolve the current picture without carrying the image in a cookie.
-	// profiles still has no UPDATE policy — this half goes through the service-role client
-	// with the column list and the row both pinned server-side.
 	const admin = getSupabaseAdmin(env);
-
 	const { data: previous, error: readError } = await admin
 		.from('profiles')
 		.select('avatar')
@@ -86,30 +111,50 @@ export const POST: APIRoute = async ({ request, locals }) => {
 		return new Response(`Failed to update profile picture: ${readError?.message ?? 'profile not found'}`, { status: 500 });
 	}
 
+	let uploadedAvatar: string | null = null;
+	if (uploadedFile) {
+		uploadedAvatar = avatarStoragePath(locals.user.id, uploadedFile.mimeType);
+		const { error: uploadError } = await admin.storage.from(CUSTOM_AVATAR_BUCKET).upload(uploadedAvatar, uploadedFile.bytes, {
+			contentType: uploadedFile.mimeType,
+			cacheControl: '31536000',
+			upsert: false,
+		});
+
+		if (uploadError) {
+			return new Response(`Failed to store profile picture: ${uploadError.message}`, { status: 502 });
+		}
+		avatar = uploadedAvatar;
+	}
+
 	const { error: profileError } = await admin
 		.from('profiles')
 		.update({ avatar })
 		.eq('id', locals.user.id);
 
 	if (profileError) {
+		await removeStoredAvatar(admin, uploadedAvatar);
 		return new Response(`Failed to update profile picture: ${profileError.message}`, { status: 500 });
 	}
 
+	const authAvatar = avatar && isStoredAvatarPath(avatar) ? CUSTOM_AVATAR_MARKER : avatar;
 	const { error: authError } = await locals.supabase.auth.updateUser({
 		data: { avatar: authAvatar },
 	});
 
 	if (authError) {
 		await admin.from('profiles').update({ avatar: previous.avatar }).eq('id', locals.user.id);
-		const previousAuthAvatar = previous.avatar && isCustomAvatarDataUrl(previous.avatar) ? CUSTOM_AVATAR_MARKER : previous.avatar;
+		await removeStoredAvatar(admin, uploadedAvatar);
+		const previousAuthAvatar = previous.avatar && (isCustomAvatarDataUrl(previous.avatar) || isStoredAvatarPath(previous.avatar)) ? CUSTOM_AVATAR_MARKER : previous.avatar;
 		await locals.supabase.auth.updateUser({ data: { avatar: previousAuthAvatar } });
 		return new Response(`Failed to update profile picture: ${authError.message}`, { status: 500 });
 	}
 
-	// updateUser doesn't mint a new access token, and getClaims() keeps reading the old
-	// JWT until it expires — refreshing puts the new avatar in the cookie the very next
-	// request reads, same reason as update-display-name.ts.
-	await locals.supabase.auth.refreshSession();
+	// The new object is unique, so deleting the old one cannot destroy the current
+	// picture. Legacy data URLs need no storage cleanup and are replaced by the path.
+	if (previous.avatar !== avatar) {
+		await removeStoredAvatar(admin, previous.avatar);
+	}
 
+	await locals.supabase.auth.refreshSession();
 	return Response.json({ avatar });
 };

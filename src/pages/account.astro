@@ -29,7 +29,7 @@ const admin = getSupabaseAdmin(env);
 const { totalBytes, failed } = await getUserStorageBytes(admin, user.id);
 
 // The JWT is the fallback rather than the source: profiles is what other members read,
-// and it is the row the account page is here to edit.
+// including the custom avatar's Supabase Storage path.
 const displayName = profile?.display_name ?? user.displayName ?? '';
 const email = profile?.email ?? user.email ?? '—';
 const createdAt = profile?.created_at ? new Date(profile.created_at).toLocaleDateString() : '—';

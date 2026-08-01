@@ -1,6 +1,5 @@
-// The built-in set of profile pictures a member can pick. Custom pictures are also
-// accepted, but only as validated, compressed data URLs (see below) so an arbitrary
-// URL never reaches an <img src>.
+// The built-in set of profile pictures a member can pick. Custom pictures are stored
+// unchanged in Supabase Storage; profiles.avatar holds only the built-in id or path.
 //
 // To add one: drop `public/avatars/<id>.svg` in and add the id here — nothing else
 // keys off the list. Swapping the art for an existing id needs no code change at all.
@@ -18,17 +17,40 @@ export const AVATAR_IDS = [
 export type AvatarId = (typeof AVATAR_IDS)[number];
 
 export const CUSTOM_AVATAR_MARKER = 'custom-avatar';
-export const CUSTOM_AVATAR_MAX_BYTES = 120_000;
-export const CUSTOM_AVATAR_MAX_SOURCE_BYTES = 10 * 1024 * 1024;
-export const CUSTOM_AVATAR_MAX_DATA_URL_LENGTH = 170_000;
-export const CUSTOM_AVATAR_MAX_REQUEST_BYTES = 200_000;
-export const CUSTOM_AVATAR_MAX_DIMENSION = 2048;
-export const CUSTOM_AVATAR_MAX_PIXELS = CUSTOM_AVATAR_MAX_DIMENSION * CUSTOM_AVATAR_MAX_DIMENSION;
+export const CUSTOM_AVATAR_BUCKET = 'avatars';
+export const CUSTOM_AVATAR_MAX_BYTES = 5 * 1024 * 1024;
+export const CUSTOM_AVATAR_MAX_SOURCE_BYTES = CUSTOM_AVATAR_MAX_BYTES;
+// Kept temporarily for the one-time migration of legacy data URLs.
+export const CUSTOM_AVATAR_MAX_DATA_URL_LENGTH = 7_000_000;
+export const CUSTOM_AVATAR_MAX_REQUEST_BYTES = 7_500_000;
+// These bounds apply only to legacy data URLs that pass through the strict parser
+// during the one-time migration. New Storage uploads are kept unchanged.
+export const CUSTOM_AVATAR_MAX_DIMENSION = 4096;
+export const CUSTOM_AVATAR_MAX_PIXELS = 8 * 1024 * 1024;
 export const CUSTOM_AVATAR_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
 
 type CustomAvatarMimeType = (typeof CUSTOM_AVATAR_MIME_TYPES)[number];
 
 const CUSTOM_AVATAR_DATA_URL_RE = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/]+={0,2})$/;
+const CUSTOM_AVATAR_STORAGE_PATH_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(?:img|jpg|jpeg|png|webp)$/i;
+const CUSTOM_AVATAR_MIME_RE = /^image\/[a-z0-9][a-z0-9!#$&^_.+-]*$/i;
+const CUSTOM_AVATAR_EXTENSION_MIME_TYPES: Record<string, string> = {
+	avif: 'image/avif',
+	bmp: 'image/bmp',
+	gif: 'image/gif',
+	heic: 'image/heic',
+	heif: 'image/heif',
+	ico: 'image/x-icon',
+	jfif: 'image/jpeg',
+	jpeg: 'image/jpeg',
+	jpg: 'image/jpeg',
+	jxl: 'image/jxl',
+	png: 'image/png',
+	svg: 'image/svg+xml',
+	tif: 'image/tiff',
+	tiff: 'image/tiff',
+	webp: 'image/webp',
+};
 
 type ImageDimensions = { width: number; height: number };
 
@@ -120,6 +142,18 @@ function imageDimensions(mimeType: CustomAvatarMimeType, bytes: Uint8Array): Ima
 	return webpDimensions(bytes);
 }
 
+function detectedAvatarMimeType(bytes: Uint8Array): CustomAvatarMimeType | null {
+	if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg';
+	if (bytes.length >= 8 && bytes.subarray(0, 8).every((byte, index) => byte === [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a][index])) return 'image/png';
+	if (
+		bytes.length >= 12 &&
+		bytes.subarray(0, 4).every((byte, index) => byte === [0x52, 0x49, 0x46, 0x46][index]) &&
+		bytes.subarray(8, 12).every((byte, index) => byte === [0x57, 0x45, 0x42, 0x50][index])
+	)
+		return 'image/webp';
+	return null;
+}
+
 export function isAvatarId(value: unknown): value is AvatarId {
 	return typeof value === 'string' && (AVATAR_IDS as readonly string[]).includes(value);
 }
@@ -128,6 +162,37 @@ export function isAvatarId(value: unknown): value is AvatarId {
 // stricter parser below so legacy values are bounded too.
 export function isCustomAvatarDataUrl(value: unknown): value is string {
 	return typeof value === 'string' && value.length <= CUSTOM_AVATAR_MAX_DATA_URL_LENGTH && CUSTOM_AVATAR_DATA_URL_RE.test(value);
+}
+
+export function isStoredAvatarPath(value: unknown): value is string {
+	return typeof value === 'string' && CUSTOM_AVATAR_STORAGE_PATH_RE.test(value);
+}
+
+export function avatarUploadMimeType(typeValue: unknown, fileNameValue: unknown): string | null {
+	const declaredType = typeof typeValue === 'string' ? typeValue.trim().toLowerCase() : '';
+	if (CUSTOM_AVATAR_MIME_RE.test(declaredType)) return declaredType;
+
+	const fileName = typeof fileNameValue === 'string' ? fileNameValue : '';
+	const extension = fileName.split('.').pop()?.toLowerCase() ?? '';
+	return CUSTOM_AVATAR_EXTENSION_MIME_TYPES[extension] ?? null;
+}
+
+export function avatarStoragePath(userId: string, _mimeType: string): string {
+	// Supabase serves the object using its stored content type; the extension is
+	// deliberately opaque so every generated path stays within the safe path shape.
+	return `${userId}/${crypto.randomUUID()}.img`;
+}
+
+export function parseCustomAvatarBytes(value: Uint8Array): { mimeType: CustomAvatarMimeType; bytes: Uint8Array; dimensions: ImageDimensions } | null {
+	if (value.byteLength === 0 || value.byteLength > CUSTOM_AVATAR_MAX_BYTES) return null;
+
+	const bytes = value;
+	// Multipart MIME metadata is not reliable across runtimes. Trust the file
+	// signature instead, then store using the detected type.
+	const mimeType = detectedAvatarMimeType(bytes);
+	if (!mimeType) return null;
+	const dimensions = imageDimensions(mimeType, bytes);
+	return dimensions ? { mimeType, bytes, dimensions } : null;
 }
 
 export function parseCustomAvatarDataUrl(value: unknown): { mimeType: CustomAvatarMimeType; bytes: Uint8Array; dimensions: ImageDimensions } | null {
@@ -143,29 +208,24 @@ export function parseCustomAvatarDataUrl(value: unknown): { mimeType: CustomAvat
 		return null;
 	}
 
-	if (binary.length === 0 || binary.length > CUSTOM_AVATAR_MAX_BYTES) return null;
-
-	const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
-	const mimeType = match[1] as CustomAvatarMimeType;
-	const hasSignature =
-		(bytes.length >= 3 && mimeType === 'image/jpeg' && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) ||
-		(bytes.length >= 8 && mimeType === 'image/png' && bytes.subarray(0, 8).every((byte, index) => byte === [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a][index])) ||
-		(bytes.length >= 12 && mimeType === 'image/webp' &&
-			bytes.subarray(0, 4).every((byte, index) => byte === [0x52, 0x49, 0x46, 0x46][index]) &&
-			bytes.subarray(8, 12).every((byte, index) => byte === [0x57, 0x45, 0x42, 0x50][index]));
-
-	if (!hasSignature) return null;
-	const dimensions = imageDimensions(mimeType, bytes);
-	return dimensions ? { mimeType, bytes, dimensions } : null;
+	const parsed = parseCustomAvatarBytes(Uint8Array.from(binary, (character) => character.charCodeAt(0)));
+	return parsed?.mimeType === match[1] ? parsed : null;
 }
 
 export function avatarSrc(id: AvatarId): string {
 	return `/avatars/${id}.svg`;
 }
 
+export function avatarStorageSrc(path: string): string {
+	const baseUrl = import.meta.env.PUBLIC_SUPABASE_URL.replace(/\/$/, '');
+	const encodedPath = path.split('/').map((part) => encodeURIComponent(part)).join('/');
+	return `${baseUrl}/storage/v1/object/public/${CUSTOM_AVATAR_BUCKET}/${encodedPath}`;
+}
+
 // A member who has never picked one shows their initial instead (see Avatar.svelte) —
 // null is a real state, not a missing value to paper over with a stock image.
 export function normalizeAvatar(value: unknown): AvatarId | string | null {
 	if (isAvatarId(value)) return value;
+	if (isStoredAvatarPath(value)) return value;
 	return parseCustomAvatarDataUrl(value) ? (value as string) : null;
 }

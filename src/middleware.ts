@@ -80,8 +80,9 @@ export const onRequest = defineMiddleware(async (context, next) => {
         // display_name is written into user_metadata at signup (see api/auth/signup.ts),
         // so the JWT already carries it — no profiles round trip just to name the user.
         const displayName = data?.claims.user_metadata?.display_name;
-        // Built-in pictures are copied into the JWT. Custom pictures stay in profiles
-        // because putting the image in auth metadata would bloat every auth cookie.
+        // Built-in pictures are copied into the JWT. Custom pictures resolve through
+        // the Storage path in profiles; putting image bytes in auth metadata would
+        // bloat every auth cookie.
         const avatarClaim = data?.claims.user_metadata?.avatar;
         let avatar = normalizeAvatar(avatarClaim);
         if (avatarClaim === CUSTOM_AVATAR_MARKER && data?.claims.sub) {

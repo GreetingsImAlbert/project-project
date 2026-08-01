@@ -1,6 +1,7 @@
 import { AwsClient } from 'aws4fetch';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from './supabase/database.types';
+import { CUSTOM_AVATAR_BUCKET, isStoredAvatarPath } from './avatars';
 
 // How long a requested deletion sits reversible before the cron makes it
 // permanent, and how long an orphaned file lingers after that for another
@@ -96,8 +97,15 @@ export async function hardDeleteAccount(admin: SupabaseClient<Database>, userId:
 		return;
 	}
 
-	const { data: profile } = await admin.from('profiles').select('display_name').eq('id', userId).single();
+	const { data: profile } = await admin.from('profiles').select('display_name, avatar').eq('id', userId).single();
 	const displayName = profile?.display_name ?? 'Former member';
+
+	if (profile?.avatar && isStoredAvatarPath(profile.avatar)) {
+		const { error: avatarError } = await admin.storage.from(CUSTOM_AVATAR_BUCKET).remove([profile.avatar]);
+		if (avatarError) {
+			throw new Error(`Failed to remove profile picture for ${userId}: ${avatarError.message}`);
+		}
+	}
 
 	await repointTransactionsToGhosts(admin, userId, displayName);
 

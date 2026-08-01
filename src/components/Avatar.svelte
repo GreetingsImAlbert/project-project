@@ -1,7 +1,7 @@
 <script lang="ts">
 	// Circular profile picture. Falls back to the first letter of the display name when
 	// nobody has picked one, so the shape on the page is the same either way.
-	import { avatarSrc, isAvatarId, normalizeAvatar } from '../lib/avatars';
+	import { avatarStorageSrc, avatarSrc, isAvatarId, isStoredAvatarPath, normalizeAvatar } from '../lib/avatars';
 
 	let {
 		avatar,
@@ -14,7 +14,15 @@
 	} = $props();
 
 	const picked = $derived(normalizeAvatar(avatar));
-	const source = $derived(picked ? (isAvatarId(picked) ? avatarSrc(picked) : picked) : null);
+	const source = $derived(
+		picked
+			? isAvatarId(picked)
+				? avatarSrc(picked)
+				: isStoredAvatarPath(picked)
+					? avatarStorageSrc(picked)
+					: picked
+			: null,
+	);
 	const initial = $derived(displayName.trim().charAt(0).toUpperCase() || '?');
 </script>
 

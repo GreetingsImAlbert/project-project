@@ -7,8 +7,6 @@
 	import {
 		AVATAR_IDS,
 		CUSTOM_AVATAR_MAX_BYTES,
-		CUSTOM_AVATAR_MAX_SOURCE_BYTES,
-		CUSTOM_AVATAR_MIME_TYPES,
 		avatarSrc,
 		type AvatarId,
 	} from '../lib/avatars';
@@ -22,67 +20,8 @@
 	let saving = $state(false);
 	let error = $state<string | null>(null);
 
-	function blobToDataUrl(blob: Blob): Promise<string> {
-		return new Promise((resolve, reject) => {
-			const reader = new FileReader();
-			reader.onload = () => resolve(String(reader.result));
-			reader.onerror = () => reject(new Error('Could not read the compressed picture'));
-			reader.readAsDataURL(blob);
-		});
-	}
-
-	function canvasBlob(canvas: HTMLCanvasElement, type: string, quality: number): Promise<Blob | null> {
-		return new Promise((resolve) => canvas.toBlob(resolve, type, quality));
-	}
-
-	async function compressImage(file: File): Promise<string> {
-		if (!CUSTOM_AVATAR_MIME_TYPES.includes(file.type as (typeof CUSTOM_AVATAR_MIME_TYPES)[number])) {
-			throw new Error('Choose a JPEG, PNG, or WebP picture');
-		}
-		if (file.size > CUSTOM_AVATAR_MAX_SOURCE_BYTES) {
-			throw new Error('Choose a picture smaller than 10 MB');
-		}
-
-		const objectUrl = URL.createObjectURL(file);
-		const image = new Image();
-		image.decoding = 'async';
-		image.src = objectUrl;
-		try {
-			await image.decode();
-		} catch {
-			URL.revokeObjectURL(objectUrl);
-			throw new Error('That picture could not be read');
-		}
-
-		try {
-			const sourceSize = Math.min(image.naturalWidth, image.naturalHeight);
-			if (!sourceSize) throw new Error('That picture could not be read');
-
-			for (const size of [256, 192, 128]) {
-				const canvas = document.createElement('canvas');
-				canvas.width = size;
-				canvas.height = size;
-				const context = canvas.getContext('2d');
-				if (!context) throw new Error('Picture compression is unavailable in this browser');
-
-				const scale = size / sourceSize;
-				const sourceWidth = size / scale;
-				const sourceHeight = size / scale;
-				const sourceX = (image.naturalWidth - sourceWidth) / 2;
-				const sourceY = (image.naturalHeight - sourceHeight) / 2;
-				context.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, size, size);
-
-				for (const quality of [0.82, 0.72, 0.62, 0.52, 0.42]) {
-					let blob = await canvasBlob(canvas, 'image/webp', quality);
-					if (!blob || blob.type !== 'image/webp') blob = await canvasBlob(canvas, 'image/jpeg', quality);
-					if (blob && blob.size <= CUSTOM_AVATAR_MAX_BYTES) return blobToDataUrl(blob);
-				}
-			}
-		} finally {
-			URL.revokeObjectURL(objectUrl);
-		}
-
-		throw new Error('That picture could not be compressed below 120 KB');
+	function formatFileSize(bytes: number): string {
+		return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 	}
 
 	async function upload(event: Event) {
@@ -95,10 +34,11 @@
 		saving = true;
 		error = null;
 		try {
-			const compressed = await compressImage(file);
-			selected = compressed;
+			if (file.size > CUSTOM_AVATAR_MAX_BYTES) {
+				throw new Error(`This image is ${formatFileSize(file.size)}. The maximum is 5.00 MB.`);
+			}
 			const formData = new FormData();
-			formData.set('avatar', compressed);
+			formData.set('avatar', file, file.name);
 			const res = await fetch('/api/account/update-avatar', { method: 'POST', body: formData });
 			if (!res.ok) throw new Error(await res.text());
 			location.reload();
@@ -176,7 +116,7 @@
 
 		<label class="choice choice-upload" class:disabled={saving}>
 			<span>Upload</span>
-			<input type="file" accept="image/jpeg,image/png,image/webp" onchange={upload} disabled={saving} />
+			<input type="file" accept="image/*" onchange={upload} disabled={saving} />
 		</label>
 	</div>
 
