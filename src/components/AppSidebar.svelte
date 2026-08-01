@@ -104,9 +104,8 @@
 					title={pinned ? 'Unpin sidebar' : 'Pin sidebar'}
 					onclick={togglePinnedFromButton}
 				>
-					<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-						<path d="M14 4v5l3 3v1H7v-1l3-3V4" />
-						<path d="M12 13v8" />
+					<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
+						<path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5v6h2v-6h5v-2l-2-2Z" />
 					</svg>
 				</button>
 			</div>
@@ -238,6 +237,7 @@
 		justify-content: flex-end;
 		width: var(--panel-width);
 		padding: 0 var(--space-4) var(--space-2);
+		transform: translateY(calc(-1 * var(--space-4)));
 	}
 
 	.pin-toggle {
