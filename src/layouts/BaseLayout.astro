@@ -178,6 +178,10 @@ if (user) {
 	}
 
 	@media (max-width: 768px) {
+		.app-shell:has(.sidebar-rail:hover) .app-main,
+		.app-shell:has(.sidebar-rail:focus-within) .app-main,
+		html[data-sidebar-pinned] .app-shell .app-main,
+		html[data-sidebar-navigating] .app-shell .app-main,
 		.app-main {
 			margin-left: 0;
 		}

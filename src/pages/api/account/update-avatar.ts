@@ -3,6 +3,7 @@ import { env } from 'cloudflare:workers';
 import { getSupabaseAdmin } from '../../../lib/supabase/admin';
 import {
 	CUSTOM_AVATAR_MARKER,
+	CUSTOM_AVATAR_MAX_REQUEST_BYTES,
 	isAvatarId,
 	isCustomAvatarDataUrl,
 	parseCustomAvatarDataUrl,
@@ -10,12 +11,53 @@ import {
 
 export const prerender = false;
 
+async function readRequestBody(request: Request, maxBytes: number): Promise<Uint8Array<ArrayBuffer> | null> {
+	const contentLength = request.headers.get('content-length');
+	if (contentLength !== null) {
+		const parsedLength = Number(contentLength);
+		if (!Number.isSafeInteger(parsedLength) || parsedLength < 0 || parsedLength > maxBytes) return null;
+	}
+
+	if (!request.body) return new Uint8Array(new ArrayBuffer(0));
+
+	const reader = request.body.getReader();
+	const chunks: Uint8Array[] = [];
+	let total = 0;
+	try {
+		while (true) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			total += value.byteLength;
+			if (total > maxBytes) {
+				await reader.cancel();
+				return null;
+			}
+			chunks.push(value);
+		}
+	} finally {
+		reader.releaseLock();
+	}
+
+	const body = new Uint8Array(new ArrayBuffer(total));
+	let offset = 0;
+	for (const chunk of chunks) {
+		body.set(chunk, offset);
+		offset += chunk.byteLength;
+	}
+	return body;
+}
+
 export const POST: APIRoute = async ({ request, locals }) => {
 	if (!locals.user) {
 		return new Response('Unauthorized', { status: 401 });
 	}
 
-	const formData = await request.formData();
+	const requestBody = await readRequestBody(request, CUSTOM_AVATAR_MAX_REQUEST_BYTES);
+	if (!requestBody) {
+		return new Response('Request body is too large', { status: 413 });
+	}
+
+	const formData = await new Request(request, { body: requestBody.buffer }).formData();
 	const raw = formData.get('avatar')?.toString() ?? '';
 	// '' clears the picture back to the initial fallback. Built-ins use their fixed id;
 	// custom pictures must pass the data-url, byte-size, and file-signature checks.

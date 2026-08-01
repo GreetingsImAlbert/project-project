@@ -38,11 +38,11 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 		return new Response(parsed.error, { status: 400 });
 	}
 
-	const { name, category, description, deadline, deadline_time, status, assignees } = parsed.values;
+	const { name, category, description, deadline, deadline_time, assignees } = parsed.values;
 
 	const { data: created, error } = await locals.supabase
 		.from('tasks')
-		.insert({ project_id: projectId!, name, category, description, deadline, deadline_time, status })
+		.insert({ project_id: projectId!, name, category, description, deadline, deadline_time, status: 'ongoing' })
 		.select('id')
 		.single();
 

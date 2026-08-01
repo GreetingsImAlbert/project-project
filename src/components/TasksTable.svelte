@@ -313,17 +313,21 @@
 		body.set('name', name);
 		body.set('color_index', String(index));
 
-		const res = await fetch(`/api/projects/${projectId}/task-categories/color`, { method: 'POST', body });
+		try {
+			const res = await fetch(`/api/projects/${projectId}/task-categories/color`, { method: 'POST', body });
 
-		if (!res.ok) {
-			colorError = await res.text();
+			if (!res.ok) {
+				colorError = await res.text();
+				return;
+			}
+
+			const saved = await res.json() as { name: string; color_index: number };
+			categoryColors = { ...categoryColors, [saved.name]: saved.color_index };
+		} catch {
+			colorError = 'Could not save category color';
+		} finally {
 			savingColor = null;
-			return;
 		}
-
-		const saved = await res.json() as { name: string; color_index: number };
-		categoryColors = { ...categoryColors, [saved.name]: saved.color_index };
-		savingColor = null;
 	}
 
 	// The update endpoint writes the whole row — an absent field clears it, and an
@@ -354,17 +358,22 @@
 		body.set('status', changes.status ?? task.status);
 		for (const token of changes.assignees ?? task.assignees.map(assigneeToken)) body.append('assignees', token);
 
-		const res = await fetch(`/api/tasks/${task.id}/update`, { method: 'POST', body });
+		try {
+			const res = await fetch(`/api/tasks/${task.id}/update`, { method: 'POST', body });
 
-		if (!res.ok) {
-			rowError = { id: task.id, message: await res.text() };
-			savingId = null;
+			if (!res.ok) {
+				rowError = { id: task.id, message: await res.text() };
+				return false;
+			}
+
+			updateTask(await res.json());
+			return true;
+		} catch {
+			rowError = { id: task.id, message: 'Could not save task changes' };
 			return false;
+		} finally {
+			savingId = null;
 		}
-
-		updateTask(await res.json());
-		savingId = null;
-		return true;
 	}
 
 	// Closes the field on success only: a rejected save keeps the draft on screen with
@@ -407,17 +416,21 @@
 		rowError = null;
 		deletingId = id;
 
-		const res = await fetch(`/api/tasks/${id}/delete`, { method: 'POST' });
+		try {
+			const res = await fetch(`/api/tasks/${id}/delete`, { method: 'POST' });
 
-		if (!res.ok) {
-			rowError = { id, message: await res.text() };
+			if (!res.ok) {
+				rowError = { id, message: await res.text() };
+				return;
+			}
+
+			removeTask(id);
+			if (openId === id) openId = null;
+		} catch {
+			rowError = { id, message: 'Could not delete task' };
+		} finally {
 			deletingId = null;
-			return;
 		}
-
-		removeTask(id);
-		if (openId === id) openId = null;
-		deletingId = null;
 	}
 
 	// addError is cleared here, not on close: the panel deliberately keeps a half-filled
@@ -440,25 +453,29 @@
 		adding = true;
 		addError = null;
 
-		const res = await fetch(form.action, { method: 'POST', body: new FormData(form) });
+		try {
+			const res = await fetch(form.action, { method: 'POST', body: new FormData(form) });
 
-		if (!res.ok) {
-			addError = await res.text();
+			if (!res.ok) {
+				addError = await res.text();
+				return;
+			}
+
+			addTask(await res.json());
+			form.reset();
+			addName = '';
+			addCategorySelect = '';
+			addCategoryNew = '';
+			addDescription = '';
+			addDeadline = '';
+			addDeadlineTime = DEFAULT_DEADLINE_TIME;
+			addAssignees = [];
+			showAddForm = false;
+		} catch {
+			addError = 'Could not add task';
+		} finally {
 			adding = false;
-			return;
 		}
-
-		addTask(await res.json());
-		form.reset();
-		addName = '';
-		addCategorySelect = '';
-		addCategoryNew = '';
-		addDescription = '';
-		addDeadline = '';
-		addDeadlineTime = DEFAULT_DEADLINE_TIME;
-		addAssignees = [];
-		showAddForm = false;
-		adding = false;
 	}
 
 	// The whole project's tasks, not `visibleTasks` — the meta line above follows the

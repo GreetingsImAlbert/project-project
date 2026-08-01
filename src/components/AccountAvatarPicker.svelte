@@ -120,16 +120,22 @@
 		const formData = new FormData();
 		formData.set('avatar', avatar ?? '');
 
-		const res = await fetch('/api/account/update-avatar', { method: 'POST', body: formData });
+		try {
+			const res = await fetch('/api/account/update-avatar', { method: 'POST', body: formData });
 
-		if (!res.ok) {
-			error = await res.text();
+			if (!res.ok) {
+				error = await res.text();
+				selected = previous;
+				return;
+			}
+
+			location.reload();
+		} catch {
+			error = 'Could not update profile picture';
 			selected = previous;
+		} finally {
 			saving = false;
-			return;
 		}
-
-		location.reload();
 	}
 </script>
 
