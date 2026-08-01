@@ -77,6 +77,13 @@ if (user) {
 					}
 				} catch (e) {}
 
+				document.addEventListener('astro:before-preparation', function () {
+					document.documentElement.setAttribute('data-page-loading', '');
+				});
+				document.addEventListener('astro:after-swap', function () {
+					document.documentElement.removeAttribute('data-page-loading');
+				});
+
 				document.addEventListener('astro:before-swap', function (ev) {
 					var current = document.documentElement.getAttribute('data-theme');
 					if (current) ev.newDocument.documentElement.setAttribute('data-theme', current);
@@ -86,17 +93,20 @@ if (user) {
 					if (document.documentElement.hasAttribute('data-sidebar-navigating')) {
 						ev.newDocument.documentElement.setAttribute('data-sidebar-navigating', '');
 					}
+					if (document.documentElement.hasAttribute('data-page-loading')) {
+						ev.newDocument.documentElement.setAttribute('data-page-loading', '');
+					}
 				});
 			})();
 		</script>
 		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-		<link rel="icon" href="/favicon.ico" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<meta name="generator" content={Astro.generator} />
 		<title>{title} | P2</title>
 		<ClientRouter fallback="swap" />
 	</head>
 	<body>
+		<div class="page-loading-indicator" role="status" aria-label="Loading"></div>
 		<Header user={user} />
 		{user ? (
 			<div class="app-shell">
@@ -166,6 +176,42 @@ if (user) {
 		overflow-y: auto;
 		padding: var(--space-7) var(--space-7) var(--space-8);
 		transition: margin-left 0.15s ease;
+	}
+
+	.page-loading-indicator {
+		position: fixed;
+		top: var(--space-3);
+		left: 50%;
+		z-index: 1000;
+		width: 16px;
+		height: 16px;
+		border: 2px solid var(--color-border);
+		border-top-color: var(--color-fg);
+		border-radius: 50%;
+		pointer-events: none;
+		visibility: hidden;
+		opacity: 0;
+		transform: translate(-50%, -4px);
+		transition: opacity 0.12s ease, transform 0.12s ease, visibility 0.12s ease;
+		animation: page-loading-spin 0.7s linear infinite;
+	}
+
+	html[data-page-loading] .page-loading-indicator {
+		visibility: visible;
+		opacity: 1;
+		transform: translate(-50%, 0);
+	}
+
+	@keyframes page-loading-spin {
+		to {
+			transform: translate(-50%, 0) rotate(360deg);
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.page-loading-indicator {
+			animation: none;
+		}
 	}
 
 	/* The generous content gutter is what makes the app feel roomy, but below ~1200px it

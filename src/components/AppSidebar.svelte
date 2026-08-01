@@ -90,7 +90,6 @@
 	<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 	<aside
 		class="sidebar-panel"
-		title={pinned ? 'Click to unpin the sidebar' : 'Click to pin the sidebar open'}
 		onclick={onPanelClick}
 	>
 		<div class="sidebar-content">
