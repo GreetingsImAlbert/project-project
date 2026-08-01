@@ -20,6 +20,9 @@
 	--color-border-strong: #111111;
 	--color-danger: #b3261e;
 	--color-success: #2e7d4f;
+	--color-status-overdue: var(--color-danger);
+	--color-status-ongoing: var(--color-success);
+	--color-status-done: var(--color-muted);
 	--color-highlight: rgba(17, 17, 17, 0.035);
 	/* Selected-row fill — one step past the hover highlight, used by the sidebar nav. */
 	--color-highlight-strong: rgba(17, 17, 17, 0.08);

@@ -1522,17 +1522,17 @@
 	}
 
 	.status-overdue {
-		color: var(--color-danger);
+		color: var(--color-status-overdue);
 	}
 
 	/* Green is the live state, grey the finished one: a task still being worked on is
 	   what the list is for, and a done one is settled and out of the way. */
 	.status-done {
-		color: var(--color-muted);
+		color: var(--color-status-done);
 	}
 
 	.status-ongoing {
-		color: var(--color-success);
+		color: var(--color-status-ongoing);
 	}
 
 	.cell-actions {

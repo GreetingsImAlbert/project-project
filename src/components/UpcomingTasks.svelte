@@ -300,7 +300,7 @@ import { formatDeadlineTime } from '../lib/deadline-time';
 		font-size: 0.8rem;
 		font-variant-numeric: tabular-nums;
 		white-space: nowrap;
-		color: var(--color-success);
+		color: var(--color-status-ongoing);
 	}
 
 	/* Rides along with the date rather than taking a column of its own — it's the same
@@ -311,7 +311,7 @@ import { formatDeadlineTime } from '../lib/deadline-time';
 	}
 
 	.reminder.late .reminder-date {
-		color: var(--color-danger);
+		color: var(--color-status-overdue);
 	}
 
 	/* Narrow enough that three things can't share a line: the project drops out rather
