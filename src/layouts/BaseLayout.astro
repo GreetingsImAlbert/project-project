@@ -83,6 +83,9 @@ if (user) {
 					if (document.documentElement.hasAttribute('data-sidebar-pinned')) {
 						ev.newDocument.documentElement.setAttribute('data-sidebar-pinned', '');
 					}
+					if (document.documentElement.hasAttribute('data-sidebar-navigating')) {
+						ev.newDocument.documentElement.setAttribute('data-sidebar-navigating', '');
+					}
 				});
 			})();
 		</script>
@@ -143,6 +146,17 @@ if (user) {
 		max-width: var(--max-width);
 		width: 100%;
 		margin: 0 auto;
+		--sidebar-rail-width: 56px;
+		--sidebar-panel-width: 280px;
+	}
+
+	/* Hover and pinned expansion reserve the same gutter, keeping page content visible
+	   beside the open panel. */
+	.app-shell:has(.sidebar-rail:hover) .app-main,
+	.app-shell:has(.sidebar-rail:focus-within) .app-main,
+	html[data-sidebar-pinned] .app-shell .app-main,
+	html[data-sidebar-navigating] .app-shell .app-main {
+		margin-left: calc(var(--sidebar-panel-width) - var(--sidebar-rail-width));
 	}
 
 	.app-main {
@@ -151,6 +165,7 @@ if (user) {
 		background: var(--color-bg);
 		overflow-y: auto;
 		padding: var(--space-7) var(--space-7) var(--space-8);
+		transition: margin-left 0.15s ease;
 	}
 
 	/* The generous content gutter is what makes the app feel roomy, but below ~1200px it
@@ -159,6 +174,12 @@ if (user) {
 	@media (max-width: 1200px) {
 		.app-main {
 			padding: var(--space-6) var(--space-5) var(--space-7);
+		}
+	}
+
+	@media (max-width: 768px) {
+		.app-main {
+			margin-left: 0;
 		}
 	}
 

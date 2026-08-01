@@ -37,6 +37,7 @@
 	// rail for a frame on every navigation. The state is only the toggle's own copy of it.
 	const PIN_KEY = 'p2-sidebar-pinned';
 	const PIN_ATTR = 'data-sidebar-pinned';
+	const NAV_ATTR = 'data-sidebar-navigating';
 	let pinned = $state(
 		typeof document !== 'undefined' && document.documentElement.hasAttribute(PIN_ATTR),
 	);
@@ -49,6 +50,19 @@
 		} catch {
 			// Private mode / storage disabled: the pin just doesn't survive navigation.
 		}
+	}
+
+	function keepExpandedForNavigation() {
+		document.documentElement.setAttribute(NAV_ATTR, '');
+	}
+
+	function clearNavigationExpanded() {
+		document.documentElement.removeAttribute(NAV_ATTR);
+	}
+
+	function togglePinnedFromButton(event: MouseEvent) {
+		event.stopPropagation();
+		setPinned(!pinned);
 	}
 
 	// The same click pins and unpins, and it's the same target either way — the panel
@@ -69,7 +83,7 @@
 	right edge, so a pointer drifting in from off-screen opens the sidebar before it ever
 	touches a link. The panel outranks it in z-order, so once open every link is clickable.
 -->
-<div class="sidebar-rail">
+<div class="sidebar-rail" onpointerleave={clearNavigationExpanded}>
 	<div class="hover-zone"></div>
 
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -80,6 +94,22 @@
 		onclick={onPanelClick}
 	>
 		<div class="sidebar-content">
+			<div class="sidebar-header-row">
+				<button
+					class="pin-toggle"
+					class:pinned
+					type="button"
+					aria-label={pinned ? 'Unpin sidebar' : 'Pin sidebar'}
+					aria-pressed={pinned}
+					title={pinned ? 'Unpin sidebar' : 'Pin sidebar'}
+					onclick={togglePinnedFromButton}
+				>
+					<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+						<path d="M14 4v5l3 3v1H7v-1l3-3V4" />
+						<path d="M12 13v8" />
+					</svg>
+				</button>
+			</div>
 			<p class="sidebar-welcome row">
 				<span class="row-icon">
 					<Avatar {avatar} {displayName} size={26} />
@@ -88,7 +118,7 @@
 			</p>
 
 			<nav class="sidebar-nav">
-				<a href="/" class="nav-link row" class:active={currentPath === '/'} title="Dashboard">
+				<a href="/" class="nav-link row" class:active={currentPath === '/'} title="Dashboard" onpointerdown={keepExpandedForNavigation}>
 					<span class="row-icon">
 						<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 							<path d="M3 10.5 12 3l9 7.5" />
@@ -97,7 +127,7 @@
 					</span>
 					<span class="row-label">Dashboard</span>
 				</a>
-				<a href="/projects" class="nav-link row" class:active={currentPath === '/projects'} title="Projects">
+				<a href="/projects" class="nav-link row" class:active={currentPath === '/projects'} title="Projects" onpointerdown={keepExpandedForNavigation}>
 					<span class="row-icon">
 						<span class="glyph-p">P</span>
 					</span>
@@ -112,6 +142,7 @@
 								class="nav-link project-link row"
 								class:active={currentProjectId === project.id}
 								title={project.name}
+								onpointerdown={keepExpandedForNavigation}
 							>
 								<span class="row-icon" title={project.owner.displayName}>
 									<Avatar avatar={project.owner.avatar} displayName={project.owner.displayName} size={22} />
@@ -126,7 +157,7 @@
 						</li>
 					{/each}
 					<li>
-						<a href="/projects/new" class="nav-link add-project row" title="Add project">
+						<a href="/projects/new" class="nav-link add-project row" title="Add project" onpointerdown={keepExpandedForNavigation}>
 							<span class="row-icon">+</span>
 							<span class="row-label">Add project</span>
 						</a>
@@ -149,12 +180,6 @@
 		   row's highlight sit square around it. */
 		--row-inset: calc((var(--rail-width) - var(--icon-size)) / 2);
 		transition: flex-basis 0.15s ease;
-	}
-
-	/* Pinned takes real width in the shell, so the open panel sits beside the content
-	   rather than over it. */
-	:global(html[data-sidebar-pinned]) .sidebar-rail {
-		flex-basis: var(--panel-width);
 	}
 
 	/* Reaches leftward out of the shell to the viewport edge — that empty margin is
@@ -188,9 +213,9 @@
 	   ever falls to the right of the panel — with a smaller offset the blur spills back
 	   over the panel's left edge and darkens the margin beside it. */
 	.sidebar-rail:hover .sidebar-panel,
-	.sidebar-rail:focus-within .sidebar-panel {
+	.sidebar-rail:focus-within .sidebar-panel,
+	:global(html[data-sidebar-navigating]) .sidebar-panel {
 		width: var(--panel-width);
-		box-shadow: var(--space-4) 0 var(--space-4) calc(-1 * var(--space-2)) rgba(0, 0, 0, 0.12);
 	}
 
 	/* Pinned is in-flow, so it has content on one side and the page edge on the other —
@@ -206,6 +231,37 @@
 		overflow-y: auto;
 		overflow-x: hidden;
 		padding: var(--space-6) 0 var(--space-8);
+	}
+
+	.sidebar-header-row {
+		display: flex;
+		justify-content: flex-end;
+		width: var(--panel-width);
+		padding: 0 var(--space-4) var(--space-2);
+	}
+
+	.pin-toggle {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		padding: var(--space-1);
+		color: var(--color-muted);
+		background: transparent;
+		border: none;
+		opacity: 0;
+		pointer-events: none;
+	}
+
+	.pin-toggle.pinned {
+		color: var(--color-fg);
+	}
+
+	.sidebar-rail:hover .pin-toggle,
+	.sidebar-rail:focus-within .pin-toggle,
+	:global(html[data-sidebar-pinned]) .pin-toggle,
+	:global(html[data-sidebar-navigating]) .pin-toggle {
+		opacity: 1;
+		pointer-events: auto;
 	}
 
 	/* Every entry is an icon in a fixed-width slot plus a label: the slot is the only
@@ -239,6 +295,7 @@
 
 	.sidebar-rail:hover .row-label,
 	.sidebar-rail:focus-within .row-label,
+	:global(html[data-sidebar-navigating]) .row-label,
 	:global(html[data-sidebar-pinned]) .row-label {
 		opacity: 1;
 	}
@@ -296,6 +353,7 @@
 
 	.sidebar-rail:hover .project-list,
 	.sidebar-rail:focus-within .project-list,
+	:global(html[data-sidebar-navigating]) .project-list,
 	:global(html[data-sidebar-pinned]) .project-list {
 		padding-left: var(--space-4);
 	}
