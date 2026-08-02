@@ -9,7 +9,7 @@ import type { TaskStatus } from './task-status';
 // ghost_members (ghost_member_id), so both bare embeds are unambiguous here — no
 // hint needed the way transactions' two-FKs-to-the-same-table pairs need one.
 export const TASK_COLUMNS =
-	'id, name, category, description, deadline, deadline_time, status, task_assignees(id, user_id, ghost_member_id, deleted_display_name, profiles(display_name, avatar), ghost_members(display_name))';
+	'id, name, category, description, start_date, deadline, deadline_time, status, task_assignees(id, user_id, ghost_member_id, deleted_display_name, profiles(display_name, avatar), ghost_members(display_name))';
 
 export interface TaskAssignee {
 	// The task_assignees row's own id — the only stable key once user_id has gone
@@ -29,6 +29,7 @@ export interface Task {
 	name: string;
 	category: string | null;
 	description: string | null;
+	start_date: string | null;
 	deadline: string | null;
 	// Time of day the deadline falls at, always 'HH:MM' and never null — a dated task
 	// with no stated time is due at the end of its day. Meaningless (and unread) when
@@ -45,6 +46,7 @@ export interface RawTaskRow {
 	name: string;
 	category: string | null;
 	description: string | null;
+	start_date: string | null;
 	deadline: string | null;
 	// 'HH:MM:SS' out of Postgres; normalizeTask trims it to the 'HH:MM' the rest of the
 	// app (and <input type="time">) works in.
@@ -69,6 +71,7 @@ export function normalizeTask(row: RawTaskRow): Task {
 		name: row.name,
 		category: row.category,
 		description: row.description,
+		start_date: row.start_date,
 		deadline: row.deadline,
 		deadline_time: normalizeDeadlineTime(row.deadline_time),
 		// The check constraint only allows these two, so anything else would mean the

@@ -15,10 +15,11 @@
 // disagree for the hours of the day their two dates don't line up.
 
 export type TaskStatus = 'ongoing' | 'done';
-export type TaskDisplayStatus = TaskStatus | 'overdue';
+export type TaskDisplayStatus = TaskStatus | 'not-started' | 'overdue';
 
 export const TASK_STATUS_LABELS: Record<TaskDisplayStatus, string> = {
 	ongoing: 'Ongoing',
+	'not-started': 'Not started',
 	done: 'Done',
 	overdue: 'Overdue',
 };
@@ -35,11 +36,12 @@ export function isTaskStatus(value: string | null | undefined): value is TaskSta
 // earlier today is already late, one due later today is not. Everything before or after
 // that day is settled by the date alone.
 export function displayStatus(
-	task: { status: TaskStatus; deadline: string | null; deadline_time: string },
+	task: { status: TaskStatus; start_date: string | null; deadline: string | null; deadline_time: string },
 	today: string,
 	nowTime: string,
 ): TaskDisplayStatus {
 	if (task.status === 'done') return 'done';
+	if (task.start_date && task.start_date > today) return 'not-started';
 	if (!task.deadline) return 'ongoing';
 	if (task.deadline < today) return 'overdue';
 	if (task.deadline === today && task.deadline_time < nowTime) return 'overdue';
@@ -63,18 +65,18 @@ export function daysUntil(deadline: string, today: string): number {
 }
 
 const MONTH_NAMES = [
-	'January',
-	'February',
-	'March',
-	'April',
+	'Jan',
+	'Feb',
+	'Mar',
+	'Apr',
 	'May',
-	'June',
-	'July',
-	'August',
-	'September',
-	'October',
-	'November',
-	'December',
+	'Jun',
+	'Jul',
+	'Aug',
+	'Sep',
+	'Oct',
+	'Nov',
+	'Dec',
 ];
 
 // 'July 27' for a deadline in the year that's already on screen everywhere else, and

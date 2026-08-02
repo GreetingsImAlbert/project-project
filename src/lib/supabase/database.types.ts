@@ -639,6 +639,7 @@ export type Database = {
           id: string
           name: string
           project_id: string
+          start_date: string | null
           status: string
         }
         Insert: {
@@ -651,6 +652,7 @@ export type Database = {
           id?: string
           name: string
           project_id: string
+          start_date?: string | null
           status?: string
         }
         Update: {
@@ -663,6 +665,7 @@ export type Database = {
           id?: string
           name?: string
           project_id?: string
+          start_date?: string | null
           status?: string
         }
         Relationships: [

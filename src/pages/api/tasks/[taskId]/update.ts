@@ -48,11 +48,11 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 		return new Response(parsed.error, { status: 400 });
 	}
 
-	const { name, category, description, deadline, deadline_time, status, assignees, keptDeletedAssigneeIds } = parsed.values;
+	const { name, category, description, start_date, deadline, deadline_time, status, assignees, keptDeletedAssigneeIds } = parsed.values;
 
 	const { error } = await locals.supabase
 		.from('tasks')
-		.update({ name, category, description, deadline, deadline_time, status })
+		.update({ name, category, description, start_date, deadline, deadline_time, status })
 		.eq('id', taskId!);
 
 	if (error) {

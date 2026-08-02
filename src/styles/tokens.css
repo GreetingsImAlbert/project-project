@@ -22,6 +22,7 @@
 	--color-success: #2e7d4f;
 	--color-status-overdue: var(--color-danger);
 	--color-status-ongoing: var(--color-success);
+	--color-status-not-started: var(--color-muted);
 	--color-status-done: var(--color-muted);
 	--color-highlight: rgba(17, 17, 17, 0.035);
 	/* Selected-row fill — one step past the hover highlight, used by the sidebar nav. */

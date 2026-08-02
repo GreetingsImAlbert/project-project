@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
 import { parseTaskForm, taskAssigneeColumns } from '../../../../../lib/task-form';
 import { TASK_COLUMNS, normalizeTask, type RawTaskRow } from '../../../../../lib/task-columns';
+import { appToday } from '../../../../../lib/today';
 
 export const prerender = false;
 
@@ -38,11 +39,12 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 		return new Response(parsed.error, { status: 400 });
 	}
 
-	const { name, category, description, deadline, deadline_time, assignees } = parsed.values;
+	const { name, category, description, start_date, deadline, deadline_time, assignees } = parsed.values;
+	const effectiveStartDate = start_date ?? appToday();
 
 	const { data: created, error } = await locals.supabase
 		.from('tasks')
-		.insert({ project_id: projectId!, name, category, description, deadline, deadline_time, status: 'ongoing' })
+		.insert({ project_id: projectId!, name, category, description, start_date: effectiveStartDate, deadline, deadline_time, status: 'ongoing' })
 		.select('id')
 		.single();
 

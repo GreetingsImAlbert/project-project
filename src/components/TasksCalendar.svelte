@@ -317,6 +317,10 @@
 		border-left-color: var(--color-danger);
 	}
 
+	.pop.status-not-started {
+		border-left-color: var(--color-status-not-started);
+	}
+
 	.pop.selected {
 		outline: 2px solid var(--color-border-strong);
 		outline-offset: -2px;

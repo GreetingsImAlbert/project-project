@@ -122,13 +122,14 @@
 	// Which single field of which task is currently being edited in the open panel.
 	// One at a time on purpose — each field saves the whole row through the update
 	// endpoint, so two open fields would race each other's values.
-	type EditField = 'name' | 'category' | 'appointed' | 'deadline' | 'description';
+	type EditField = 'name' | 'category' | 'appointed' | 'startDate' | 'deadline' | 'description';
 	let editingField = $state<{ id: string; field: EditField } | null>(null);
 
 	// Drafts for the field being edited. Plain state rather than form inputs read on
 	// submit: the check/cancel icons aren't a form, and a draft has to survive the
 	// swatch clicks that sit next to the category select.
 	let draftName = $state('');
+	let draftStartDate = $state('');
 	let draftDeadline = $state('');
 	let draftDeadlineTime = $state(DEFAULT_DEADLINE_TIME);
 	let draftDescription = $state('');
@@ -145,6 +146,7 @@
 	let addCategorySelect = $state('');
 	let addCategoryNew = $state('');
 	let addDescription = $state('');
+	let addStartDate = $state(today);
 	let addDeadline = $state('');
 	// Pre-filled rather than left empty: a deadline with no stated time is due at the end
 	// of its day, and showing that up front beats storing it silently — see
@@ -289,6 +291,7 @@
 			draftDeadline = task.deadline ?? '';
 			draftDeadlineTime = task.deadline_time;
 		}
+		if (field === 'startDate') draftStartDate = task.start_date ?? today;
 		if (field === 'description') draftDescription = task.description ?? '';
 	}
 
@@ -340,6 +343,7 @@
 			name: string;
 			category: string;
 			description: string;
+			start_date: string;
 			deadline: string;
 			deadline_time: string;
 			status: 'ongoing' | 'done';
@@ -353,6 +357,7 @@
 		body.set('name', changes.name ?? task.name);
 		body.set('category', changes.category ?? task.category ?? '');
 		body.set('description', changes.description ?? task.description ?? '');
+		body.set('start_date', changes.start_date ?? task.start_date ?? '');
 		body.set('deadline', changes.deadline ?? task.deadline ?? '');
 		body.set('deadline_time', changes.deadline_time ?? task.deadline_time);
 		body.set('status', changes.status ?? task.status);
@@ -467,6 +472,7 @@
 			addCategorySelect = '';
 			addCategoryNew = '';
 			addDescription = '';
+			addStartDate = today;
 			addDeadline = '';
 			addDeadlineTime = DEFAULT_DEADLINE_TIME;
 			addAssignees = [];
@@ -493,6 +499,7 @@
 				name: task.name,
 				category: task.category,
 				description: task.description,
+				startDate: task.start_date,
 				deadline: task.deadline,
 				deadlineTime: task.deadline_time,
 				status: task.status,
@@ -801,6 +808,24 @@
 			{/if}
 		</dd>
 
+		<dt>Start date</dt>
+		<dd>
+			{#if isEditing(task.id, 'startDate')}
+				<div class="detail-line">
+					<input class="inline-input" type="date" bind:value={draftStartDate} aria-label="Start date" />
+					{@render confirmIcons(() => commitField(task, { start_date: draftStartDate }), busy)}
+				</div>
+			{:else}
+				<div class="detail-line">
+					<span class="date-value">
+						{formatDeadline(task.start_date ?? today, today)}
+						<span class="date-time">{formatDeadlineTime('00:00')}</span>
+					</span>
+					{#if canEdit}{@render editIcon('Edit start date', () => startField(task, 'startDate'))}{/if}
+				</div>
+			{/if}
+		</dd>
+
 		<dt>Deadline</dt>
 		<dd>
 			{#if isEditing(task.id, 'deadline')}
@@ -817,8 +842,9 @@
 			{:else}
 				<div class="detail-line">
 					{#if task.deadline}
-						<span>
-							{formatDeadline(task.deadline, today)}, {formatDeadlineTime(task.deadline_time)}
+						<span class="date-value">
+							{formatDeadline(task.deadline, today)}
+							<span class="date-time">{formatDeadlineTime(task.deadline_time)}</span>
 							<span class="muted">({relativeDeadline(task.deadline, today)})</span>
 						</span>
 					{:else}
@@ -940,6 +966,13 @@
 							</label>
 						{/each}
 						{#if members.length === 0 && ghostMembers.length === 0}<span class="muted">No members to appoint.</span>{/if}
+					</div>
+				</dd>
+
+				<dt>Start date</dt>
+				<dd>
+					<div class="detail-line">
+						<input class="inline-input" type="date" name="start_date" bind:value={addStartDate} aria-label="Start date" />
 					</div>
 				</dd>
 
@@ -1082,6 +1115,7 @@
 			<div class="list-head">
 				<span>Task</span>
 				<span>Appointed</span>
+				<span>Start</span>
 				<span>Deadline</span>
 				<span class="head-status">Status</span>
 			</div>
@@ -1112,12 +1146,12 @@
 						<div class="task-item" id={`task-${task.id}`} class:open={openId === task.id}>
 							<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 							<div class="task-row" onclick={(e) => handleRowClick(e, task.id)}>
-								<div class="cell cell-task">
-									<button type="button" class="task-name" class:done={status === 'done'} onclick={(e) => {
-										e.stopPropagation();
-										toggleDetail(task.id);
-									}}>{task.name}</button>
-								</div>
+				<div class="cell cell-task">
+					<button type="button" class="task-name" class:done={status === 'done'} onclick={(e) => {
+						e.stopPropagation();
+						toggleDetail(task.id);
+					}}>{task.name}</button>
+				</div>
 
 								<!-- Two faces, then a +N chip that names the rest on hover — the
 								     detail panel below shows every one. -->
@@ -1125,9 +1159,19 @@
 
 								<!-- Date and time on the one line: the relative form ('in 3 days')
 								     moved to the detail panel, since the date already says it. -->
-								<div class="cell cell-deadline">
-									{#if task.deadline}
-										{formatDeadline(task.deadline, today)}, {formatDeadlineTime(task.deadline_time)}
+				<div class="cell cell-start">
+					<span class="date-value">
+						{formatDeadline(task.start_date ?? today, today)}
+						<span class="date-time">{formatDeadlineTime('00:00')}</span>
+					</span>
+				</div>
+
+				<div class="cell cell-deadline">
+					{#if task.deadline}
+						<span class="date-value">
+							{formatDeadline(task.deadline, today)}
+							<span class="date-time">{formatDeadlineTime(task.deadline_time)}</span>
+						</span>
 									{:else}
 										<span class="task-sub">no deadline</span>
 									{/if}
@@ -1271,12 +1315,10 @@
 
 	/* List */
 
-	/* The deadline track fits 'September 27, 11:59 PM' on one line at the cell's font
-	   size, with the year only ever added for a deadline outside this one — where a
-	   little truncation is the right trade for keeping every other row tight. The
-	   status track is only as wide as its dot. */
+	/* The four content columns share the available width evenly. Status stays at the
+	   far edge in a minimal track reserved for its dot. */
 	.task-list {
-		--task-cols: minmax(0, 1.2fr) minmax(0, 0.8fr) 178px 14px;
+		--task-cols: repeat(4, minmax(0, 1fr)) 14px;
 		/* What the row reserves on its right edge while its controls are showing — the
 		   width of the two buttons (Edit having moved into the panel), so they land in
 		   space of their own rather than on top of the cells. Sized against the *wider*
@@ -1387,6 +1429,20 @@
 		line-height: 1.35;
 	}
 
+	.date-value {
+		display: inline-flex;
+		align-items: baseline;
+		gap: 0.3rem;
+		white-space: nowrap;
+	}
+
+	.date-time {
+		color: var(--color-muted);
+		font-size: 0.72rem;
+		font-variant-numeric: tabular-nums;
+		line-height: 1;
+	}
+
 	.cell-task {
 		display: flex;
 		flex-direction: column;
@@ -1482,6 +1538,7 @@
 
 	/* One line whatever the month is called: a wrap here would put back the height the
 	   row just gave up. */
+	.cell-start,
 	.cell-deadline {
 		font-variant-numeric: tabular-nums;
 		overflow: hidden;
@@ -1523,6 +1580,10 @@
 
 	.status-overdue {
 		color: var(--color-status-overdue);
+	}
+
+	.status-not-started {
+		color: var(--color-status-not-started);
 	}
 
 	/* Green is the live state, grey the finished one: a task still being worked on is
@@ -1993,6 +2054,7 @@
 		}
 
 		.cell-people,
+		.cell-start,
 		.cell-deadline {
 			grid-column: 1 / -1;
 			font-size: 0.76rem;

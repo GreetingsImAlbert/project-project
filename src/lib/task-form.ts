@@ -19,6 +19,7 @@ export interface TaskFormValues {
 	name: string;
 	category: string | null;
 	description: string | null;
+	start_date: string | null;
 	deadline: string | null;
 	// Always set, even with no deadline to hang it on: the column is not null, and an
 	// empty time field means 'end of day' rather than 'no time' — see deadline-time.ts.
@@ -50,6 +51,7 @@ export function parseTaskForm(formData: FormData, memberIds: Set<string>, ghostI
 	const name = formData.get('name')?.toString().trim();
 	const category = formData.get('category')?.toString().trim() || null;
 	const description = formData.get('description')?.toString().trim() || null;
+	const startDate = formData.get('start_date')?.toString().trim() || null;
 	const deadline = formData.get('deadline')?.toString().trim() || null;
 	const deadlineTimeRaw = formData.get('deadline_time')?.toString().trim() || DEFAULT_DEADLINE_TIME;
 	const statusRaw = formData.get('status')?.toString().trim() || 'ongoing';
@@ -65,6 +67,13 @@ export function parseTaskForm(formData: FormData, memberIds: Set<string>, ghostI
 	}
 	if (description && description.length > 1000) {
 		return { error: 'Description: max 1000 characters' };
+	}
+
+	if (startDate) {
+		const dateError = calendarDateError(startDate);
+		if (dateError) {
+			return { error: `Start date: ${dateError.charAt(0).toLowerCase()}${dateError.slice(1)}` };
+		}
 	}
 
 	if (deadline) {
@@ -113,5 +122,5 @@ export function parseTaskForm(formData: FormData, memberIds: Set<string>, ghostI
 		assignees.push(token);
 	}
 
-	return { values: { name, category, description, deadline, deadline_time: normalizeDeadlineTime(deadlineTimeRaw), status: statusRaw, assignees, keptDeletedAssigneeIds } };
+	return { values: { name, category, description, start_date: startDate, deadline, deadline_time: normalizeDeadlineTime(deadlineTimeRaw), status: statusRaw, assignees, keptDeletedAssigneeIds } };
 }
