@@ -26,9 +26,9 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 	const { data, error } = await locals.supabase
 		.from('forum_replies')
 		.insert({ post_id: postId, author_id: locals.user.id, body: normalizeForumBody(payload.value.body as string) })
-		.select('id')
+		.select('id, created_at')
 		.single();
 
 	if (error || !data) return new Response(`Failed to create reply: ${error?.message ?? 'unknown error'}`, { status: 500 });
-	return Response.json({ id: data.id }, { status: 201 });
+	return Response.json({ id: data.id, createdAt: data.created_at }, { status: 201 });
 };
