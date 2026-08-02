@@ -103,7 +103,7 @@
 			nextCursor = result.nextCursor;
 		} catch (cause) {
 			if (disposed) return;
-			error = cause instanceof Error ? cause.message : 'Could not load the forum';
+			error = cause instanceof Error ? cause.message : 'Could not load the workshop';
 		} finally {
 			if (!disposed) {
 				loading = false;
@@ -294,22 +294,22 @@
 	});
 </script>
 
-<section class="forum" aria-labelledby="forum-title">
+<section class="forum" aria-labelledby="workshop-title">
 	<header class="forum-header">
-		<h1 id="forum-title">Forum</h1>
+		<h1 id="workshop-title">Workshop</h1>
 		<p class="muted">Share thoughts and ideas with everyone on P2.</p>
 	</header>
 
 	<form class:expanded={composerExpanded} class="composer" onsubmit={(event) => { event.preventDefault(); void submitPost(); }}>
 		{#if !composerExpanded}
-			<button type="button" class="composer-trigger" onclick={() => composerExpanded = true}>What is on your mind?</button>
+			<button type="button" class="composer-trigger" onclick={() => composerExpanded = true}>What are you building?</button>
 		{:else}
 			<textarea
 				bind:value={composerBody}
 				maxlength={FORUM_MAX_BODY_LENGTH}
 				rows="3"
-				placeholder="What is on your mind?"
-				aria-label="New forum post"
+				placeholder="What are you building?"
+				aria-label="New workshop post"
 				autofocus
 				disabled={posting}
 			></textarea>
@@ -337,7 +337,7 @@
 	{/if}
 
 	{#if loading}
-		<p class="state muted">Loading forum…</p>
+		<p class="state muted">Loading workshop…</p>
 	{:else if error && posts.length === 0}
 		<div class="state state-error">
 			<p>{error}</p>
