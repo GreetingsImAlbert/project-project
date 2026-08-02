@@ -205,6 +205,10 @@
 	async function togglePostLike(post: Post) {
 		const actionKey = `post-like-${post.id}`;
 		if (post.deleted || isActionPending(actionKey)) return;
+		const optimisticLiked = !post.likedByMe;
+		// The label/colour is local feedback and should not wait on the network. Keep
+		// the count untouched until the server confirms the like mutation below.
+		posts = posts.map((item) => item.id === post.id ? { ...item, likedByMe: optimisticLiked } : item);
 		setActionPending(actionKey, true);
 		try {
 			const response = await fetch(`/api/forum/posts/${post.id}/like`, { method: 'POST' });
@@ -212,6 +216,7 @@
 			const result = (await response.json()) as { liked: boolean; likeCount: number };
 			posts = posts.map((item) => item.id === post.id ? { ...item, likedByMe: result.liked, likeCount: result.likeCount } : item);
 		} catch (cause) {
+			posts = posts.map((item) => item.id === post.id ? { ...item, likedByMe: post.likedByMe } : item);
 			toastError(cause instanceof Error ? cause.message : 'Could not update like');
 		} finally {
 			setActionPending(actionKey, false);
@@ -221,6 +226,13 @@
 	async function toggleReplyLike(post: Post, reply: Reply) {
 		const actionKey = `reply-like-${reply.id}`;
 		if (post.deleted || reply.deleted || isActionPending(actionKey)) return;
+		const optimisticLiked = !reply.likedByMe;
+		// The reply button gets the same immediate feedback; only its count waits for
+		// the server response.
+		posts = posts.map((item) => item.id !== post.id ? item : {
+			...item,
+			replies: item.replies.map((itemReply) => itemReply.id === reply.id ? { ...itemReply, likedByMe: optimisticLiked } : itemReply),
+		});
 		setActionPending(actionKey, true);
 		try {
 			const response = await fetch(`/api/forum/replies/${reply.id}/like`, { method: 'POST' });
@@ -231,6 +243,10 @@
 				replies: item.replies.map((itemReply) => itemReply.id === reply.id ? { ...itemReply, likedByMe: result.liked, likeCount: result.likeCount } : itemReply),
 			});
 		} catch (cause) {
+			posts = posts.map((item) => item.id !== post.id ? item : {
+				...item,
+				replies: item.replies.map((itemReply) => itemReply.id === reply.id ? { ...itemReply, likedByMe: reply.likedByMe } : itemReply),
+			});
 			toastError(cause instanceof Error ? cause.message : 'Could not update like');
 		} finally {
 			setActionPending(actionKey, false);
@@ -342,7 +358,7 @@
 					</div>
 					<p class="post-body">{post.deleted ? 'This post was deleted.' : post.body}</p>
 					<div class="post-actions">
-						<button type="button" class:liked={post.likedByMe} class="btn-plain action-button" disabled={post.deleted || isActionPending(`post-like-${post.id}`)} onclick={() => void togglePostLike(post)}>
+						<button type="button" class:liked={post.likedByMe} class:like-pending={isActionPending(`post-like-${post.id}`)} class="btn-plain action-button" disabled={post.deleted || isActionPending(`post-like-${post.id}`)} onclick={() => void togglePostLike(post)}>
 							{post.likedByMe ? 'Liked' : 'Like'} · {post.likeCount}
 						</button>
 						{#if !post.deleted}
@@ -388,7 +404,7 @@
 									</div>
 									<p class="reply-body">{reply.deleted ? 'This reply was deleted.' : reply.body}</p>
 									<div class="post-actions">
-										<button type="button" class:liked={reply.likedByMe} class="btn-plain action-button" disabled={post.deleted || reply.deleted || isActionPending(`reply-like-${reply.id}`)} onclick={() => void toggleReplyLike(post, reply)}>
+									<button type="button" class:liked={reply.likedByMe} class:like-pending={isActionPending(`reply-like-${reply.id}`)} class="btn-plain action-button" disabled={post.deleted || reply.deleted || isActionPending(`reply-like-${reply.id}`)} onclick={() => void toggleReplyLike(post, reply)}>
 											{reply.likedByMe ? 'Liked' : 'Like'} · {reply.likeCount}
 										</button>
 										{#if !reply.deleted && reply.author.id === currentUserId}
@@ -552,6 +568,12 @@
 	.action-button {
 		padding: var(--space-1) var(--space-2);
 		font-size: 0.8rem;
+	}
+
+	/* A pending like is disabled to prevent duplicate requests, but its optimistic
+	   colour should still be fully visible while the server confirms the count. */
+	.action-button.like-pending {
+		opacity: 1;
 	}
 
 	.action-button.liked {
