@@ -3,10 +3,9 @@ import { sortTasks, type Task } from './task-columns';
 
 export type { Task, TaskAssignee } from './task-columns';
 
-// Shared across TasksSummary and TasksTable — both are independently hydrated
-// `client:load` islands on the Tasks page, so the summary's counts would go stale
-// the moment a task was added/edited/deleted if each kept its own copy.
-export const tasksState = $state<{ tasks: Task[] }>({ tasks: [] });
+// Shared across TasksTable and TasksSummary so the summary follows edits without
+// carrying a second full copy of the task payload.
+export const tasksState = $state<{ tasks: Task[]; initialized: boolean; epoch: number }>({ tasks: [], initialized: false, epoch: -1 });
 
 let initializedEpoch = -1;
 
@@ -16,7 +15,13 @@ let initializedEpoch = -1;
 export function initTasks(initial: Task[]) {
 	if (initializedEpoch === currentEpoch() && !import.meta.env.SSR) return;
 	tasksState.tasks = sortTasks(initial);
+	tasksState.initialized = true;
+	tasksState.epoch = currentEpoch();
 	initializedEpoch = currentEpoch();
+}
+
+export function isTasksInitializedForCurrentEpoch(): boolean {
+	return tasksState.initialized && tasksState.epoch === currentEpoch();
 }
 
 // Every mutation re-sorts: adding a task or editing a deadline changes where the

@@ -86,7 +86,7 @@
 
 	{#if open}
 		<div class="menu-dropdown">
-			<a href="/account" class="menu-item" onclick={closeMenu}>Account</a>
+			<a href="/account" class="menu-item" onclick={closeMenu} data-astro-prefetch>Account</a>
 			<button type="button" class="menu-item" onclick={openReport}>Help</button>
 			<form method="POST" action="/api/auth/logout" data-astro-reload>
 				<button type="submit" class="menu-item menu-logout">Log out</button>

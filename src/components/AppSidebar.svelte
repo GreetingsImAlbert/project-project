@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import Avatar from './Avatar.svelte';
 
 	interface SidebarProject {
@@ -10,16 +11,55 @@
 	}
 
 	let {
-		projects,
-		currentPath,
+		projects: initialProjects = [],
+		currentPath: initialCurrentPath,
 		displayName,
 		avatar,
 	}: {
-		projects: SidebarProject[];
+		projects?: SidebarProject[];
 		currentPath: string;
 		displayName: string;
 		avatar: string | null;
 	} = $props();
+
+	let projects = $state(initialProjects);
+	let currentPath = $state(initialCurrentPath);
+
+	let navigationRequest: Promise<SidebarProject[]> | null = null;
+
+	async function loadProjects(): Promise<SidebarProject[]> {
+		if (!navigationRequest) {
+			navigationRequest = fetch('/api/navigation')
+				.then(async (response) => {
+					if (!response.ok) throw new Error('Could not load navigation');
+					const result = (await response.json()) as { projects: SidebarProject[] };
+					return result.projects;
+				})
+				.catch((error) => {
+					navigationRequest = null;
+					throw error;
+				});
+		}
+
+		return navigationRequest;
+	}
+
+	onMount(() => {
+		void loadProjects()
+			.then((loadedProjects) => {
+				projects = loadedProjects;
+			})
+			.catch(() => {
+				// The primary navigation links still work when the optional project list is unavailable.
+			});
+
+		function updateCurrentPath() {
+			currentPath = window.location.pathname;
+		}
+
+		document.addEventListener('astro:after-swap', updateCurrentPath);
+		return () => document.removeEventListener('astro:after-swap', updateCurrentPath);
+	});
 
 	let currentProjectId = $derived.by(() => {
 		const match = currentPath.match(/^\/projects\/([^/]+)/);
@@ -116,7 +156,7 @@
 			</p>
 
 			<nav class="sidebar-nav">
-				<a href="/" class="nav-link row" class:active={currentPath === '/'} title="Dashboard" onpointerdown={keepExpandedForNavigation}>
+				<a href="/" class="nav-link row" class:active={currentPath === '/'} title="Dashboard" data-astro-prefetch onpointerdown={keepExpandedForNavigation}>
 					<span class="row-icon">
 						<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 							<path d="M3 10.5 12 3l9 7.5" />
@@ -125,7 +165,7 @@
 					</span>
 					<span class="row-label">Dashboard</span>
 				</a>
-				<a href="/projects" class="nav-link row" class:active={currentPath === '/projects'} title="Projects" onpointerdown={keepExpandedForNavigation}>
+				<a href="/projects" class="nav-link row" class:active={currentPath === '/projects'} title="Projects" data-astro-prefetch onpointerdown={keepExpandedForNavigation}>
 					<span class="row-icon">
 						<span class="glyph-p">P</span>
 					</span>
@@ -140,6 +180,7 @@
 								class="nav-link project-link row"
 								class:active={currentProjectId === project.id}
 								title={project.name}
+								data-astro-prefetch
 								onpointerdown={keepExpandedForNavigation}
 							>
 								<span class="row-icon" title={project.owner.displayName}>
@@ -155,7 +196,7 @@
 						</li>
 					{/each}
 					<li>
-						<a href="/projects/new" class="nav-link add-project row" title="Add project" onpointerdown={keepExpandedForNavigation}>
+						<a href="/projects/new" class="nav-link add-project row" title="Add project" data-astro-prefetch onpointerdown={keepExpandedForNavigation}>
 							<span class="row-icon">+</span>
 							<span class="row-label">Add project</span>
 						</a>

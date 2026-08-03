@@ -58,119 +58,36 @@ const memberData = (members ?? []).map((m) => ({
 
 const returnTo = `/projects/${id}/settings`;
 
-interface FileRow {
-	id: string;
-	filename: string;
-	size_bytes: number | null;
-	deleted_at: string;
-}
-
-interface FolderRow {
-	id: string;
-	name: string;
-	deleted_at: string;
-}
-
-interface TaskRow {
-	id: string;
-	name: string;
-	category: string | null;
-	deleted_at: string;
-}
-
-interface BomItemRow {
-	id: string;
-	part_name: string;
-	category: string | null;
-	total_cost: number | null;
-	deleted_at: string;
-}
-
-interface TransactionRow {
-	id: string;
-	type: string;
-	item_name: string | null;
-	transaction_date: string;
-	total_cost: number | null;
-	deleted_at: string;
-}
-
-// Trash lives at the bottom of this page rather than on its own project tab.
-const [{ data: files }, { data: folders }, { data: tasks }, { data: bomItems }, { data: transactions }] = await Promise.all([
-	Astro.locals.supabase
-		.from('files')
-		.select('id, filename, size_bytes, deleted_at')
-		.eq('project_id', id)
-		.not('deleted_at', 'is', null)
-		.order('deleted_at', { ascending: false })
-		.overrideTypes<FileRow[]>(),
-	Astro.locals.supabase
-		.from('folders')
-		.select('id, name, deleted_at')
-		.eq('project_id', id)
-		.not('deleted_at', 'is', null)
-		.order('deleted_at', { ascending: false })
-		.overrideTypes<FolderRow[]>(),
-	Astro.locals.supabase
-		.from('tasks')
-		.select('id, name, category, deleted_at')
-		.eq('project_id', id)
-		.not('deleted_at', 'is', null)
-		.order('deleted_at', { ascending: false })
-		.overrideTypes<TaskRow[]>(),
-	Astro.locals.supabase
-		.from('bom_items')
-		.select('id, part_name, category, total_cost, deleted_at')
-		.eq('project_id', id)
-		.not('deleted_at', 'is', null)
-		.order('deleted_at', { ascending: false })
-		.overrideTypes<BomItemRow[]>(),
-	// Lines of a trashed bulk transaction (group_id set) are restored/purged
-	// together with their parent, not listed as their own row.
-	Astro.locals.supabase
-		.from('transactions')
-		.select('id, type, item_name, transaction_date, total_cost, deleted_at')
-		.eq('project_id', id)
-		.is('group_id', null)
-		.not('deleted_at', 'is', null)
-		.order('deleted_at', { ascending: false })
-		.overrideTypes<TransactionRow[]>(),
-]);
 ---
 <BaseLayout title={`${project.name} — Settings`} projectNav={{ projectId: project.id, userRole: userRole ?? '' }}>
 	<section>
 		<h3>Currency</h3>
-		<CurrencyPicker client:load projectId={project.id} currency={project.currency} />
+		<CurrencyPicker client:idle projectId={project.id} currency={project.currency} />
 	</section>
 
 	<section>
 		<h3>Members</h3>
-		<MemberManager client:load projectId={project.id} members={memberData} />
-		<GhostMemberManager client:load projectId={project.id} ghostMembers={ghostMembers} />
+		<MemberManager client:idle projectId={project.id} members={memberData} />
+		<GhostMemberManager client:idle projectId={project.id} ghostMembers={ghostMembers} />
 		<div class="add-actions-row">
-			<AddMemberForm client:load projectId={project.id} returnTo={returnTo} />
-			<AddGhostMemberForm client:load projectId={project.id} />
+			<AddMemberForm client:idle projectId={project.id} returnTo={returnTo} />
+			<AddGhostMemberForm client:idle projectId={project.id} />
 		</div>
 	</section>
 
 	<section>
 		<h3>Danger zone</h3>
-		<DeleteProjectPanel client:load projectId={project.id} projectName={project.name} />
+		<DeleteProjectPanel client:idle projectId={project.id} projectName={project.name} />
 	</section>
 
 	<section>
 		<h3>Trash</h3>
 		<p class="muted trash-note">Deleted items are kept here for 10 days before they're removed for good.</p>
 		<TrashList
-			client:load
+			client:visible
 			projectId={project.id}
 			currency={project.currency}
 			canEditMoney={true}
-			initialFiles={files ?? []}
-			initialFolders={folders ?? []}
-			initialTasks={tasks ?? []}
-			initialBomItems={bomItems ?? []}
-			initialTransactions={transactions ?? []}
 		/>
 	</section>
 </BaseLayout>

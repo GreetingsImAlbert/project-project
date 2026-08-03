@@ -67,13 +67,13 @@ const avatar = normalizeAvatar(profile?.avatar ?? user.avatar);
 	<StorageUsageBar usedBytes={totalBytes} capBytes={MAX_USER_STORAGE_BYTES} failed={failed} />
 
 	<h2>Change password</h2>
-	<AccountPasswordForm client:load />
+	<AccountPasswordForm client:visible />
 	<p class="muted account-forgot">
 		Don't remember your current password? <a href="/forgot-password">Reset it by email →</a>
 	</p>
 
 	<h2>Danger zone</h2>
-	<DeleteAccountPanel client:load ownedProjectCount={ownedProjectCount ?? 0} displayName={displayName} />
+	<DeleteAccountPanel client:visible ownedProjectCount={ownedProjectCount ?? 0} displayName={displayName} />
 </BaseLayout>
 
 <style>

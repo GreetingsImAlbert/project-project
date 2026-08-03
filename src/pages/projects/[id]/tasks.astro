@@ -6,6 +6,7 @@ import { TASK_COLUMNS, normalizeTask, type RawTaskRow } from '../../../lib/task-
 import { isCategoryColorIndex, type CategoryColors } from '../../../lib/category-color';
 import { listGhostMembers } from '../../../lib/ghost-members';
 import { appNowTime, appToday } from '../../../lib/today';
+import { summarizeTasks } from '../../../lib/task-summary';
 
 export const prerender = false;
 
@@ -94,10 +95,11 @@ const initialViewMode = storedTaskView === 'calendar' ? 'calendar' : 'list';
 // identical statuses — see lib/today.ts.
 const serverToday = appToday();
 const serverNowTime = appNowTime();
+const initialSummary = summarizeTasks(tasks, serverToday, serverNowTime);
 ---
 
 <BaseLayout title={`${project.name} — Tasks`} projectNav={{ projectId: project.id, userRole: userRole ?? '' }}>
-	<TasksSummary client:load initialTasks={tasks} serverToday={serverToday} serverNowTime={serverNowTime} />
+	<TasksSummary client:load initialSummary={initialSummary} serverToday={serverToday} serverNowTime={serverNowTime} />
 	<TasksTable
 		client:load
 		projectId={project.id}

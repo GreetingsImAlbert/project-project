@@ -1,47 +1,32 @@
 <script lang="ts">
-	import { tasksState, initTasks, type Task } from '../lib/tasks-store.svelte';
-	import { deadlinePassed, displayStatus, relativeDeadline } from '../lib/task-status';
+	import { isTasksInitializedForCurrentEpoch, tasksState } from '../lib/tasks-store.svelte';
+	import { relativeDeadline } from '../lib/task-status';
 	import { formatDeadlineTime } from '../lib/deadline-time';
+	import { summarizeTasks, type TaskSummary } from '../lib/task-summary';
 
 	let {
-		initialTasks,
+		initialSummary,
 		serverToday,
 		serverNowTime,
 	}: {
-		initialTasks: Task[];
+		initialSummary: TaskSummary;
 		serverToday: string;
 		serverNowTime: string;
 	} = $props();
-
-	initTasks(initialTasks);
 
 	// Rendered on the server and reused as-is: it's an Asia/Manila date either way,
 	// so there's nothing for the client to correct — see today.ts.
 	const today = serverToday;
 	const nowTime = serverNowTime;
 
-	let statuses = $derived(tasksState.tasks.map((task) => displayStatus(task, today, nowTime)));
-
-	let ongoing = $derived(statuses.filter((s) => s === 'ongoing').length);
-	let overdue = $derived(statuses.filter((s) => s === 'overdue').length);
-	let total = $derived(tasksState.tasks.length);
-
-	// Soonest deadline still ahead of us on a task that isn't done. Overdue tasks are
-	// excluded on purpose — they have their own tile, and showing a past date under
-	// 'Next deadline' would read as if it were still upcoming. The whole moment is kept
-	// rather than just the date, so the note underneath can say the time of day and two
-	// tasks sharing a date resolve to the earlier one.
-	let nextDue = $derived(
-		tasksState.tasks
-			.filter(
-				(task) =>
-					task.status !== 'done' &&
-					task.deadline &&
-					!deadlinePassed(task.deadline, task.deadline_time, today, nowTime),
-			)
-			.map((task) => ({ date: task.deadline!, time: task.deadline_time }))
-			.sort((a, b) => (a.date === b.date ? a.time.localeCompare(b.time) : a.date.localeCompare(b.date)))[0] ?? null,
-	);
+	// TasksTable owns the full list. The summary receives only its derived values on SSR,
+	// then switches to the shared store after TasksTable hydrates, avoiding a duplicate
+	// copy of the task payload in the page.
+	let summary = $derived(!import.meta.env.SSR && isTasksInitializedForCurrentEpoch() ? summarizeTasks(tasksState.tasks, today, nowTime) : initialSummary);
+	let ongoing = $derived(summary.ongoing);
+	let overdue = $derived(summary.overdue);
+	let total = $derived(summary.total);
+	let nextDue = $derived(summary.nextDue);
 </script>
 
 <div class="summary">

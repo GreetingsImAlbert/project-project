@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { currencyState, formatCurrency, initCurrency, type CurrencyCode } from '../lib/currency.svelte';
 
 	// Mirrors TRASH_GRACE_DAYS in src/lib/trash.ts — kept as a plain number here
@@ -47,29 +48,48 @@
 		projectId,
 		currency,
 		canEditMoney,
-		initialFiles,
-		initialFolders,
-		initialTasks,
-		initialBomItems,
-		initialTransactions,
 	}: {
 		projectId: string;
 		currency: CurrencyCode;
 		canEditMoney: boolean;
-		initialFiles: FileRow[];
-		initialFolders: FolderRow[];
-		initialTasks: TaskRow[];
-		initialBomItems: BomItemRow[];
-		initialTransactions: TransactionRow[];
 	} = $props();
 
 	initCurrency(currency);
 
-	let files = $state(initialFiles);
-	let folders = $state(initialFolders);
-	let tasks = $state(initialTasks);
-	let bomItems = $state(initialBomItems);
-	let transactions = $state(initialTransactions);
+	let files = $state<FileRow[]>([]);
+	let folders = $state<FolderRow[]>([]);
+	let tasks = $state<TaskRow[]>([]);
+	let bomItems = $state<BomItemRow[]>([]);
+	let transactions = $state<TransactionRow[]>([]);
+	let loading = $state(true);
+	let loadError = $state<string | null>(null);
+
+	onMount(() => {
+		async function loadTrash() {
+			try {
+				const response = await fetch(`/api/projects/${projectId}/trash`);
+				if (!response.ok) throw new Error(await response.text());
+				const result = (await response.json()) as {
+					files: FileRow[];
+					folders: FolderRow[];
+					tasks: TaskRow[];
+					bomItems: BomItemRow[];
+					transactions: TransactionRow[];
+				};
+				files = result.files;
+				folders = result.folders;
+				tasks = result.tasks;
+				bomItems = result.bomItems;
+				transactions = result.transactions;
+			} catch (error) {
+				loadError = error instanceof Error ? error.message : 'Could not load trash';
+			} finally {
+				loading = false;
+			}
+		}
+
+		void loadTrash();
+	});
 
 	let busyId = $state<string | null>(null);
 	let rowError = $state<{ id: string; message: string } | null>(null);
@@ -172,7 +192,11 @@
 	{/if}
 {/snippet}
 
-{#if empty}
+{#if loading}
+	<p class="muted">Loading trash…</p>
+{:else if loadError}
+	<p class="row-error">{loadError}</p>
+{:else if empty}
 	<p class="muted">Nothing in the trash.</p>
 {/if}
 

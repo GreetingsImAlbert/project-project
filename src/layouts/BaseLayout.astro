@@ -16,47 +16,6 @@ const { title = 'P2', projectNav } = Astro.props;
 const user = Astro.locals.user;
 const path = Astro.url.pathname;
 
-type SidebarOwner = { displayName: string; avatar: string | null };
-let sidebarProjects: { id: string; name: string; owner: SidebarOwner; taskCount: number }[] = [];
-if (user) {
-	// The owner's picture is the project's face in the sidebar — it's what the row
-	// collapses down to when the sidebar is folded, so only the owner is fetched here
-	// (the other members' pictures have nowhere left to go in a one-line row).
-	// The task count is the reader's own open tasks in that project, same shape as the
-	// dashboard reminders (index.astro): appointed to them, not done, not trashed.
-	const [{ data }, { data: taskRows }] = await Promise.all([
-		Astro.locals.supabase
-			.from('projects')
-			.select('id, name, owner_id, project_members(user_id, role, profiles(display_name, avatar))')
-			.order('created_at', { ascending: false })
-			.overrideTypes<{ id: string; name: string; owner_id: string; project_members: { user_id: string; role: string; profiles: { display_name: string; avatar: string | null } | null }[] }[]>(),
-		Astro.locals.supabase
-			.from('tasks')
-			.select('project_id, task_assignees!inner(user_id)')
-			.eq('task_assignees.user_id', user.id)
-			.is('deleted_at', null)
-			.neq('status', 'done')
-			.overrideTypes<{ project_id: string }[]>(),
-	]);
-
-	const taskCounts = new Map<string, number>();
-	for (const row of taskRows ?? []) {
-		taskCounts.set(row.project_id, (taskCounts.get(row.project_id) ?? 0) + 1);
-	}
-
-	sidebarProjects = (data ?? []).map((p) => {
-		const owner = (p.project_members ?? []).find((m) => m.user_id === p.owner_id)?.profiles ?? null;
-		return {
-			id: p.id,
-			name: p.name,
-			owner: {
-				displayName: owner?.display_name ?? 'Unknown',
-				avatar: owner?.avatar ?? null,
-			},
-			taskCount: taskCounts.get(p.id) ?? 0,
-		};
-	});
-}
 ---
 <html lang="en">
 	<head>
@@ -111,8 +70,8 @@ if (user) {
 		{user ? (
 			<div class="app-shell">
 				<AppSidebar
-					client:load
-					projects={sidebarProjects}
+					client:idle
+					transition:persist
 					currentPath={path}
 					displayName={user.displayName ?? user.email ?? ''}
 					avatar={user.avatar}

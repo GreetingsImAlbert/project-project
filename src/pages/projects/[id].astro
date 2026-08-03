@@ -167,9 +167,9 @@ const memberGroups = roles.map((role) => ({
 
 		<section class="overview-faqs">
 			<h2>Quick FAQs</h2>
-			<TotalCostDisplay client:load totalCost={totalCost} currency={project.currency} />
-			<ProjectStorageUsed client:load initialUsedBytes={projectStorageBytes} initialFailed={projectStorageFailed} />
-			<DownloadProjectButton client:load projectId={project.id} />
+			<TotalCostDisplay client:visible totalCost={totalCost} currency={project.currency} />
+			<ProjectStorageUsed client:visible initialUsedBytes={projectStorageBytes} initialFailed={projectStorageFailed} />
+			<DownloadProjectButton client:visible projectId={project.id} />
 		</section>
 	</div>
 </BaseLayout>

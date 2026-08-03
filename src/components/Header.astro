@@ -10,14 +10,14 @@ const { user } = Astro.props;
 
 <header class="site-header">
 	<div class="site-header-inner">
-		<a href={user ? '/' : '/login'} class="lockup">
+		<a href={user ? '/' : '/login'} class="lockup" data-astro-prefetch>
 			<span class="lockup-title">P2</span>
 			<span class="lockup-subtitle muted">Engineering Workspace</span>
 		</a>
 
 		<div class="header-right">
-			<ThemeToggle client:load />
-			{user && <NavMenu client:load avatar={user.avatar} displayName={user.displayName ?? user.email ?? ''} />}
+			<ThemeToggle client:idle />
+			{user && <NavMenu client:idle avatar={user.avatar} displayName={user.displayName ?? user.email ?? ''} />}
 		</div>
 	</div>
 </header>
