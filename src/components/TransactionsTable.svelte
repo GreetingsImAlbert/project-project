@@ -17,7 +17,6 @@
 		updateTransaction,
 		replaceTransactionGroup,
 		removeTransaction,
-		linesOf,
 		type Transaction,
 		type TransactionType,
 	} from '../lib/transactions-store.svelte';
@@ -103,6 +102,7 @@
 	// 'bulk' is only ever created through the bulk form — it can't be picked as the
 	// type of a plain one-line transaction.
 	const SINGLE_TYPES = (Object.keys(TYPE_LABELS) as TransactionType[]).filter((t) => t !== 'bulk');
+	const TRANSACTION_PAGE_SIZE = 50;
 
 	type BomField = 'itemName' | 'quantity' | 'unit' | 'unitCost' | 'supplier' | 'itemUrl';
 
@@ -246,8 +246,32 @@
 			isGroupStart: i === 0 || sorted[i - 1].transaction_date !== t.transaction_date,
 		}));
 	});
+	let renderedTransactionCount = $state(TRANSACTION_PAGE_SIZE);
+	let visibleRows = $derived.by(() => {
+		const openIndex = openId ? rows.findIndex((row) => row.t.id === openId) : -1;
+		const end = openIndex >= 0 ? Math.max(renderedTransactionCount, openIndex + 1) : renderedTransactionCount;
+		return rows.slice(0, end);
+	});
+
+	// The old template filtered the entire transaction store once per rendered bulk row.
+	// Build the line lookup once instead, which matters when a page contains many bulk
+	// parents and keeps the paged DOM pass linear.
+	let linesByParent = $derived.by(() => {
+		const map = new Map<string, Transaction[]>();
+		for (const transaction of transactionsState.items) {
+			if (!transaction.group_id) continue;
+			const lines = map.get(transaction.group_id) ?? [];
+			lines.push(transaction);
+			map.set(transaction.group_id, lines);
+		}
+		return map;
+	});
 
 	let netTotal = $derived(netSpend(transactionsState.items));
+
+	function showMoreTransactions() {
+		renderedTransactionCount = Math.min(renderedTransactionCount + TRANSACTION_PAGE_SIZE, rows.length);
+	}
 
 	// Same order as the table (newest date first), but a bulk parent is followed by its
 	// own lines instead of hiding them behind a click — a spreadsheet has room for the
@@ -279,7 +303,7 @@
 			if (t.type !== 'bulk') continue;
 
 			const parentLabel = itemLabel(t);
-			for (const line of linesOf(t.id)) {
+			for (const line of linesByParent.get(t.id) ?? []) {
 				sheetRows.push([
 					line.transaction_date,
 					TYPE_LABELS[line.type],
@@ -526,9 +550,9 @@
 					</tr>
 				</thead>
 				<tbody>
-					{#each rows as row (row.t.id)}
+					{#each visibleRows as row (row.t.id)}
 						{@const t = row.t}
-						{@const lines = t.type === 'bulk' ? linesOf(t.id) : []}
+						{@const lines = t.type === 'bulk' ? (linesByParent.get(t.id) ?? []) : []}
 						<tr
 							class="data-row clickable"
 							class:group-start={row.isGroupStart}
@@ -882,6 +906,14 @@
 				</tfoot>
 			</table>
 		</div>
+
+		{#if renderedTransactionCount < rows.length}
+			<div class="window-more">
+				<button type="button" class="btn-plain" onclick={showMoreTransactions}>
+					Show more transactions ({rows.length - renderedTransactionCount} remaining)
+				</button>
+			</div>
+		{/if}
 	{/if}
 
 	{#if canEdit}
@@ -1079,6 +1111,16 @@
 		flex: 0 0 auto;
 		padding: var(--space-1) var(--space-3);
 		font-size: 0.8rem;
+	}
+
+	.window-more {
+		display: flex;
+		justify-content: center;
+		padding: var(--space-4) 0;
+	}
+
+	.window-more button {
+		font-size: 0.78rem;
 	}
 
 	.date-cell {

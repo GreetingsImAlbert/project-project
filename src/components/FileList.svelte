@@ -18,6 +18,7 @@
 	// here rather than imported, since that module also pulls in aws4fetch/service-role
 	// Supabase types that have no business in a client bundle.
 	const FILE_GRACE_DAYS = 30;
+	const FILE_PAGE_SIZE = 50;
 
 	function purgeWarning(file: FileRow): string | null {
 		if (!file.uploader_deleted_at) return null;
@@ -39,6 +40,7 @@
 		currentFolderId,
 		allFolders,
 		files,
+		paginationKey,
 		viewMode,
 		loading = false,
 		openFileId = null,
@@ -52,6 +54,7 @@
 		currentFolderId: string | null;
 		allFolders: Folder[];
 		files: FileRow[];
+		paginationKey: string;
 		viewMode: 'list' | 'grid';
 		loading?: boolean;
 		openFileId?: string | null;
@@ -73,6 +76,18 @@
 	let renameTarget = $state<FileRow | null>(null);
 	let renameBusy = $state(false);
 	let renameError = $state<string | null>(null);
+	let renderedFileCount = $state(FILE_PAGE_SIZE);
+	let lastPaginationKey = $state<string | null>(null);
+
+	$effect(() => {
+		if (paginationKey === lastPaginationKey) return;
+		lastPaginationKey = paginationKey;
+		renderedFileCount = FILE_PAGE_SIZE;
+		openActionsId = null;
+		rowError = null;
+	});
+
+	let visibleFiles = $derived(files.slice(0, renderedFileCount));
 
 	function toggleActions(fileId: string) {
 		openActionsId = openActionsId === fileId ? null : fileId;
@@ -189,6 +204,10 @@
 		deletingId = null;
 		openActionsId = null;
 	}
+
+	function showMoreFiles() {
+		renderedFileCount = Math.min(renderedFileCount + FILE_PAGE_SIZE, files.length);
+	}
 </script>
 
 {#snippet actionsPanel(file: FileRow)}
@@ -209,7 +228,7 @@
 {/if}
 
 <ul class={viewMode === 'grid' ? 'grid-view' : 'file-list'}>
-	{#each files as file (file.id)}
+	{#each visibleFiles as file (file.id)}
 		{@const parts = splitFilename(file.filename)}
 		{#if viewMode === 'grid'}
 			<li class="grid-item" class:open={openFileId === file.id}>
@@ -271,6 +290,14 @@
 	{/each}
 </ul>
 
+{#if files.length > visibleFiles.length}
+	<div class="window-more">
+		<button type="button" class="btn-plain" onclick={showMoreFiles}>
+			Show more files ({files.length - visibleFiles.length} remaining)
+		</button>
+	</div>
+{/if}
+
 {#if modalFile}
 	<FolderPickerModal
 		allFolders={allFolders}
@@ -301,6 +328,16 @@
 		margin: 0 0 var(--space-4);
 		padding: 0;
 		font-size: 0.82rem;
+	}
+
+	.window-more {
+		display: flex;
+		justify-content: center;
+		padding: var(--space-4) 0;
+	}
+
+	.window-more button {
+		font-size: 0.78rem;
 	}
 
 	.file-list > .file-row {

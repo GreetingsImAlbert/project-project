@@ -6,6 +6,8 @@
 	// rather than imported, since that module also pulls in aws4fetch, which has no
 	// business in a client bundle (same reasoning as FileList's FILE_GRACE_DAYS).
 	const TRASH_GRACE_DAYS = 10;
+	const TRASH_PAGE_SIZE = 50;
+	type TrashKind = 'files' | 'folders' | 'tasks' | 'bomItems' | 'transactions';
 
 	interface FileRow {
 		id: string;
@@ -61,6 +63,13 @@
 	let tasks = $state<TaskRow[]>([]);
 	let bomItems = $state<BomItemRow[]>([]);
 	let transactions = $state<TransactionRow[]>([]);
+	let visibleCounts = $state<Record<TrashKind, number>>({
+		files: TRASH_PAGE_SIZE,
+		folders: TRASH_PAGE_SIZE,
+		tasks: TRASH_PAGE_SIZE,
+		bomItems: TRASH_PAGE_SIZE,
+		transactions: TRASH_PAGE_SIZE,
+	});
 	let loading = $state(true);
 	let loadError = $state<string | null>(null);
 
@@ -93,6 +102,16 @@
 
 	let busyId = $state<string | null>(null);
 	let rowError = $state<{ id: string; message: string } | null>(null);
+
+	let visibleFiles = $derived(files.slice(0, visibleCounts.files));
+	let visibleFolders = $derived(folders.slice(0, visibleCounts.folders));
+	let visibleTasks = $derived(tasks.slice(0, visibleCounts.tasks));
+	let visibleBomItems = $derived(bomItems.slice(0, visibleCounts.bomItems));
+	let visibleTransactions = $derived(transactions.slice(0, visibleCounts.transactions));
+
+	function showMore(kind: TrashKind, total: number) {
+		visibleCounts[kind] = Math.min(visibleCounts[kind] + TRASH_PAGE_SIZE, total);
+	}
 
 	function daysLeft(deletedAt: string): number {
 		const elapsed = (Date.now() - new Date(deletedAt).getTime()) / (24 * 60 * 60 * 1000);
@@ -204,17 +223,25 @@
 	<section class="trash-section">
 		<h3>Files</h3>
 		<ul class="trash-list">
-			{#each files as file (file.id)}
+			{#each visibleFiles as file (file.id)}
+				{@const remaining = daysLeft(file.deleted_at)}
 				<li class="trash-row">
 					<span class="row-label">{file.filename}</span>
 					<span class="row-meta muted">
 						{file.size_bytes != null ? `${Math.round(file.size_bytes).toLocaleString()} B — ` : ''}
-						{daysLeft(file.deleted_at)} day{daysLeft(file.deleted_at) === 1 ? '' : 's'} left
+						{remaining} day{remaining === 1 ? '' : 's'} left
 					</span>
 					{@render actions('file', file.id, file.filename, true)}
 				</li>
 			{/each}
-		</ul>
+			</ul>
+			{#if files.length > visibleFiles.length}
+				<div class="window-more">
+					<button type="button" class="btn-plain" onclick={() => showMore('files', files.length)}>
+						Show more files ({files.length - visibleFiles.length} remaining)
+					</button>
+				</div>
+			{/if}
 	</section>
 {/if}
 
@@ -222,14 +249,22 @@
 	<section class="trash-section">
 		<h3>Folders</h3>
 		<ul class="trash-list">
-			{#each folders as folder (folder.id)}
+			{#each visibleFolders as folder (folder.id)}
+				{@const remaining = daysLeft(folder.deleted_at)}
 				<li class="trash-row">
 					<span class="row-label">{folder.name}</span>
-					<span class="row-meta muted">{daysLeft(folder.deleted_at)} day{daysLeft(folder.deleted_at) === 1 ? '' : 's'} left</span>
+					<span class="row-meta muted">{remaining} day{remaining === 1 ? '' : 's'} left</span>
 					{@render actions('folder', folder.id, folder.name, true)}
 				</li>
 			{/each}
-		</ul>
+			</ul>
+			{#if folders.length > visibleFolders.length}
+				<div class="window-more">
+					<button type="button" class="btn-plain" onclick={() => showMore('folders', folders.length)}>
+						Show more folders ({folders.length - visibleFolders.length} remaining)
+					</button>
+				</div>
+			{/if}
 	</section>
 {/if}
 
@@ -237,17 +272,25 @@
 	<section class="trash-section">
 		<h3>Tasks</h3>
 		<ul class="trash-list">
-			{#each tasks as task (task.id)}
+			{#each visibleTasks as task (task.id)}
+				{@const remaining = daysLeft(task.deleted_at)}
 				<li class="trash-row">
 					<span class="row-label">{task.name}</span>
 					<span class="row-meta muted">
 						{task.category ? `${task.category} — ` : ''}
-						{daysLeft(task.deleted_at)} day{daysLeft(task.deleted_at) === 1 ? '' : 's'} left
+						{remaining} day{remaining === 1 ? '' : 's'} left
 					</span>
 					{@render actions('task', task.id, task.name, true)}
 				</li>
 			{/each}
-		</ul>
+			</ul>
+			{#if tasks.length > visibleTasks.length}
+				<div class="window-more">
+					<button type="button" class="btn-plain" onclick={() => showMore('tasks', tasks.length)}>
+						Show more tasks ({tasks.length - visibleTasks.length} remaining)
+					</button>
+				</div>
+			{/if}
 	</section>
 {/if}
 
@@ -255,17 +298,25 @@
 	<section class="trash-section">
 		<h3>BOM items</h3>
 		<ul class="trash-list">
-			{#each bomItems as item (item.id)}
+			{#each visibleBomItems as item (item.id)}
+				{@const remaining = daysLeft(item.deleted_at)}
 				<li class="trash-row">
 					<span class="row-label">{item.part_name}</span>
 					<span class="row-meta muted">
 						{item.total_cost != null ? `${formatCurrency(item.total_cost)} — ` : ''}
-						{daysLeft(item.deleted_at)} day{daysLeft(item.deleted_at) === 1 ? '' : 's'} left
+						{remaining} day{remaining === 1 ? '' : 's'} left
 					</span>
 					{@render actions('bom_item', item.id, item.part_name, canEditMoney)}
 				</li>
 			{/each}
-		</ul>
+			</ul>
+			{#if bomItems.length > visibleBomItems.length}
+				<div class="window-more">
+					<button type="button" class="btn-plain" onclick={() => showMore('bomItems', bomItems.length)}>
+						Show more BOM items ({bomItems.length - visibleBomItems.length} remaining)
+					</button>
+				</div>
+			{/if}
 	</section>
 {/if}
 
@@ -273,19 +324,27 @@
 	<section class="trash-section">
 		<h3>Transactions</h3>
 		<ul class="trash-list">
-			{#each transactions as transaction (transaction.id)}
+			{#each visibleTransactions as transaction (transaction.id)}
 				{@const label = transaction.item_name ?? transaction.type}
+				{@const remaining = daysLeft(transaction.deleted_at)}
 				<li class="trash-row">
 					<span class="row-label">{label}</span>
 					<span class="row-meta muted">
 						{transaction.total_cost != null ? `${formatCurrency(transaction.total_cost)} — ` : ''}
 						{transaction.transaction_date} —
-						{daysLeft(transaction.deleted_at)} day{daysLeft(transaction.deleted_at) === 1 ? '' : 's'} left
+						{remaining} day{remaining === 1 ? '' : 's'} left
 					</span>
 					{@render actions('transaction', transaction.id, label, canEditMoney)}
 				</li>
 			{/each}
-		</ul>
+			</ul>
+			{#if transactions.length > visibleTransactions.length}
+				<div class="window-more">
+					<button type="button" class="btn-plain" onclick={() => showMore('transactions', transactions.length)}>
+						Show more transactions ({transactions.length - visibleTransactions.length} remaining)
+					</button>
+				</div>
+			{/if}
 	</section>
 {/if}
 
@@ -310,6 +369,16 @@
 		margin: 0;
 		padding: 0;
 		font-size: 0.82rem;
+	}
+
+	.window-more {
+		display: flex;
+		justify-content: center;
+		padding: var(--space-3) 0 0;
+	}
+
+	.window-more button {
+		font-size: 0.78rem;
 	}
 
 	.trash-list > .trash-row {

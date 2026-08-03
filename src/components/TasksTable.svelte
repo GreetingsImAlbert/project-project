@@ -84,7 +84,12 @@
 		const task = tasksState.tasks.find((t) => t.id === id);
 		if (!task) return;
 
-		if (onlyMine && !task.assignees.some((a) => a.user_id === currentUserId)) onlyMine = false;
+		if (onlyMine && !task.assignees.some((a) => a.user_id === currentUserId)) {
+			onlyMine = false;
+			renderedTaskCount = TASK_PAGE_SIZE;
+		}
+		const filteredIndex = visibleTasks.findIndex((candidate) => candidate.id === id);
+		if (filteredIndex >= 0) renderedTaskCount = Math.max(renderedTaskCount, filteredIndex + 1);
 		collapsed = collapsed.filter((c) => c !== (task.category?.trim() || UNCATEGORIZED));
 
 		openId = id;
@@ -162,6 +167,7 @@
 
 	const NEW_CATEGORY_VALUE = '__new__';
 	const UNCATEGORIZED = 'Uncategorized';
+	const TASK_PAGE_SIZE = 50;
 
 	// Same derivation as BomTable's: the dropdown offers whatever categories the
 	// current tasks already use, so the backend still only ever stores free text.
@@ -177,12 +183,15 @@
 	let editCategoryEffective = $derived(editCategorySelect === NEW_CATEGORY_VALUE ? editCategoryNew : editCategorySelect);
 
 	let onlyMine = $state(false);
+	let renderedTaskCount = $state(TASK_PAGE_SIZE);
 
 	let visibleTasks = $derived(
 		onlyMine
 			? tasksState.tasks.filter((task) => task.assignees.some((a) => a.user_id === currentUserId))
 			: tasksState.tasks,
 	);
+
+	let pagedTasks = $derived(visibleTasks.slice(0, renderedTaskCount));
 
 	// The calendar has no rows to hang a panel off, so the open task is looked up here
 	// and its panel rendered under the grid.
@@ -206,6 +215,18 @@
 		return keys.map((category) => ({ category, tasks: map.get(category)! }));
 	});
 
+	// Keep grouping and category counts based on the full filtered list, but only hand
+	// the first window of rows to the DOM. The calendar, summary, and export stay complete.
+	let renderedGroups = $derived.by(() => {
+		const renderedIds = new Set(pagedTasks.map((task) => task.id));
+		return groups
+			.map((group) => ({
+				...group,
+				renderedTasks: group.tasks.filter((task) => renderedIds.has(task.id)),
+			}))
+			.filter((group) => group.renderedTasks.length > 0);
+	});
+
 	// Nothing to fold when every task is uncategorized: the one band would say
 	// 'Uncategorized' over the whole list and fold it away entirely.
 	let showGroupHeaders = $derived(groups.length > 1 || groups[0]?.category !== UNCATEGORIZED);
@@ -221,6 +242,10 @@
 
 	function toggleGroup(category: string) {
 		collapsed = isCollapsed(category) ? collapsed.filter((c) => c !== category) : [...collapsed, category];
+	}
+
+	function showMoreTasks() {
+		renderedTaskCount = Math.min(renderedTaskCount + TASK_PAGE_SIZE, visibleTasks.length);
 	}
 
 	function openIn(tasks: Task[]): number {
@@ -1120,7 +1145,7 @@
 				<span class="head-status">Status</span>
 			</div>
 
-			{#each groups as group (group.category)}
+			{#each renderedGroups as group (group.category)}
 				<!-- The band is a real button spanning the row, so a category folds from
 				     the keyboard as well as the pointer. It's also where the category's
 				     colour shows in List mode — the same colour its popsicles take in
@@ -1140,7 +1165,7 @@
 				{/if}
 
 				{#if !isCollapsed(group.category)}
-					{#each group.tasks as task (task.id)}
+					{#each group.renderedTasks as task (task.id)}
 						{@const status = statusOf(task)}
 						<!-- The anchor a `#task-<id>` link scrolls to — see openLinkedTask. -->
 						<div class="task-item" id={`task-${task.id}`} class:open={openId === task.id}>
@@ -1215,6 +1240,14 @@
 				{/if}
 			{/each}
 		</div>
+
+		{#if renderedTaskCount < visibleTasks.length}
+			<div class="window-more">
+				<button type="button" class="btn-plain" onclick={showMoreTasks}>
+					Show more tasks ({visibleTasks.length - renderedTaskCount} remaining)
+				</button>
+			</div>
+		{/if}
 	{/if}
 </section>
 
@@ -1311,6 +1344,16 @@
 
 	.empty {
 		font-size: 0.85rem;
+	}
+
+	.window-more {
+		display: flex;
+		justify-content: center;
+		padding: var(--space-4) 0;
+	}
+
+	.window-more button {
+		font-size: 0.78rem;
 	}
 
 	/* List */

@@ -112,6 +112,7 @@
 	// Bumped per open so a slow response for a file the user already navigated away
 	// from can't paint itself into the panel.
 	let requestSeq = 0;
+	let contentRequest: AbortController | null = null;
 	let loadedId: string | null = null;
 	// Latched from editOnOpen at the moment a new file arrives, and spent by the load that
 	// follows — the prop may well have gone back to false by the time the content lands.
@@ -142,6 +143,7 @@
 	}
 
 	function loadContent(current: ViewerFile) {
+		contentRequest?.abort();
 		content = null;
 		error = null;
 		downloadError = null;
@@ -151,9 +153,11 @@
 		if (!isTextKind(fileKind(current.filename))) return;
 
 		const seq = ++requestSeq;
+		const controller = new AbortController();
+		contentRequest = controller;
 		loading = true;
 
-		fetch(`/api/files/${current.id}/content`)
+		fetch(`/api/files/${current.id}/content`, { signal: controller.signal })
 			.then(async (res) => {
 				if (seq !== requestSeq) return;
 				if (!res.ok) {
@@ -173,8 +177,9 @@
 					if (content !== null && canEdit) startEditing();
 				}
 			})
-			.catch(() => {
+			.catch((requestError) => {
 				if (seq !== requestSeq) return;
+				if (controller.signal.aborted || (requestError instanceof DOMException && requestError.name === 'AbortError')) return;
 				error = 'Could not load this file';
 				loading = false;
 			});
@@ -184,6 +189,9 @@
 		const current = file;
 
 		if (!current) {
+			requestSeq += 1;
+			contentRequest?.abort();
+			contentRequest = null;
 			loadedId = null;
 			autoEditPending = false;
 			// Every path that closes the panel has already asked about an unsaved buffer, so
@@ -526,6 +534,9 @@
 		window.addEventListener('click', onWindowClick);
 		window.addEventListener('beforeunload', onBeforeUnload);
 		return onSwapOrDestroy(() => {
+			requestSeq += 1;
+			contentRequest?.abort();
+			contentRequest = null;
 			window.removeEventListener('keydown', onWindowKeydown);
 			window.removeEventListener('resize', onWindowResize);
 			window.removeEventListener('pointerdown', onWindowPointerDown);

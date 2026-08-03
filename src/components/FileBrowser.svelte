@@ -98,6 +98,9 @@
 	let renameFolderTarget = $state<Folder | null>(null);
 	let renameFolderBusy = $state(false);
 	let renameFolderError = $state<string | null>(null);
+	const FOLDER_PAGE_SIZE = 50;
+	let renderedFolderCount = $state(FOLDER_PAGE_SIZE);
+	let lastFolderPageKey = $state<string | null>(null);
 
 	function setCreateMode(mode: 'folder' | 'file' | 'upload') {
 		createMode = mode;
@@ -110,6 +113,10 @@
 
 	function toggleFolderActions(folderId: string) {
 		openFolderActionsId = openFolderActionsId === folderId ? null : folderId;
+	}
+
+	function showMoreFolders() {
+		renderedFolderCount = Math.min(renderedFolderCount + FOLDER_PAGE_SIZE, subfolders.length);
 	}
 
 	function handleWindowClick(e: MouseEvent) {
@@ -128,9 +135,26 @@
 
 	let folderById = $derived(new Map(allFolders.map((f) => [f.id, f])));
 
-	let subfolders = $derived(
-		allFolders.filter((f) => (f.parent_folder_id ?? null) === (currentFolderId ?? null))
-	);
+	let foldersByParent = $derived.by(() => {
+		const map = new Map<string | null, Folder[]>();
+		for (const folder of allFolders) {
+			const parentId = folder.parent_folder_id ?? null;
+			const children = map.get(parentId) ?? [];
+			children.push(folder);
+			map.set(parentId, children);
+		}
+		return map;
+	});
+
+	let subfolders = $derived(foldersByParent.get(currentFolderId ?? null) ?? []);
+	let visibleSubfolders = $derived(subfolders.slice(0, renderedFolderCount));
+
+	$effect(() => {
+		const pageKey = currentFolderId ?? 'root';
+		if (pageKey === lastFolderPageKey) return;
+		lastFolderPageKey = pageKey;
+		renderedFolderCount = FOLDER_PAGE_SIZE;
+	});
 
 	let breadcrumbs = $derived.by(() => {
 		const crumbs: Folder[] = [];
@@ -159,11 +183,15 @@
 	// Bumped on every navigate() call so a stale response from an earlier click (e.g. two
 	// folders clicked in quick succession) can't overwrite a newer one that already resolved.
 	let requestSeq = 0;
+	let folderRequest: AbortController | null = null;
 
 	async function navigate(folderId: string | null, historyMode: 'push' | 'replace' | 'none' = 'push') {
 		if (folderId === currentFolderId) return;
 
 		const requestId = ++requestSeq;
+		folderRequest?.abort();
+		const controller = new AbortController();
+		folderRequest = controller;
 		loading = true;
 		error = null;
 
@@ -171,7 +199,15 @@
 			? `/api/projects/${projectId}/files?folderId=${folderId}`
 			: `/api/projects/${projectId}/files`;
 
-		const res = await fetch(url);
+		let res: Response;
+		try {
+			res = await fetch(url, { signal: controller.signal });
+		} catch (requestError) {
+			if (controller.signal.aborted || requestId !== requestSeq) return;
+			error = requestError instanceof Error ? requestError.message : 'Could not load files';
+			loading = false;
+			return;
+		}
 
 		if (requestId !== requestSeq) return;
 
@@ -184,6 +220,7 @@
 		files = await res.json();
 		currentFolderId = folderId;
 		loading = false;
+		if (requestId === requestSeq) folderRequest = null;
 
 		// A *null* history state, deliberately. Astro's ClientRouter listens on popstate too,
 		// and treats any entry carrying state as one of its own — it reads `state.index` and
@@ -454,6 +491,9 @@
 		window.addEventListener('popstate', onPopState);
 		window.addEventListener('click', handleWindowClick);
 		return onSwapOrDestroy(() => {
+			requestSeq += 1;
+			folderRequest?.abort();
+			folderRequest = null;
 			window.removeEventListener('popstate', onPopState);
 			window.removeEventListener('click', handleWindowClick);
 		});
@@ -623,7 +663,7 @@
 
 {#if subfolders.length > 0}
 	<ul class={viewMode === 'grid' ? 'grid-view' : 'folder-list'}>
-		{#each subfolders as folder (folder.id)}
+		{#each visibleSubfolders as folder (folder.id)}
 			{#if viewMode === 'grid'}
 				<li class="grid-item">
 					<a href={hrefFor(folder.id)} onclick={(e) => handleLinkClick(e, folder.id)} class="grid-download">
@@ -677,6 +717,13 @@
 			{/if}
 		{/each}
 	</ul>
+	{#if subfolders.length > visibleSubfolders.length}
+		<div class="window-more">
+			<button type="button" class="btn-plain" onclick={showMoreFolders}>
+				Show more folders ({subfolders.length - visibleSubfolders.length} remaining)
+			</button>
+		</div>
+	{/if}
 {/if}
 
 {#if error}<p class="row-error">{error}</p>{/if}
@@ -684,6 +731,7 @@
 <FileList
 	canEdit={canEdit}
 	currentFolderId={currentFolderId}
+	paginationKey={currentFolderId ?? 'root'}
 	allFolders={allFolders}
 	files={loading ? [] : files}
 	viewMode={viewMode}
@@ -882,6 +930,16 @@
 		margin: 0 0 var(--space-4);
 		padding: 0;
 		font-size: 0.82rem;
+	}
+
+	.window-more {
+		display: flex;
+		justify-content: center;
+		padding: var(--space-4) 0;
+	}
+
+	.window-more button {
+		font-size: 0.78rem;
 	}
 
 	.folder-list > .folder-row {

@@ -75,7 +75,3 @@ export function replaceTransactionGroup(parentId: string, rows: Transaction[]) {
 	const rest = transactionsState.items.filter((x) => x.id !== parentId && x.group_id !== parentId);
 	transactionsState.items = [...rest, ...rows];
 }
-
-export function linesOf(parentId: string): Transaction[] {
-	return transactionsState.items.filter((x) => x.group_id === parentId);
-}
