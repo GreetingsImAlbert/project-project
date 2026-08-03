@@ -9,21 +9,24 @@ export const POST: APIRoute = async ({ params, locals }) => {
 	const postId = params.postId;
 	if (!postId) return new Response('Post not found', { status: 404 });
 
-	const { data: post, error: postError } = await locals.supabase
-		.from('forum_posts')
-		.select('id, deleted_at')
-		.eq('id', postId)
-		.maybeSingle();
+	// Post validity and this user's current like are independent reads. Run them
+	// together; the mutation below still waits for both before changing state.
+	const [{ data: post, error: postError }, { data: existing, error: existingError }] = await Promise.all([
+		locals.supabase
+			.from('forum_posts')
+			.select('id, deleted_at')
+			.eq('id', postId)
+			.maybeSingle(),
+		locals.supabase
+			.from('forum_post_likes')
+			.select('post_id')
+			.eq('post_id', postId)
+			.eq('user_id', locals.user.id)
+			.maybeSingle(),
+	]);
 	if (postError) return new Response(`Failed to read post: ${postError.message}`, { status: 500 });
 	if (!post) return new Response('Post not found', { status: 404 });
 	if (post.deleted_at) return new Response('Deleted posts cannot be liked', { status: 409 });
-
-	const { data: existing, error: existingError } = await locals.supabase
-		.from('forum_post_likes')
-		.select('post_id')
-		.eq('post_id', postId)
-		.eq('user_id', locals.user.id)
-		.maybeSingle();
 	if (existingError) return new Response(`Failed to read like: ${existingError.message}`, { status: 500 });
 
 	let liked: boolean;

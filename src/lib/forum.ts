@@ -175,50 +175,53 @@ export async function readForumFeed(client: ForumClient, userId: string, before:
 	let replyLikes: ReplyLikeRow[] = [];
 
 	if (postIds.length > 0) {
-		const { data: rawReplies, error: replyError } = await client
-			.from('forum_replies')
-			.select('id, post_id, body, author_id, created_at, deleted_at')
-			.in('post_id', postIds)
-			.order('created_at', { ascending: true })
-			.order('id', { ascending: true })
-			.overrideTypes<ReplyRow[]>();
+		// These two reads only share postIds, so keep them on the wire together.
+		const [{ data: rawReplies, error: replyError }, { data: rawPostLikes, error: postLikeError }] = await Promise.all([
+			client
+				.from('forum_replies')
+				.select('id, post_id, body, author_id, created_at, deleted_at')
+				.in('post_id', postIds)
+				.order('created_at', { ascending: true })
+				.order('id', { ascending: true })
+				.overrideTypes<ReplyRow[]>(),
+			client
+				.from('forum_post_likes')
+				.select('post_id, user_id')
+				.in('post_id', postIds)
+				.overrideTypes<PostLikeRow[]>(),
+		]);
 		if (replyError) return { error: `Failed to load forum replies: ${replyError.message}` };
-		replies = rawReplies ?? [];
-
-		const { data: rawPostLikes, error: postLikeError } = await client
-			.from('forum_post_likes')
-			.select('post_id, user_id')
-			.in('post_id', postIds)
-			.overrideTypes<PostLikeRow[]>();
 		if (postLikeError) return { error: `Failed to load forum likes: ${postLikeError.message}` };
+		replies = rawReplies ?? [];
 		postLikes = rawPostLikes ?? [];
-
-		const replyIds = replies.map((reply) => reply.id);
-		if (replyIds.length > 0) {
-			const { data: rawReplyLikes, error: replyLikeError } = await client
-				.from('forum_reply_likes')
-				.select('reply_id, user_id')
-				.in('reply_id', replyIds)
-				.overrideTypes<ReplyLikeRow[]>();
-			if (replyLikeError) return { error: `Failed to load forum reply likes: ${replyLikeError.message}` };
-			replyLikes = rawReplyLikes ?? [];
-		}
 	}
 
 	const authorIds = [...new Set([...posts.map((post) => post.author_id), ...replies.map((reply) => reply.author_id)].filter((id): id is string => Boolean(id)))];
+	const replyIds = replies.map((reply) => reply.id);
 	const profiles = new Map<string, ProfileRow>();
-	if (authorIds.length > 0) {
-		// This query is deliberately limited to public profile fields. The feed is global,
-		// so it uses the server-side client instead of expanding the profiles RLS policy to
-		// disclose private account fields to unrelated users.
-		const { data: profileRows, error: profileError } = await client
-			.from('profiles')
-			.select('id, display_name, avatar')
-			.in('id', authorIds)
-			.overrideTypes<ProfileRow[]>();
-		if (profileError) return { error: `Failed to load forum authors: ${profileError.message}` };
-		for (const profile of profileRows ?? []) profiles.set(profile.id, profile);
-	}
+
+	// Reply likes depend on replies, and profiles depend on the author ids derived from
+	// them, but those two reads are independent once replies are known.
+	const replyLikesQuery = replyIds.length > 0
+		? client
+				.from('forum_reply_likes')
+				.select('reply_id, user_id')
+				.in('reply_id', replyIds)
+				.overrideTypes<ReplyLikeRow[]>()
+		: null;
+	const profilesQuery = authorIds.length > 0
+		? client
+				.from('profiles')
+				.select('id, display_name, avatar')
+				.in('id', authorIds)
+				.overrideTypes<ProfileRow[]>()
+		: null;
+
+	const [replyLikesResult, profilesResult] = await Promise.all([replyLikesQuery, profilesQuery]);
+	if (replyLikesResult?.error) return { error: `Failed to load forum reply likes: ${replyLikesResult.error.message}` };
+	if (profilesResult?.error) return { error: `Failed to load forum authors: ${profilesResult.error.message}` };
+	replyLikes = replyLikesResult?.data ?? [];
+	for (const profile of profilesResult?.data ?? []) profiles.set(profile.id, profile);
 
 	const postLikeMap = new Map<string, string[]>();
 	for (const like of postLikes) postLikeMap.set(like.post_id, [...(postLikeMap.get(like.post_id) ?? []), like.user_id]);

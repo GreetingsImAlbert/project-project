@@ -18,20 +18,23 @@ export const POST: APIRoute = async ({ params, locals }) => {
 	if (!reply) return new Response('Reply not found', { status: 404 });
 	if (reply.deleted_at) return new Response('Deleted replies cannot be liked', { status: 409 });
 
-	const { data: post, error: postError } = await locals.supabase
-		.from('forum_posts')
-		.select('id, deleted_at')
-		.eq('id', reply.post_id)
-		.maybeSingle();
+	// Once the reply gives us its post id, post validity and this user's like state
+	// are independent reads and can share the round trip.
+	const [{ data: post, error: postError }, { data: existing, error: existingError }] = await Promise.all([
+		locals.supabase
+			.from('forum_posts')
+			.select('id, deleted_at')
+			.eq('id', reply.post_id)
+			.maybeSingle(),
+		locals.supabase
+			.from('forum_reply_likes')
+			.select('reply_id')
+			.eq('reply_id', replyId)
+			.eq('user_id', locals.user.id)
+			.maybeSingle(),
+	]);
 	if (postError) return new Response(`Failed to read post: ${postError.message}`, { status: 500 });
 	if (!post || post.deleted_at) return new Response('Replies to deleted posts cannot be liked', { status: 409 });
-
-	const { data: existing, error: existingError } = await locals.supabase
-		.from('forum_reply_likes')
-		.select('reply_id')
-		.eq('reply_id', replyId)
-		.eq('user_id', locals.user.id)
-		.maybeSingle();
 	if (existingError) return new Response(`Failed to read like: ${existingError.message}`, { status: 500 });
 
 	let liked: boolean;
