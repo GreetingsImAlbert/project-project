@@ -40,12 +40,10 @@
 		author: Author;
 	};
 
-	type ReplyTarget = {
+	type PendingReply = PendingContent & {
 		postId: string;
 		parentReplyId: string | null;
 	};
-
-	type PendingReply = PendingContent & ReplyTarget;
 
 	let {
 		currentUserId,
@@ -64,8 +62,7 @@
 	let error = $state<string | null>(null);
 	let composerBody = $state('');
 	let composerExpanded = $state(false);
-	let replyBody = $state('');
-	let replyTarget = $state<ReplyTarget | null>(null);
+	let replyDrafts = $state<Record<string, string>>({});
 	let posting = $state(false);
 	let replying = $state(false);
 	let pendingPost = $state<PendingContent | null>(null);
@@ -106,9 +103,49 @@
 		return Boolean(expandedReplyIds[replyId]);
 	}
 
-	function expandReplies(postId: string, parentReplyId: string | null) {
-		if (parentReplyId === null) expandedPostIds = { ...expandedPostIds, [postId]: true };
-		else expandedReplyIds = { ...expandedReplyIds, [parentReplyId]: true };
+	function replyKey(postId: string, parentReplyId: string | null): string {
+		return `${postId}:${parentReplyId ?? 'root'}`;
+	}
+
+	function getReplyDraft(postId: string, parentReplyId: string | null): string {
+		return replyDrafts[replyKey(postId, parentReplyId)] ?? '';
+	}
+
+	function setReplyDraft(postId: string, parentReplyId: string | null, body: string) {
+		replyDrafts = { ...replyDrafts, [replyKey(postId, parentReplyId)]: body };
+	}
+
+	function clearReplyDraft(postId: string, parentReplyId: string | null) {
+		const next = { ...replyDrafts };
+		delete next[replyKey(postId, parentReplyId)];
+		replyDrafts = next;
+	}
+
+	function setRepliesExpanded(postId: string, parentReplyId: string | null, expanded: boolean) {
+		if (parentReplyId === null) {
+			const next = { ...expandedPostIds };
+			if (expanded) next[postId] = true;
+			else delete next[postId];
+			expandedPostIds = next;
+			return;
+		}
+
+		const next = { ...expandedReplyIds };
+		if (expanded) next[parentReplyId] = true;
+		else delete next[parentReplyId];
+		expandedReplyIds = next;
+	}
+
+	function toggleReplies(postId: string, parentReplyId: string | null) {
+		if (replying) return;
+		const expanded = parentReplyId === null ? isPostRepliesExpanded(postId) : isReplyRepliesExpanded(parentReplyId);
+		setRepliesExpanded(postId, parentReplyId, !expanded);
+		closeMenu();
+	}
+
+	function handleReplyInput(event: Event, postId: string, parentReplyId: string | null) {
+		const target = event.currentTarget;
+		if (target instanceof HTMLTextAreaElement) setReplyDraft(postId, parentReplyId, target.value);
 	}
 
 	function menuKey(type: 'post' | 'reply', id: string): string {
@@ -205,18 +242,6 @@
 		}
 	}
 
-	function sameReplyTarget(target: ReplyTarget | null, postId: string, parentReplyId: string | null): boolean {
-		return target?.postId === postId && target.parentReplyId === parentReplyId;
-	}
-
-	function openReply(postId: string, parentReplyId: string | null) {
-		if (replying) return;
-		expandReplies(postId, parentReplyId);
-		closeMenu();
-		replyTarget = sameReplyTarget(replyTarget, postId, parentReplyId) ? null : { postId, parentReplyId };
-		replyBody = '';
-	}
-
 	function appendReply(replies: Reply[], reply: Reply): Reply[] {
 		if (reply.parentReplyId === null) return [...replies, reply];
 
@@ -257,7 +282,7 @@
 	}
 
 	async function submitReply(postId: string, parentReplyId: string | null) {
-		const body = replyBody.trim();
+		const body = getReplyDraft(postId, parentReplyId).trim();
 		if (replying || !body) return;
 		const pending = {
 			postId,
@@ -267,8 +292,7 @@
 			author: { id: currentUserId, displayName: currentDisplayName || 'You', avatar: currentAvatar },
 		};
 		pendingReply = pending;
-		replyBody = '';
-		replyTarget = null;
+		clearReplyDraft(postId, parentReplyId);
 		replying = true;
 		try {
 			const response = await fetch(`/api/forum/posts/${postId}/replies`, {
@@ -294,8 +318,7 @@
 			});
 			pendingReply = null;
 		} catch (cause) {
-			replyBody = body;
-			replyTarget = { postId, parentReplyId };
+			setReplyDraft(postId, parentReplyId, body);
 			pendingReply = null;
 			toastError(cause instanceof Error ? cause.message : 'Could not create reply');
 		} finally {
@@ -328,7 +351,7 @@
 		const actionKey = `reply-like-${reply.id}`;
 		if (post.deleted || reply.deleted || isActionPending(actionKey)) return;
 		const optimisticLiked = !reply.likedByMe;
-		// The reply button gets the same immediate feedback; only its count waits for
+		// The like icon gets the same immediate feedback; only its count waits for
 		// the server response.
 		posts = posts.map((item) => item.id !== post.id ? item : updatePostReply(item, reply.id, (itemReply) => ({ ...itemReply, likedByMe: optimisticLiked })));
 		setActionPending(actionKey, true);
@@ -385,16 +408,34 @@
 
 <svelte:window onclick={handleWindowClick} onkeydown={handleWindowKeydown} />
 
+{#snippet likeIcon()}
+	<svg class="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+		<path d="M7.5 10.5v9.5H4v-9.5h3.5Z" />
+		<path d="M7.5 10.5h2.1l2.8-5.6a1.5 1.5 0 0 1 2.8.9l-.7 4.7h4a2 2 0 0 1 1.9 2.6l-1.8 5.4a2.7 2.7 0 0 1-2.6 1.9H7.5" />
+	</svg>
+{/snippet}
+
+{#snippet replyIcon()}
+	<svg class="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+		<path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H7l-4 2v-4.6a7.5 7.5 0 1 1 17-4.9Z" />
+	</svg>
+{/snippet}
+
 {#snippet replyComposer(postId: string, parentReplyId: string | null, label: string)}
-	{#if sameReplyTarget(replyTarget, postId, parentReplyId)}
-		<form class="reply-form" onsubmit={(event) => { event.preventDefault(); void submitReply(postId, parentReplyId); }}>
-			<textarea bind:value={replyBody} maxlength={FORUM_MAX_BODY_LENGTH} rows="2" placeholder="Write a reply…" aria-label={label} disabled={replying}></textarea>
-			<div class="reply-actions">
-				<button type="submit" disabled={replying || !replyBody.trim()}>{replying ? 'Replying…' : 'Reply'}</button>
-				<button type="button" class="btn-plain" disabled={replying} onclick={() => openReply(postId, parentReplyId)}>Cancel</button>
-			</div>
-		</form>
-	{/if}
+	<form class="reply-form" onsubmit={(event) => { event.preventDefault(); void submitReply(postId, parentReplyId); }}>
+		<textarea
+			value={getReplyDraft(postId, parentReplyId)}
+			oninput={(event) => handleReplyInput(event, postId, parentReplyId)}
+			maxlength={FORUM_MAX_BODY_LENGTH}
+			rows="2"
+			placeholder="Write a reply…"
+			aria-label={label}
+			disabled={replying}
+		></textarea>
+		<div class="reply-actions">
+			<button type="submit" disabled={replying || !getReplyDraft(postId, parentReplyId).trim()}>{replying ? 'Replying…' : 'Reply'}</button>
+		</div>
+	</form>
 {/snippet}
 
 {#snippet pendingReplyView(pending: PendingReply)}
@@ -426,13 +467,13 @@
 						<span aria-hidden="true">⋮</span>
 					</button>
 					{#if isMenuOpen('reply', reply.id)}
-										<div class="more-menu" role="menu" tabindex="-1">
-											<button
-												type="button"
-												class="delete-action"
-												role="menuitem"
-												disabled={isActionPending(`reply-delete-${reply.id}`)}
-												onclick={() => { closeMenu(); void deleteReply(post, reply); }}
+						<div class="more-menu" role="menu" tabindex="-1">
+							<button
+								type="button"
+								class="delete-action"
+								role="menuitem"
+								disabled={isActionPending(`reply-delete-${reply.id}`)}
+								onclick={() => { closeMenu(); void deleteReply(post, reply); }}
 							>
 								Delete
 							</button>
@@ -449,16 +490,36 @@
 			</div>
 			<p class="reply-body">{reply.deleted ? 'This reply was deleted.' : reply.body}</p>
 			<div class="post-actions">
-				<button type="button" class:liked={reply.likedByMe} class:like-pending={isActionPending(`reply-like-${reply.id}`)} class="btn-plain action-button" disabled={post.deleted || reply.deleted || isActionPending(`reply-like-${reply.id}`)} onclick={() => void toggleReplyLike(post, reply)}>
-					{reply.likedByMe ? 'Liked' : 'Like'} · {reply.likeCount}
+				<button
+					type="button"
+					class:liked={reply.likedByMe}
+					class:like-pending={isActionPending(`reply-like-${reply.id}`)}
+					class="icon-action"
+					aria-label={reply.likedByMe ? `Unlike reply (${reply.likeCount})` : `Like reply (${reply.likeCount})`}
+					title={reply.likedByMe ? 'Unlike reply' : 'Like reply'}
+					disabled={post.deleted || reply.deleted || isActionPending(`reply-like-${reply.id}`)}
+					onclick={() => void toggleReplyLike(post, reply)}
+				>
+					{@render likeIcon()}
+					<span class="action-count" aria-hidden="true">{reply.likeCount}</span>
 				</button>
 				{#if !post.deleted && !reply.deleted}
-					<button type="button" class="btn-plain action-button" disabled={replying} aria-expanded={isReplyRepliesExpanded(reply.id)} onclick={() => openReply(post.id, reply.id)}>Reply</button>
+					<button
+						type="button"
+						class="icon-action"
+						aria-label={isReplyRepliesExpanded(reply.id) ? 'Hide replies' : 'Show replies'}
+						title={isReplyRepliesExpanded(reply.id) ? 'Hide replies' : 'Show replies'}
+						aria-expanded={isReplyRepliesExpanded(reply.id)}
+						disabled={replying}
+						onclick={() => toggleReplies(post.id, reply.id)}
+					>
+						{@render replyIcon()}
+					</button>
 				{/if}
 			</div>
 		</div>
 
-		{#if !post.deleted && !reply.deleted}
+		{#if !post.deleted && !reply.deleted && isReplyRepliesExpanded(reply.id)}
 			{@render replyComposer(post.id, reply.id, `Reply to ${reply.author.displayName}`)}
 		{/if}
 
@@ -566,15 +627,35 @@
 					</div>
 					<p class="post-body">{post.deleted ? 'This post was deleted.' : post.body}</p>
 					<div class="post-actions">
-						<button type="button" class:liked={post.likedByMe} class:like-pending={isActionPending(`post-like-${post.id}`)} class="btn-plain action-button" disabled={post.deleted || isActionPending(`post-like-${post.id}`)} onclick={() => void togglePostLike(post)}>
-							{post.likedByMe ? 'Liked' : 'Like'} · {post.likeCount}
+						<button
+							type="button"
+							class:liked={post.likedByMe}
+							class:like-pending={isActionPending(`post-like-${post.id}`)}
+							class="icon-action"
+							aria-label={post.likedByMe ? `Unlike post (${post.likeCount})` : `Like post (${post.likeCount})`}
+							title={post.likedByMe ? 'Unlike post' : 'Like post'}
+							disabled={post.deleted || isActionPending(`post-like-${post.id}`)}
+							onclick={() => void togglePostLike(post)}
+						>
+							{@render likeIcon()}
+							<span class="action-count" aria-hidden="true">{post.likeCount}</span>
 						</button>
 						{#if !post.deleted}
-							<button type="button" class="btn-plain action-button" disabled={replying} aria-expanded={isPostRepliesExpanded(post.id)} onclick={() => openReply(post.id, null)}>Reply</button>
+							<button
+								type="button"
+								class="icon-action"
+								aria-label={isPostRepliesExpanded(post.id) ? 'Hide replies' : 'Show replies'}
+								title={isPostRepliesExpanded(post.id) ? 'Hide replies' : 'Show replies'}
+								aria-expanded={isPostRepliesExpanded(post.id)}
+								disabled={replying}
+								onclick={() => toggleReplies(post.id, null)}
+							>
+								{@render replyIcon()}
+							</button>
 						{/if}
 					</div>
 
-					{#if !post.deleted}
+					{#if !post.deleted && isPostRepliesExpanded(post.id)}
 						{@render replyComposer(post.id, null, `Reply to ${post.author.displayName}`)}
 					{/if}
 
@@ -828,23 +909,52 @@
 	.post-actions {
 		display: flex;
 		flex-wrap: wrap;
-		gap: var(--space-1);
+		gap: var(--space-3);
 	}
 
-	.action-button {
-		padding: var(--space-1) var(--space-2);
+	.icon-action {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-1);
+		min-height: 1.5rem;
+		padding: 0;
+		border: 0;
+		background: transparent;
+		color: var(--color-muted);
 		font-size: 0.74rem;
+	}
+
+	.icon-action:hover,
+	.icon-action[aria-expanded='true'] {
+		border-color: transparent;
+		background: transparent;
+		color: var(--color-fg);
+		opacity: 1;
+	}
+
+	.icon-action:disabled {
+		border-color: transparent;
+		background: transparent;
+	}
+
+	.action-icon {
+		width: 1rem;
+		height: 1rem;
+		flex: 0 0 auto;
+	}
+
+	.action-count {
+		line-height: 1;
 	}
 
 	/* A pending like is disabled to prevent duplicate requests, but its optimistic
 	   colour should still be fully visible while the server confirms the count. */
-	.action-button.like-pending {
+	.icon-action.like-pending {
 		opacity: 1;
 	}
 
-	.action-button.liked {
+	.icon-action.liked {
 		color: var(--color-success);
-		border-color: var(--color-success);
 	}
 
 	.delete-action {
@@ -870,7 +980,6 @@
 		border: 1px solid var(--color-border);
 		border-left: none;
 		border-radius: var(--radius-sm);
-		background: var(--color-surface-inset);
 		padding: 0 var(--space-3);
 	}
 
