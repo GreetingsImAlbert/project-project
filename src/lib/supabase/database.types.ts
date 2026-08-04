@@ -790,6 +790,35 @@ export type Database = {
     }
     Functions: {
       can_edit_money: { Args: { check_project_id: string }; Returns: boolean }
+      create_bulk_transaction_with_lines: {
+        Args: {
+          p_ghost_member_id: string
+          p_item_url: string
+          p_label: string
+          p_lines: Json
+          p_member_id: string
+          p_project_id: string
+          p_supplier: string
+          p_total: number
+          p_transaction_date: string
+        }
+        Returns: string
+      }
+      create_task_with_assignees: {
+        Args: {
+          p_category: string
+          p_deadline: string
+          p_deadline_time: string
+          p_description: string
+          p_ghost_member_ids: string[]
+          p_name: string
+          p_project_id: string
+          p_start_date: string
+          p_status: string
+          p_user_ids: string[]
+        }
+        Returns: string
+      }
       global_storage_breakdown: {
         Args: never
         Returns: {
@@ -807,11 +836,53 @@ export type Database = {
         Args: { check_project_id: string }
         Returns: number
       }
+      replace_bulk_transaction_with_lines: {
+        Args: {
+          p_ghost_member_id: string
+          p_item_url: string
+          p_label: string
+          p_lines: Json
+          p_member_id: string
+          p_supplier: string
+          p_total: number
+          p_transaction_date: string
+          p_transaction_id: string
+        }
+        Returns: undefined
+      }
+      set_transaction_deleted: {
+        Args: { p_deleted_at: string; p_transaction_id: string }
+        Returns: undefined
+      }
       shares_project_with: {
         Args: { target_user_id: string }
         Returns: boolean
       }
+      soft_delete_folder_tree: {
+        Args: {
+          p_deleted_at: string
+          p_folder_id: string
+          p_project_id: string
+        }
+        Returns: undefined
+      }
       task_project_id: { Args: { check_task_id: string }; Returns: string }
+      update_task_with_assignees: {
+        Args: {
+          p_category: string
+          p_deadline: string
+          p_deadline_time: string
+          p_description: string
+          p_ghost_member_ids: string[]
+          p_kept_deleted_assignee_ids: string[]
+          p_name: string
+          p_start_date: string
+          p_status: string
+          p_task_id: string
+          p_user_ids: string[]
+        }
+        Returns: undefined
+      }
       user_storage_bytes: {
         Args: { target_user_id: string }
         Returns: {

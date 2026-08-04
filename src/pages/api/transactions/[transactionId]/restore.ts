@@ -33,13 +33,14 @@ export const POST: APIRoute = async ({ params, locals }) => {
 		return new Response('Forbidden', { status: 403 });
 	}
 
-	const { error } = await locals.supabase.from('transactions').update({ deleted_at: null }).eq('id', transactionId);
+	const { error } = await locals.supabase.rpc('set_transaction_deleted', {
+		p_transaction_id: transactionId!,
+		p_deleted_at: null,
+	});
 
 	if (error) {
 		return new Response(`Failed to restore transaction: ${error.message}`, { status: 500 });
 	}
-
-	await locals.supabase.from('transactions').update({ deleted_at: null }).eq('group_id', transactionId);
 
 	return new Response(null, { status: 204 });
 };

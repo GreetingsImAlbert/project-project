@@ -1,8 +1,9 @@
 import type { APIRoute } from 'astro';
 import { canEditMoney } from '../../../../lib/money-access';
-import { buildBulkRows, lineRows } from '../../../../lib/bulk-transaction';
+import { buildBulkRows } from '../../../../lib/bulk-transaction';
 import { TRANSACTION_COLUMNS } from '../../../../lib/transaction-columns';
 import { resolveParty } from '../../../../lib/ghost-members';
+import type { Json } from '../../../../lib/supabase/database.types';
 
 export const prerender = false;
 
@@ -48,37 +49,33 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 		return new Response('Invalid member', { status: 400 });
 	}
 
-	const { project_id: _projectId, ...parentFields } = built.parent;
+	const { error: transactionError } = await locals.supabase.rpc('replace_bulk_transaction_with_lines', {
+		p_transaction_id: transactionId!,
+		p_member_id: built.parent.member_id,
+		p_ghost_member_id: built.parent.ghost_member_id,
+		p_transaction_date: built.parent.transaction_date,
+		p_label: built.parent.item_name,
+		p_total: built.total,
+		p_supplier: built.parent.supplier,
+		p_item_url: built.parent.item_url,
+		p_lines: built.lines as unknown as Json,
+	});
 
-	const { data: parent, error: parentError } = await locals.supabase
+	if (transactionError) {
+		return new Response(`Failed to update transaction: ${transactionError.message}`, { status: 500 });
+	}
+
+	const { data: rows, error: readError } = await locals.supabase
 		.from('transactions')
-		.update(parentFields)
-		.eq('id', transactionId)
 		.select(TRANSACTION_COLUMNS)
-		.single();
+		.or(`id.eq.${transactionId},group_id.eq.${transactionId}`)
+		.order('created_at', { ascending: true });
 
-	if (parentError || !parent) {
-		return new Response(`Failed to update transaction: ${parentError?.message ?? 'unknown error'}`, { status: 500 });
-	}
+	const parent = rows?.find((row) => row.id === transactionId);
+	const lines = rows?.filter((row) => row.group_id === transactionId) ?? [];
 
-	// Lines are rewritten wholesale rather than diffed: the form hands back the full
-	// list every time, and matching old rows to new ones would only add a way for the
-	// parent's total and its own breakdown to drift apart. Delete-then-insert (rather
-	// than the reverse) means a failed insert leaves the row short of its breakdown but
-	// still carrying the right amount — re-saving the form fixes it.
-	const { error: deleteError } = await locals.supabase.from('transactions').delete().eq('group_id', transactionId);
-
-	if (deleteError) {
-		return new Response(`Failed to replace transaction items: ${deleteError.message}`, { status: 500 });
-	}
-
-	const { data: lines, error: linesError } = await locals.supabase
-		.from('transactions')
-		.insert(lineRows(built.lines, transactionId!, existing.project_id, built.partyId, built.parent.transaction_date))
-		.select(TRANSACTION_COLUMNS);
-
-	if (linesError || !lines) {
-		return new Response(`Failed to save transaction items: ${linesError?.message ?? 'unknown error'}`, { status: 500 });
+	if (readError || !parent) {
+		return new Response(`Transaction updated but could not be read back: ${readError?.message ?? 'unknown error'}`, { status: 500 });
 	}
 
 	return Response.json({ parent, lines });

@@ -1,5 +1,4 @@
 import type { APIRoute } from 'astro';
-import { collectDescendantFolderIds } from '../../../../../../lib/folder-tree';
 
 export const prerender = false;
 
@@ -37,29 +36,16 @@ export const POST: APIRoute = async ({ params, locals }) => {
 		return new Response('Folder not found', { status: 404 });
 	}
 
-	const folderIds = await collectDescendantFolderIds(locals.supabase, folderId as string);
 	const deletedAt = new Date().toISOString();
 
-	// Files under it first: not that order matters for correctness, just so a
-	// failure here reports itself before the folder rows are touched.
-	const { error: filesError } = await locals.supabase
-		.from('files')
-		.update({ deleted_at: deletedAt })
-		.in('folder_id', folderIds)
-		.is('deleted_at', null);
-
-	if (filesError) {
-		return new Response(`Failed to delete folder contents: ${filesError.message}`, { status: 500 });
-	}
-
-	const { error } = await locals.supabase
-		.from('folders')
-		.update({ deleted_at: deletedAt })
-		.in('id', folderIds)
-		.is('deleted_at', null);
+	const { error } = await locals.supabase.rpc('soft_delete_folder_tree', {
+		p_project_id: projectId!,
+		p_folder_id: folderId!,
+		p_deleted_at: deletedAt,
+	});
 
 	if (error) {
-		return new Response(`Failed to delete folder: ${error.message}`, { status: 500 });
+		return new Response(`Failed to delete folder contents: ${error.message}`, { status: 500 });
 	}
 
 	return new Response(null, { status: 204 });

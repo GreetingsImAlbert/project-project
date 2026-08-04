@@ -1,8 +1,9 @@
 import type { APIRoute } from 'astro';
 import { canEditMoney } from '../../../../../lib/money-access';
-import { buildBulkRows, lineRows } from '../../../../../lib/bulk-transaction';
+import { buildBulkRows } from '../../../../../lib/bulk-transaction';
 import { TRANSACTION_COLUMNS } from '../../../../../lib/transaction-columns';
 import { resolveParty } from '../../../../../lib/ghost-members';
+import type { Json } from '../../../../../lib/supabase/database.types';
 
 export const prerender = false;
 
@@ -34,28 +35,33 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 		return new Response('Invalid member', { status: 400 });
 	}
 
-	const { data: parent, error: parentError } = await locals.supabase
-		.from('transactions')
-		.insert(built.parent)
-		.select(TRANSACTION_COLUMNS)
-		.single();
+	const { data: parentId, error: transactionError } = await locals.supabase.rpc('create_bulk_transaction_with_lines', {
+		p_project_id: projectId!,
+		p_member_id: built.parent.member_id,
+		p_ghost_member_id: built.parent.ghost_member_id,
+		p_transaction_date: built.parent.transaction_date,
+		p_label: built.parent.item_name,
+		p_total: built.total,
+		p_supplier: built.parent.supplier,
+		p_item_url: built.parent.item_url,
+		p_lines: built.lines as unknown as Json,
+	});
 
-	if (parentError || !parent) {
-		return new Response(`Failed to create transaction: ${parentError?.message ?? 'unknown error'}`, { status: 500 });
+	if (transactionError || !parentId) {
+		return new Response(`Failed to create transaction: ${transactionError?.message ?? 'unknown error'}`, { status: 500 });
 	}
 
-	const parentId = parent.id;
-
-	const { data: lines, error: linesError } = await locals.supabase
+	const { data: rows, error: readError } = await locals.supabase
 		.from('transactions')
-		.insert(lineRows(built.lines, parentId, projectId!, built.partyId, built.parent.transaction_date))
-		.select(TRANSACTION_COLUMNS);
+		.select(TRANSACTION_COLUMNS)
+		.or(`id.eq.${parentId},group_id.eq.${parentId}`)
+		.order('created_at', { ascending: true });
 
-	// No transaction across the two inserts — a parent with no lines would show as an
-	// empty bulk row, so undo it rather than leave that behind.
-	if (linesError || !lines) {
-		await locals.supabase.from('transactions').delete().eq('id', parentId);
-		return new Response(`Failed to create transaction items: ${linesError?.message ?? 'unknown error'}`, { status: 500 });
+	const parent = rows?.find((row) => row.id === parentId);
+	const lines = rows?.filter((row) => row.group_id === parentId) ?? [];
+
+	if (readError || !parent) {
+		return new Response(`Transaction created but could not be read back: ${readError?.message ?? 'unknown error'}`, { status: 500 });
 	}
 
 	return Response.json({ parent, lines });

@@ -35,15 +35,14 @@ export const POST: APIRoute = async ({ params, locals }) => {
 
 	const deletedAt = new Date().toISOString();
 
-	const { error } = await locals.supabase.from('transactions').update({ deleted_at: deletedAt }).eq('id', transactionId);
+	const { error } = await locals.supabase.rpc('set_transaction_deleted', {
+		p_transaction_id: transactionId!,
+		p_deleted_at: deletedAt,
+	});
 
 	if (error) {
 		return new Response(`Failed to delete transaction: ${error.message}`, { status: 500 });
 	}
-
-	// A bulk parent's lines move to (and later come back from) trash with it — see
-	// SCHEMA.md's "Trash bin" section.
-	await locals.supabase.from('transactions').update({ deleted_at: deletedAt }).eq('group_id', transactionId);
 
 	return new Response(null, { status: 204 });
 };

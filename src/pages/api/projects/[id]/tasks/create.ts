@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
-import { parseTaskForm, taskAssigneeColumns } from '../../../../../lib/task-form';
+import { parseTaskForm } from '../../../../../lib/task-form';
 import { TASK_COLUMNS, normalizeTask, type RawTaskRow } from '../../../../../lib/task-columns';
+import { ghostIdOf } from '../../../../../lib/money-parties';
 import { appToday } from '../../../../../lib/today';
 
 export const prerender = false;
@@ -42,34 +43,30 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 	const { name, category, description, start_date, deadline, deadline_time, assignees } = parsed.values;
 	const effectiveStartDate = start_date ?? appToday();
 
-	const { data: created, error } = await locals.supabase
-		.from('tasks')
-		.insert({ project_id: projectId!, name, category, description, start_date: effectiveStartDate, deadline, deadline_time, status: 'ongoing' })
-		.select('id')
-		.single();
+	const { data: createdId, error } = await locals.supabase.rpc('create_task_with_assignees', {
+		p_project_id: projectId!,
+		p_name: name,
+		p_category: category,
+		p_description: description,
+		p_start_date: effectiveStartDate,
+		p_deadline: deadline,
+		p_deadline_time: deadline_time,
+		p_status: 'ongoing',
+		p_user_ids: assignees.filter((partyId) => !ghostIdOf(partyId)),
+		p_ghost_member_ids: assignees.flatMap((partyId) => {
+			const ghostId = ghostIdOf(partyId);
+			return ghostId ? [ghostId] : [];
+		}),
+	});
 
-	if (error || !created) {
+	if (error || !createdId) {
 		return new Response(`Failed to create task: ${error?.message ?? 'unknown error'}`, { status: 500 });
-	}
-
-	if (assignees.length > 0) {
-		const { error: assignError } = await locals.supabase
-			.from('task_assignees')
-			.insert(assignees.map((partyId) => ({ task_id: created.id, ...taskAssigneeColumns(partyId) })));
-
-		// No transaction spans the two statements, so a failed appointment is
-		// compensated the way confirm.ts compensates a failed files insert: undo the
-		// half that landed rather than leave a task the user never asked for.
-		if (assignError) {
-			await locals.supabase.from('tasks').delete().eq('id', created.id);
-			return new Response(`Failed to appoint members: ${assignError.message}`, { status: 500 });
-		}
 	}
 
 	const { data: row, error: readError } = await locals.supabase
 		.from('tasks')
 		.select(TASK_COLUMNS)
-		.eq('id', created.id)
+		.eq('id', createdId)
 		.single()
 		.overrideTypes<RawTaskRow>();
 
