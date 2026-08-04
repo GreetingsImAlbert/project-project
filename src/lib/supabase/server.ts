@@ -8,7 +8,7 @@ import type { Database } from './database.types';
 export const REMEMBER_ME_COOKIE = 'p2_remember_me';
 export const REMEMBER_ME_MAX_AGE = 60 * 60 * 24 * 30; // 30 days
 
-export function createSupabaseServerClient(request: Request, cookies: AstroCookies) {
+export function createSupabaseServerClient(request: Request, cookies: AstroCookies, rememberMe?: boolean) {
     return createServerClient<Database>(env.SUPABASE_URL, env.SUPABASE_PUBLISHABLE_KEY, {
         cookies: {
             getAll() {
@@ -21,7 +21,7 @@ export function createSupabaseServerClient(request: Request, cookies: AstroCooki
                 // browser session — so strip maxAge unless the user opted into 30 days.
                 // Removals (signOut, etc.) come through with maxAge: 0 and must pass through
                 // untouched.
-                const rememberMe = cookies.get(REMEMBER_ME_COOKIE)?.value === '1';
+                const shouldRemember = rememberMe ?? cookies.get(REMEMBER_ME_COOKIE)?.value === '1';
                 cookiesToSet.forEach(({ name, value, options }) => {
                     const { maxAge, ...restOptions } = options ?? {};
                     cookies.set(name, value, {
@@ -30,7 +30,7 @@ export function createSupabaseServerClient(request: Request, cookies: AstroCooki
                         secure: true,
                         sameSite: 'lax',
                         path: '/',
-                        ...(maxAge === 0 ? { maxAge: 0 } : rememberMe ? { maxAge: REMEMBER_ME_MAX_AGE } : {}),
+                        ...(maxAge === 0 ? { maxAge: 0 } : shouldRemember ? { maxAge: REMEMBER_ME_MAX_AGE } : {}),
                     });
                 });
             }

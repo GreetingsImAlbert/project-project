@@ -1,9 +1,9 @@
 import type { APIRoute } from 'astro';
-import { REMEMBER_ME_COOKIE, REMEMBER_ME_MAX_AGE } from '../../../lib/supabase/server';
+import { createSupabaseServerClient, REMEMBER_ME_COOKIE, REMEMBER_ME_MAX_AGE } from '../../../lib/supabase/server';
 
 export const prerender = false;
 
-export const POST: APIRoute = async ({ request, locals, redirect, cookies }) => {
+export const POST: APIRoute = async ({ request, redirect, cookies }) => {
     const formData = await request.formData();
     const email = formData.get('email')?.toString();
     const password = formData.get('password')?.toString();
@@ -27,9 +27,14 @@ export const POST: APIRoute = async ({ request, locals, redirect, cookies }) => 
         cookies.delete(REMEMBER_ME_COOKIE, { path: '/' });
     }
 
-    const { error } = await locals.supabase.auth.signInWithPassword({ email, password });
+    // The middleware client was created before the form was parsed and only knows
+    // about incoming cookies. Pass the checkbox directly so the auth cookies written
+    // by this first sign-in get the requested lifetime too.
+    const loginClient = createSupabaseServerClient(request, cookies, rememberMe);
+    const { error } = await loginClient.auth.signInWithPassword({ email, password });
 
     if (error) {
+        cookies.delete(REMEMBER_ME_COOKIE, { path: '/' });
         return new Response(`Login failed: ${error.message}`, { status: 401 });
     }
 
