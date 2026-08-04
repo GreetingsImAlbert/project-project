@@ -34,25 +34,44 @@ function isActive(page: string) {
 		display: flex;
 		justify-content: center;
 		align-items: center;
-		gap: var(--space-5);
+		gap: 2px;
+		width: fit-content;
+		max-width: 100%;
+		padding: 4px;
+		background: var(--color-surface-inset);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-md);
 		margin-bottom: var(--space-7);
+		margin-left: auto;
+		margin-right: auto;
+		flex-wrap: wrap;
 	}
 
 	.project-nav a {
-		border-bottom: 1px solid transparent;
+		border: 1px solid transparent;
+		border-radius: var(--radius-sm);
+		padding: 6px var(--space-3);
+		color: var(--color-muted);
 		line-height: 1.4;
 		white-space: nowrap;
+		transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
+	}
+
+	.project-nav a:hover {
+		background: var(--color-highlight);
+		border-color: var(--color-border);
+		color: var(--color-fg);
 	}
 
 	.project-nav a.active {
-		text-decoration: underline;
-		text-underline-offset: 4px;
+		background: var(--color-fg);
+		border-color: var(--color-fg);
+		color: var(--color-bg);
 	}
 
 	@media (max-width: 768px) {
 		.project-nav {
-			gap: var(--space-3);
-			flex-wrap: wrap;
+			gap: 2px;
 			margin-bottom: var(--space-4);
 		}
 	}

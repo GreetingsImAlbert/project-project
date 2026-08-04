@@ -131,11 +131,13 @@ const path = Astro.url.pathname;
 	.app-main {
 		flex: 1;
 		min-width: 0;
-		background: var(--color-bg);
+		background: var(--color-surface-raised);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-md);
 		overflow-y: auto;
 		scrollbar-gutter: stable;
 		padding: var(--space-7) var(--space-7) var(--space-8);
-		transition: margin-left 0.15s ease;
+		transition: margin-left 0.18s ease;
 	}
 
 	.page-loading-indicator {
@@ -184,12 +186,32 @@ const path = Astro.url.pathname;
 	}
 
 	@media (max-width: 768px) {
+		.app-shell {
+			width: 100%;
+		}
+
 		.app-shell:has(.sidebar-rail:hover) .app-main,
 		.app-shell:has(.sidebar-rail:focus-within) .app-main,
 		html[data-sidebar-pinned] .app-shell .app-main,
 		html[data-sidebar-navigating] .app-shell .app-main,
 		.app-main {
 			margin-left: 0;
+		}
+	}
+
+	@media (min-width: 769px) {
+		.app-shell {
+			width: calc(100% - var(--space-6));
+			padding: var(--space-4) 0;
+		}
+
+		.container {
+			width: calc(100% - var(--space-6));
+			background: var(--color-surface-raised);
+			border: 1px solid var(--color-border);
+			border-radius: var(--radius-md);
+			margin-top: var(--space-6);
+			margin-bottom: var(--space-6);
 		}
 	}
 

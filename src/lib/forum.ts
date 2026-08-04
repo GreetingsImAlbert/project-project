@@ -16,12 +16,14 @@ export type ForumAuthor = {
 
 export type ForumReply = {
 	id: string;
+	parentReplyId: string | null;
 	body: string;
 	createdAt: string;
 	author: ForumAuthor;
 	deleted: boolean;
 	likeCount: number;
 	likedByMe: boolean;
+	children: ForumReply[];
 };
 
 export type ForumPost = {
@@ -53,6 +55,7 @@ type PostRow = {
 type ReplyRow = {
 	id: string;
 	post_id: string;
+	parent_reply_id: string | null;
 	body: string;
 	author_id: string | null;
 	created_at: string;
@@ -106,6 +109,12 @@ export function forumBodyProblem(value: unknown): string | null {
 	const body = value.trim();
 	if (!body) return 'Body is required';
 	if ([...body].length > FORUM_MAX_BODY_LENGTH) return `Body: max ${FORUM_MAX_BODY_LENGTH} characters`;
+	return null;
+}
+
+export function forumParentReplyProblem(value: unknown): string | null {
+	if (value === undefined || value === null) return null;
+	if (typeof value !== 'string' || !FORUM_UUID_RE.test(value)) return 'Invalid parent reply';
 	return null;
 }
 
@@ -179,7 +188,7 @@ export async function readForumFeed(client: ForumClient, userId: string, before:
 		const [{ data: rawReplies, error: replyError }, { data: rawPostLikes, error: postLikeError }] = await Promise.all([
 			client
 				.from('forum_replies')
-				.select('id, post_id, body, author_id, created_at, deleted_at')
+				.select('id, post_id, parent_reply_id, body, author_id, created_at, deleted_at')
 				.in('post_id', postIds)
 				.order('created_at', { ascending: true })
 				.order('id', { ascending: true })
@@ -228,20 +237,33 @@ export async function readForumFeed(client: ForumClient, userId: string, before:
 	const replyLikeMap = new Map<string, string[]>();
 	for (const like of replyLikes) replyLikeMap.set(like.reply_id, [...(replyLikeMap.get(like.reply_id) ?? []), like.user_id]);
 
-	const repliesByPost = new Map<string, ForumReply[]>();
+	const replyDtos = new Map<string, ForumReply>();
+	const replyPostIds = new Map<string, string>();
 	for (const reply of replies) {
 		const deleted = reply.deleted_at !== null;
 		const likeUsers = replyLikeMap.get(reply.id) ?? [];
 		const dto: ForumReply = {
 			id: reply.id,
+			parentReplyId: reply.parent_reply_id,
 			body: reply.body,
 			createdAt: reply.created_at,
 			author: authorFor(reply.author_id, profiles),
 			deleted,
 			likeCount: deleted ? 0 : likeUsers.length,
 			likedByMe: !deleted && likeUsers.includes(userId),
+			children: [],
 		};
-		repliesByPost.set(reply.post_id, [...(repliesByPost.get(reply.post_id) ?? []), dto]);
+		replyDtos.set(reply.id, dto);
+		replyPostIds.set(reply.id, reply.post_id);
+	}
+
+	const repliesByPost = new Map<string, ForumReply[]>();
+	for (const reply of replies) {
+		const dto = replyDtos.get(reply.id);
+		const parent = reply.parent_reply_id ? replyDtos.get(reply.parent_reply_id) : undefined;
+		const parentIsInSamePost = parent && replyPostIds.get(parent.id) === reply.post_id;
+		if (dto && parent && parentIsInSamePost) parent.children.push(dto);
+		else if (dto) repliesByPost.set(reply.post_id, [...(repliesByPost.get(reply.post_id) ?? []), dto]);
 	}
 
 	const serializedPosts: ForumPost[] = posts.map((post) => {

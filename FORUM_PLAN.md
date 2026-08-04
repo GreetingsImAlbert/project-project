@@ -4,7 +4,7 @@
 
 - Keep `/` and the sidebar label as `Dashboard`.
 - Replace the current Dashboard content with a global Forum feed for signed-in users.
-- Support text posts, one-level replies, likes on posts/replies, and author-only soft deletion with placeholders.
+- Support text posts, infinitely nestable replies, likes on posts/replies, and author-only soft deletion with placeholders.
 - Use newest-first pagination with a stable cursor and 20 posts per page.
 - Preserve storage/reminder components for future Dashboard sections.
 
@@ -13,6 +13,7 @@
 ### Database and security
 
 - Add `forum_posts`, `forum_replies`, `forum_post_likes`, and `forum_reply_likes` tables.
+- Add nullable self-referential `forum_replies.parent_reply_id` so replies can target any active reply in the same post.
 - Store trimmed non-empty bodies up to 5,000 characters.
 - Use nullable profile foreign keys with `on delete set null`, timestamps, and `deleted_at` soft-delete fields.
 - Use composite primary keys for likes so each signed-in user can like an item once.
@@ -26,12 +27,12 @@
 - Add authenticated endpoints:
   - `GET /api/forum/feed?before=<cursor>` → `{ posts, nextCursor }`
   - `POST /api/forum/posts` with `{ body }`
-  - `POST /api/forum/posts/:postId/replies` with `{ body }`
+  - `POST /api/forum/posts/:postId/replies` with `{ body, parentReplyId? }`
   - `POST /api/forum/posts/:postId/delete`
   - `POST /api/forum/replies/:replyId/delete`
   - `POST /api/forum/posts/:postId/like`
   - `POST /api/forum/replies/:replyId/like`
-- Serialize posts/replies with `id`, `body`, `createdAt`, author display data, `deleted`, `likeCount`, and `likedByMe`.
+- Serialize posts/replies with `id`, `parentReplyId`, `body`, `createdAt`, author display data, `deleted`, `likeCount`, `likedByMe`, and nested `children`.
 - Reject unauthenticated requests, empty/overlong bodies, spoofed authors, unauthorized deletes, likes on deleted content, and replies to deleted posts.
 - Use API routes plus the user-scoped Supabase client for mutations; never accept author identity from the browser.
 
@@ -39,9 +40,9 @@
 
 - Replace the current root-page storage/reminder query and rendering with a `ForumPage.svelte` island.
 - Keep the page title and navigation as `Dashboard`; use Forum as the primary section heading.
-- Add a composer, newest-first post cards, one-level reply forms, like toggles/counts, author-only delete controls, empty/loading/error states, and a Load more control.
+- Add a composer, newest-first post cards, recursive reply forms, like toggles/counts, author-only delete controls, empty/loading/error states, and a Load more control.
 - Keep replies under a soft-deleted post and show deleted-content placeholders. Disable new replies and likes for deleted content.
-- Do not add editing, nested replies, media uploads, project scoping, moderation tools, or a separate `/forum` route in v1.
+- Do not add editing, media uploads, project scoping, moderation tools, or a separate `/forum` route in v1.
 
 ### Documentation and generated types
 
@@ -61,4 +62,4 @@ npm run build
 npm run update-types
 ```
 
-Verify authorization, visibility between users without shared projects, cursor pagination, body validation, ownership checks, like idempotency, deleted placeholders, account deletion behavior, mobile layout, and light/dark themes.
+Verify authorization, visibility between users without shared projects, cursor pagination, body validation, ownership checks, nested reply creation across multiple levels, same-post parent validation, like idempotency, deleted placeholders, account deletion behavior, mobile layout, and light/dark themes.

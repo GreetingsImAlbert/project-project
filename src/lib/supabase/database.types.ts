@@ -301,6 +301,7 @@ export type Database = {
           created_at: string
           deleted_at: string | null
           id: string
+          parent_reply_id: string | null
           post_id: string
         }
         Insert: {
@@ -309,6 +310,7 @@ export type Database = {
           created_at?: string
           deleted_at?: string | null
           id?: string
+          parent_reply_id?: string | null
           post_id: string
         }
         Update: {
@@ -317,6 +319,7 @@ export type Database = {
           created_at?: string
           deleted_at?: string | null
           id?: string
+          parent_reply_id?: string | null
           post_id?: string
         }
         Relationships: [
@@ -325,6 +328,13 @@ export type Database = {
             columns: ["author_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "forum_replies_parent_reply_id_fkey"
+            columns: ["parent_reply_id"]
+            isOneToOne: false
+            referencedRelation: "forum_replies"
             referencedColumns: ["id"]
           },
           {

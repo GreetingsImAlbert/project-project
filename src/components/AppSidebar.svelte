@@ -242,7 +242,9 @@
 		width: var(--rail-width);
 		display: flex;
 		background: var(--color-surface-sidebar);
-		border-right: 1px solid var(--color-border);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-md);
+		box-shadow: none;
 		overflow: hidden;
 		z-index: 2;
 		transition: width 0.15s ease;
@@ -363,6 +365,7 @@
 	   entry made the whole nav read as selected. */
 	.nav-link {
 		border-bottom: none;
+		border-radius: var(--radius-sm);
 	}
 
 	.nav-link:hover {
