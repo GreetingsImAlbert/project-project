@@ -241,9 +241,8 @@
 		left: 0;
 		width: var(--rail-width);
 		display: flex;
-		background: var(--color-surface-sidebar);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-md);
+		background: var(--color-surface-nav);
+		border: none;
 		box-shadow: none;
 		overflow: hidden;
 		z-index: 2;
@@ -260,7 +259,7 @@
 	}
 
 	/* Pinned is in-flow, so it has content on one side and the page edge on the other —
-	   the border is enough, and a shadow would read as a floating overlay it isn't. */
+	   a shadow would read as a floating overlay it isn't. */
 	:global(html[data-sidebar-pinned]) .sidebar-panel {
 		width: var(--panel-width);
 		box-shadow: none;
