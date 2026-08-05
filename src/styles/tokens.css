@@ -98,33 +98,33 @@
 :root[data-theme='dim'] {
 	color-scheme: dark;
 
-	--color-bg: #1b2836;
-	--color-frame: #16222e;
-	--color-surface-raised: #213241;
-	--color-surface-inset: #1b2a38;
+	--color-bg: #0e151c;
+	--color-frame: #091119;
+	--color-surface-raised: #16232d;
+	--color-surface-inset: #101b24;
 	--color-surface-sidebar: var(--color-surface-raised);
 	--color-surface-nav: var(--color-frame);
-	--color-fg: #d7dbdc;
-	--color-muted: #8b98a5;
-	--color-border: #38444d;
-	--color-border-strong: #d7dbdc;
-	--color-danger: #ff6259;
-	--color-success: #7bd9a5;
-	--color-highlight: rgba(255, 255, 255, 0.05);
-	--color-highlight-strong: rgba(255, 255, 255, 0.11);
-	--color-link: #6ab0f3;
+	--color-fg: #e7edf1;
+	--color-muted: #91a0ad;
+	--color-border: #2c3b47;
+	--color-border-strong: #e7edf1;
+	--color-danger: #ff746b;
+	--color-success: #7ce3aa;
+	--color-highlight: rgba(225, 240, 255, 0.06);
+	--color-highlight-strong: rgba(225, 240, 255, 0.12);
+	--color-link: #84c0ff;
 
-	--color-role-owner: #ff8a80;
-	--color-role-editor: #6ab0f3;
-	--color-role-viewer: #7bd9a5;
-	--color-role-auditor: #c6a4ff;
+	--color-role-owner: #ff9188;
+	--color-role-editor: #84c0ff;
+	--color-role-viewer: #7ce3aa;
+	--color-role-auditor: #cdb1ff;
 
-	--color-syntax-comment: #8b98a5;
-	--color-syntax-keyword: #c6a4ff;
-	--color-syntax-string: #7bd9a5;
-	--color-syntax-number: #ff8a80;
-	--color-syntax-function: #6ab0f3;
-	--color-syntax-punct: #8b98a5;
+	--color-syntax-comment: #91a0ad;
+	--color-syntax-keyword: #cdb1ff;
+	--color-syntax-string: #7ce3aa;
+	--color-syntax-number: #ff9188;
+	--color-syntax-function: #84c0ff;
+	--color-syntax-punct: #91a0ad;
 
 	--color-cat-0: #5a2b28;
 	--color-cat-0-fg: #ffb4ae;
@@ -148,40 +148,39 @@
 	--color-cat-9-fg: #c2ccd4;
 }
 
-/* Neutral dark gray in the VS Code Dark+ range rather than pure black — easier on the
-   eye over long sessions, and the low-contrast surface keeps the flat monochrome look
-   without the halation black gives around light mono text. Stays distinct from 'dim',
-   which is deliberately blue-tinted. */
+/* Near-black graphite rather than flat black: the small shifts between frame, surface and
+   inset layers keep the interface legible while giving Dark its own sleek, neutral identity.
+   It stays distinct from 'dim', which is deliberately blue-tinted. */
 :root[data-theme='dark'] {
 	color-scheme: dark;
 
-	--color-bg: #1e1e1e;
-	--color-frame: #181818;
-	--color-surface-raised: #252525;
-	--color-surface-inset: #202020;
+	--color-bg: #0b0d0f;
+	--color-frame: #07090b;
+	--color-surface-raised: #121519;
+	--color-surface-inset: #0c0f12;
 	--color-surface-sidebar: var(--color-surface-raised);
 	--color-surface-nav: var(--color-frame);
-	--color-fg: #d4d4d4;
-	--color-muted: #8c8c8c;
-	--color-border: #3c3c3c;
-	--color-border-strong: #d4d4d4;
-	--color-danger: #ff6259;
-	--color-success: #86d9a8;
-	--color-highlight: rgba(255, 255, 255, 0.055);
+	--color-fg: #f1f3f5;
+	--color-muted: #8d969f;
+	--color-border: #2a3036;
+	--color-border-strong: #f1f3f5;
+	--color-danger: #ff6b61;
+	--color-success: #71e0a3;
+	--color-highlight: rgba(255, 255, 255, 0.06);
 	--color-highlight-strong: rgba(255, 255, 255, 0.12);
-	--color-link: #79b8ff;
+	--color-link: #82bbff;
 
 	--color-role-owner: #ff8a80;
-	--color-role-editor: #79b8ff;
-	--color-role-viewer: #86d9a8;
-	--color-role-auditor: #c6a4ff;
+	--color-role-editor: #82bbff;
+	--color-role-viewer: #71e0a3;
+	--color-role-auditor: #c8a8ff;
 
-	--color-syntax-comment: #8c8c8c;
-	--color-syntax-keyword: #c6a4ff;
-	--color-syntax-string: #86d9a8;
+	--color-syntax-comment: #8d969f;
+	--color-syntax-keyword: #c8a8ff;
+	--color-syntax-string: #71e0a3;
 	--color-syntax-number: #ff8a80;
-	--color-syntax-function: #79b8ff;
-	--color-syntax-punct: #8c8c8c;
+	--color-syntax-function: #82bbff;
+	--color-syntax-punct: #8d969f;
 
 	--color-cat-0: #4e2b29;
 	--color-cat-0-fg: #ffb4ae;
