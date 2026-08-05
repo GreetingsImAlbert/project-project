@@ -90,9 +90,9 @@
 	--radius-sm: 6px;
 	--radius-md: 10px;
 
-	/* Below the narrowest common laptop (1280px CSS) so the empty side rails in
-	   BaseLayout/Header actually show up there, not just on desktop monitors. */
-	--max-width: 1200px;
+	/* A wider desktop wrapper keeps the side rails modest without making the content
+	   feel stretched on common 1440px layouts. */
+	--max-width: 1440px;
 }
 
 :root[data-theme='dim'] {

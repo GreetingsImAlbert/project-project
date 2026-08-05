@@ -257,20 +257,19 @@
 
 	.sidebar-panel {
 		position: absolute;
-		top: 0;
-		bottom: 0;
+		top: var(--space-2);
+		bottom: var(--space-2);
 		left: 0;
 		width: var(--rail-width);
 		display: flex;
 		background: var(--color-surface-nav);
-		border: none;
-		box-shadow: 4px 0 8px -6px var(--color-border);
+		border-radius: 16px;
 		overflow: hidden;
 		z-index: 2;
 		transition: width 0.15s ease;
 	}
 
-	/* Keep the shadow narrow and offset right so it reads as separation, not a floating panel. */
+	/* The rounded outline gives the panel its bubble shape without changing the site's surface color. */
 	.sidebar-rail:hover .sidebar-panel,
 	.sidebar-rail:focus-within .sidebar-panel,
 	:global(html[data-sidebar-navigating]) .sidebar-panel {
@@ -285,7 +284,7 @@
 
 	.sidebar-content {
 		flex: 1;
-		width: var(--panel-width);
+		width: calc(var(--panel-width) - 2px);
 		overflow-y: auto;
 		overflow-x: hidden;
 		padding: var(--space-6) 0 var(--space-8);
@@ -294,7 +293,7 @@
 	.sidebar-header-row {
 		display: flex;
 		justify-content: flex-end;
-		width: var(--panel-width);
+		width: calc(var(--panel-width) - 2px);
 		padding: 0 var(--space-4) var(--space-2);
 		transform: translateY(calc(-1 * var(--space-4)));
 	}
