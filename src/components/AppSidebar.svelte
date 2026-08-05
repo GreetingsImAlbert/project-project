@@ -243,15 +243,13 @@
 		display: flex;
 		background: var(--color-surface-nav);
 		border: none;
-		box-shadow: none;
+		box-shadow: 4px 0 8px -6px var(--color-border);
 		overflow: hidden;
 		z-index: 2;
 		transition: width 0.15s ease;
 	}
 
-	/* Offset past the blur radius (16px out, 16px blur, -8px spread) so the shadow only
-	   ever falls to the right of the panel — with a smaller offset the blur spills back
-	   over the panel's left edge and darkens the margin beside it. */
+	/* Keep the shadow narrow and offset right so it reads as separation, not a floating panel. */
 	.sidebar-rail:hover .sidebar-panel,
 	.sidebar-rail:focus-within .sidebar-panel,
 	:global(html[data-sidebar-navigating]) .sidebar-panel {
@@ -259,10 +257,9 @@
 	}
 
 	/* Pinned is in-flow, so it has content on one side and the page edge on the other —
-	   a shadow would read as a floating overlay it isn't. */
+	   retain the same subtle separation while it is expanded. */
 	:global(html[data-sidebar-pinned]) .sidebar-panel {
 		width: var(--panel-width);
-		box-shadow: none;
 	}
 
 	.sidebar-content {
