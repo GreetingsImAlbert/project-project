@@ -588,8 +588,8 @@
 					</button>
 					<button type="button" class="btn-plain" onclick={cancelEditing} disabled={saving}>Cancel</button>
 				{:else}
-					{#if kind !== 'model'}
-						<!-- Meshes are view-only, and a permanently disabled Edit button reading
+					{#if isTextKind(kind)}
+						<!-- Binary previews are view-only, and a permanently disabled Edit button reading
 						     "you need edit access" would blame the wrong thing. -->
 						<button
 							type="button"
@@ -622,7 +622,7 @@
 			</p>
 		{/if}
 
-		<div class="viewer-body" class:editing class:model={kind === 'model'}>
+		<div class="viewer-body" class:editing class:model={kind === 'model'} class:pdf={kind === 'pdf'}>
 			{#if kind === 'unsupported'}
 				<p class="viewer-note">Unsupported</p>
 				<p class="viewer-note muted">This file can't be previewed. Download it to open it locally.</p>
@@ -638,6 +638,12 @@
 				{:else}
 					<p class="viewer-note muted">Loading 3D viewer…</p>
 				{/if}
+			{:else if kind === 'pdf'}
+				<iframe
+					class="pdf-frame"
+					src={`/api/files/${file.id}/raw`}
+					title={`PDF preview of ${file.filename}`}
+				></iframe>
 			{:else if loading}
 				<p class="viewer-note muted">Loading…</p>
 			{:else if error}
@@ -757,9 +763,21 @@
 	   from the box this gives it: let the body scroll and the two would chase each other
 	   bigger on every resize. */
 	.viewer-body.editing,
-	.viewer-body.model {
+	.viewer-body.model,
+	.viewer-body.pdf {
 		display: flex;
 		overflow: hidden;
+	}
+
+	.viewer-body.pdf {
+		padding: 0;
+	}
+
+	.pdf-frame {
+		flex: 1;
+		min-width: 0;
+		border: 0;
+		background: var(--color-bg);
 	}
 
 	/* The viewer fills the body, and its own flex column puts the readout bar at the

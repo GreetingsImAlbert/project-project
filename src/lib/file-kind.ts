@@ -2,7 +2,7 @@
 // unsupported file never even fires a request) and by the content endpoint (so the
 // server doesn't stream arbitrary binaries back as text just because a client asked).
 
-export type FileKind = 'markdown' | 'text' | 'model' | 'unsupported';
+export type FileKind = 'markdown' | 'text' | 'model' | 'pdf' | 'unsupported';
 
 // Text small enough to hand to the browser in one go. Decimal bytes, matching the rest
 // of the project's byte math (see r2-quota.ts).
@@ -13,6 +13,10 @@ export const MAX_VIEWABLE_BYTES = 1_000_000;
 // tessellate and orbit, not by what R2 will serve: a 50 MB STL is already several
 // million triangles.
 export const MAX_MODEL_BYTES = 50_000_000;
+
+// PDFs stay streamed rather than buffered, but a ceiling avoids asking the browser's
+// built-in viewer to handle arbitrarily large uploads inside the panel.
+export const MAX_PDF_BYTES = 50_000_000;
 
 // R2 keys top out at 1024 bytes and already carry `${projectId}/${uuid}-`, so this
 // leaves comfortable room while still ruling out a filename absurd enough to break
@@ -125,6 +129,7 @@ export function fileKind(filename: string): FileKind {
 		if (MARKDOWN_EXTENSIONS.has(bare)) return 'markdown';
 		if (TEXT_EXTENSIONS.has(bare)) return 'text';
 		if (MODEL_EXTENSIONS.has(bare)) return 'model';
+		if (bare === 'pdf') return 'pdf';
 		return 'unsupported';
 	}
 
