@@ -9,6 +9,7 @@
 // swatch writes a `task_categories` row that overrides the fallback from then on.
 
 export const CATEGORY_COLOR_COUNT = 10;
+export const CATEGORY_GRAY_SLOT = CATEGORY_COLOR_COUNT - 1;
 
 // name -> color_index, for the categories somebody has actually picked a colour for.
 // Keyed by the trimmed category text, the same key the list groups by.
@@ -57,5 +58,7 @@ export function categoryStyle(category: string | null | undefined, colors: Categ
 	return categoryColorStyle(categoryColorIndex(category, colors));
 }
 
-// 0..9, for rendering the swatch row.
+// 0..9, for rendering the swatch row. The task picker omits the neutral gray slot below,
+// but the full list remains available to the CAD viewer and existing saved preferences.
 export const CATEGORY_COLOR_SLOTS = Array.from({ length: CATEGORY_COLOR_COUNT }, (_, i) => i);
+export const TASK_CATEGORY_COLOR_SLOTS = CATEGORY_COLOR_SLOTS.filter((slot) => slot !== CATEGORY_GRAY_SLOT);

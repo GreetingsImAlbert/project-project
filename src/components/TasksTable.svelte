@@ -5,7 +5,7 @@
 	import Avatar from './Avatar.svelte';
 	import { tasksState, initTasks, addTask, updateTask, removeTask, type Task } from '../lib/tasks-store.svelte';
 	import {
-		CATEGORY_COLOR_SLOTS,
+		TASK_CATEGORY_COLOR_SLOTS,
 		categoryColorIndex,
 		categoryColorStyle,
 		categoryStyle,
@@ -90,7 +90,7 @@
 		}
 		const filteredIndex = visibleTasks.findIndex((candidate) => candidate.id === id);
 		if (filteredIndex >= 0) renderedTaskCount = Math.max(renderedTaskCount, filteredIndex + 1);
-		collapsed = collapsed.filter((c) => c !== (task.category?.trim() || UNCATEGORIZED));
+		collapsed = collapsed.filter((c) => c !== taskGroupCategory(task));
 
 		openId = id;
 		editingField = null;
@@ -167,7 +167,12 @@
 
 	const NEW_CATEGORY_VALUE = '__new__';
 	const UNCATEGORIZED = 'Uncategorized';
+	const DONE_CATEGORY = 'Done';
 	const TASK_PAGE_SIZE = 50;
+
+	function taskGroupCategory(task: Task): string {
+		return task.status === 'done' ? DONE_CATEGORY : task.category?.trim() || UNCATEGORIZED;
+	}
 
 	// Same derivation as BomTable's: the dropdown offers whatever categories the
 	// current tasks already use, so the backend still only ever stores free text.
@@ -197,17 +202,19 @@
 	// and its panel rendered under the grid.
 	let selectedTask = $derived(visibleTasks.find((task) => task.id === openId) ?? null);
 
-	// Same grouping as BomTable's, including 'Uncategorized' sorting last rather than
-	// alphabetically. Tasks keep their deadline order inside a group, since the store
-	// sorts the whole list and this only partitions it.
+	// Tasks keep their deadline order inside a group, since the store sorts the whole
+	// list and this only partitions it. Done tasks use their own display-only category,
+	// sorted after both named categories and Uncategorized.
 	let groups = $derived.by(() => {
 		const map = new Map<string, Task[]>();
 		for (const task of visibleTasks) {
-			const key = task.category?.trim() || UNCATEGORIZED;
+			const key = taskGroupCategory(task);
 			if (!map.has(key)) map.set(key, []);
 			map.get(key)!.push(task);
 		}
 		const keys = [...map.keys()].sort((a, b) => {
+			if (a === DONE_CATEGORY) return 1;
+			if (b === DONE_CATEGORY) return -1;
 			if (a === UNCATEGORIZED) return 1;
 			if (b === UNCATEGORIZED) return -1;
 			return a.localeCompare(b);
@@ -266,9 +273,9 @@
 		return categoryStyle(category, categoryColors);
 	}
 
-	// The calendar's uncategorized tasks have to fall back to the neutral chip, and the
-	// list's 'Uncategorized' band likewise — both get '' from categoryStyle, which is
-	// what leaves the var() fallbacks in the CSS to do it.
+	// Calendar tasks keep their real category colour. The list's special bands use their
+	// own neutral shades instead of categoryStyle, so a Done task never recolours its
+	// calendar pop or its stored category.
 	function styleForTask(task: Task): string {
 		return styleFor(task.category);
 	}
@@ -575,12 +582,12 @@
 	</div>
 {/snippet}
 
-<!-- Ten fixed slots. The active one is whichever the category resolves to right now,
-     picked or hashed, so the row always shows the colour the list and the calendar are
-     actually painting rather than 'nothing chosen'. -->
+<!-- The active one is whichever the category resolves to right now, picked or hashed, so
+     the row always shows the colour the list and the calendar are actually painting rather
+     than 'nothing chosen'. The neutral gray slot is intentionally not selectable here. -->
 {#snippet colorSwatches(effective: string)}
 	<div class="swatches" role="group" aria-label="Category colour">
-		{#each CATEGORY_COLOR_SLOTS as slot (slot)}
+		{#each TASK_CATEGORY_COLOR_SLOTS as slot (slot)}
 			<button
 				type="button"
 				class="swatch"
@@ -1154,7 +1161,9 @@
 					<button
 						type="button"
 						class="group-row"
-						style={group.category === UNCATEGORIZED ? '' : styleFor(group.category)}
+						class:group-done={group.category === DONE_CATEGORY}
+						class:group-uncategorized={group.category === UNCATEGORIZED}
+						style={group.category === DONE_CATEGORY || group.category === UNCATEGORIZED ? '' : styleFor(group.category)}
 						aria-expanded={!isCollapsed(group.category)}
 						onclick={() => toggleGroup(group.category)}
 					>
@@ -1394,9 +1403,9 @@
 
 	/* Banded like the BOM's category rows, but a button — it folds its group. No rule
 	   above it: the band's own background is separation enough, and a hard line there
-	   read as a heavy black edge across the list. The fill is the category's own colour
-	   where it has one; 'Uncategorized' is passed no style at all and falls back to the
-	   neutral highlight, so a colour never implies a category that isn't there. */
+	   read as a heavy black edge across the list. Named groups use their category colour;
+	   the two special groups use neutral shades so a colour never implies a category that
+	   isn't there. */
 	.group-row {
 		display: flex;
 		align-items: baseline;
@@ -1413,6 +1422,14 @@
 		text-transform: uppercase;
 		text-align: left;
 		cursor: pointer;
+	}
+
+	.group-row.group-uncategorized {
+		--cat-bg: var(--color-highlight);
+	}
+
+	.group-row.group-done {
+		--cat-bg: var(--color-highlight-strong);
 	}
 
 	/* Inherit rather than --color-muted: a fixed grey doesn't stay readable across ten
