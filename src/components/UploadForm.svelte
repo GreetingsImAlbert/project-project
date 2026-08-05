@@ -216,8 +216,9 @@
 		width: 220px;
 		max-width: 100%;
 		box-sizing: border-box;
-		background: var(--color-bg);
+		background: var(--color-surface-inset);
 		border: 1px solid var(--color-border);
+		border-radius: var(--radius-sm);
 		padding: var(--space-2) var(--space-3);
 		line-height: normal;
 		color: var(--color-muted);
@@ -243,6 +244,12 @@
 	.dropzone.disabled {
 		cursor: default;
 		opacity: 0.6;
+	}
+
+	.dropzone:focus-visible {
+		outline: 2px solid var(--color-border-strong);
+		outline-offset: 2px;
+		border-color: var(--color-border-strong);
 	}
 
 	.clear-btn {

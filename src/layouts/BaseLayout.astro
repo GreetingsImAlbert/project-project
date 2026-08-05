@@ -65,7 +65,6 @@ const path = Astro.url.pathname;
 		<ClientRouter fallback="swap" />
 	</head>
 	<body>
-		<div class="page-loading-indicator" role="status" aria-label="Loading"></div>
 		<Header user={user} />
 		{user ? (
 			<div class="app-shell">
@@ -77,6 +76,7 @@ const path = Astro.url.pathname;
 					avatar={user.avatar}
 				/>
 				<main class="app-main project-main">
+					<div class="page-loading-indicator" role="status" aria-label="Loading"></div>
 					{projectNav && (
 						<ProjectNav projectId={projectNav.projectId} userRole={projectNav.userRole} />
 					)}
@@ -85,6 +85,7 @@ const path = Astro.url.pathname;
 			</div>
 		) : (
 			<main class="container">
+				<div class="page-loading-indicator" role="status" aria-label="Loading"></div>
 				<slot />
 			</main>
 		)}
@@ -133,6 +134,7 @@ const path = Astro.url.pathname;
 	.app-main {
 		flex: 1;
 		min-width: 0;
+		position: relative;
 		background: var(--color-surface-raised);
 		border-radius: var(--radius-md);
 		overflow-y: auto;
@@ -142,12 +144,13 @@ const path = Astro.url.pathname;
 	}
 
 	.container {
+		position: relative;
 		background: var(--color-surface-raised);
 		border-radius: var(--radius-md);
 	}
 
 	.page-loading-indicator {
-		position: fixed;
+		position: absolute;
 		top: var(--space-3);
 		left: 50%;
 		z-index: 1000;
