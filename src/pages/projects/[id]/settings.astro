@@ -5,6 +5,7 @@ import AddMemberForm from '../../../components/AddMemberForm.svelte';
 import AddGhostMemberForm from '../../../components/AddGhostMemberForm.svelte';
 import GhostMemberManager from '../../../components/GhostMemberManager.svelte';
 import DeleteProjectPanel from '../../../components/DeleteProjectPanel.svelte';
+import ProjectNameEditor from '../../../components/ProjectNameEditor.svelte';
 import CurrencyPicker from '../../../components/CurrencyPicker.svelte';
 import TrashList from '../../../components/TrashList.svelte';
 import { listGhostMembers } from '../../../lib/ghost-members';
@@ -60,6 +61,11 @@ const returnTo = `/projects/${id}/settings`;
 
 ---
 <BaseLayout title={`${project.name} — Settings`} projectNav={{ projectId: project.id, userRole: userRole ?? '' }}>
+	<section>
+		<h3>Project name</h3>
+		<ProjectNameEditor client:idle projectId={project.id} initialName={project.name} />
+	</section>
+
 	<section>
 		<h3>Currency</h3>
 		<CurrencyPicker client:idle projectId={project.id} currency={project.currency} />
