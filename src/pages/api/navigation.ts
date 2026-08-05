@@ -25,11 +25,16 @@ export async function GET({ locals }: { locals: App.Locals }) {
 			>(),
 		locals.supabase
 			.from('tasks')
-			.select('project_id, deadline, deadline_time, task_assignees!inner(user_id)')
+			.select('project_id, start_date, deadline, deadline_time, task_assignees!inner(user_id)')
 			.eq('task_assignees.user_id', user.id)
 			.is('deleted_at', null)
 			.neq('status', 'done')
-			.overrideTypes<{ project_id: string; deadline: string | null; deadline_time: string }[]>(),
+			.overrideTypes<{
+				project_id: string;
+				start_date: string | null;
+				deadline: string | null;
+				deadline_time: string;
+			}[]>(),
 	]);
 
 	if (projectsError || tasksError) {
@@ -45,6 +50,8 @@ export async function GET({ locals }: { locals: App.Locals }) {
 	const overdueTaskCounts = new Map<string, number>();
 	const ongoingTaskCounts = new Map<string, number>();
 	for (const row of taskRows ?? []) {
+		if (row.start_date && row.start_date > today) continue;
+
 		const overdue = row.deadline
 			? row.deadline < today || (row.deadline === today && row.deadline_time < nowTime)
 			: false;
