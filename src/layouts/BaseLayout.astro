@@ -105,7 +105,7 @@ const path = Astro.url.pathname;
 		flex-direction: column;
 		height: 100vh;
 		overflow: hidden;
-		background: var(--color-surface-nav);
+		background: var(--color-frame);
 	}
 
 	.app-shell {
@@ -115,6 +115,8 @@ const path = Astro.url.pathname;
 		max-width: var(--max-width);
 		width: 100%;
 		margin: 0 auto;
+		gap: var(--space-3);
+		padding: var(--space-2);
 		--sidebar-rail-width: 56px;
 		--sidebar-panel-width: 280px;
 	}
@@ -131,11 +133,17 @@ const path = Astro.url.pathname;
 	.app-main {
 		flex: 1;
 		min-width: 0;
-		background: transparent;
+		background: var(--color-surface-raised);
+		border-radius: var(--radius-md);
 		overflow-y: auto;
 		scrollbar-gutter: stable;
 		padding: var(--space-7) var(--space-7) var(--space-8);
 		transition: margin-left 0.18s ease;
+	}
+
+	.container {
+		background: var(--color-surface-raised);
+		border-radius: var(--radius-md);
 	}
 
 	.page-loading-indicator {
@@ -200,12 +208,11 @@ const path = Astro.url.pathname;
 	@media (min-width: 769px) {
 		.app-shell {
 			width: calc(100% - var(--space-6));
-			padding: 0 0 var(--space-4);
+			padding: var(--space-3) 0 var(--space-4);
 		}
 
 		.container {
 			width: calc(100% - var(--space-6));
-			background: transparent;
 			margin-top: var(--space-6);
 			margin-bottom: var(--space-6);
 		}

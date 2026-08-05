@@ -257,19 +257,19 @@
 
 	.sidebar-panel {
 		position: absolute;
-		top: var(--space-2);
-		bottom: var(--space-2);
+		top: 0;
+		bottom: 0;
 		left: 0;
 		width: var(--rail-width);
 		display: flex;
-		background: var(--color-surface-nav);
-		border-radius: 16px;
+		background: var(--color-surface-sidebar);
+		border-radius: var(--radius-md);
 		overflow: hidden;
 		z-index: 2;
 		transition: width 0.15s ease;
 	}
 
-	/* The rounded outline gives the panel its bubble shape without changing the site's surface color. */
+	/* The sidebar uses the same solid card surface and radius as the header and main. */
 	.sidebar-rail:hover .sidebar-panel,
 	.sidebar-rail:focus-within .sidebar-panel,
 	:global(html[data-sidebar-navigating]) .sidebar-panel {
@@ -284,7 +284,7 @@
 
 	.sidebar-content {
 		flex: 1;
-		width: calc(var(--panel-width) - 2px);
+		width: var(--panel-width);
 		overflow-y: auto;
 		overflow-x: hidden;
 		padding: var(--space-6) 0 var(--space-8);
@@ -293,7 +293,7 @@
 	.sidebar-header-row {
 		display: flex;
 		justify-content: flex-end;
-		width: calc(var(--panel-width) - 2px);
+		width: var(--panel-width);
 		padding: 0 var(--space-4) var(--space-2);
 		transform: translateY(calc(-1 * var(--space-4)));
 	}

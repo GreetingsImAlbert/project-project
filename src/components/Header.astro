@@ -24,7 +24,9 @@ const { user } = Astro.props;
 
 <style>
 	.site-header {
-		background: var(--color-surface-nav);
+		width: 100%;
+		padding: var(--space-2) var(--space-2) 0;
+		background: var(--color-frame);
 	}
 
 	.site-header-inner {
@@ -34,8 +36,10 @@ const { user } = Astro.props;
 		gap: var(--space-6);
 		padding: var(--space-3) var(--space-6);
 		max-width: var(--max-width);
+		width: 100%;
 		margin: 0 auto;
-		border: none;
+		background: var(--color-surface-raised);
+		border-radius: var(--radius-md);
 	}
 
 	.lockup {
@@ -68,12 +72,7 @@ const { user } = Astro.props;
 
 	@media (min-width: 769px) {
 		.site-header {
-			padding-top: var(--space-4);
-		}
-
-		.site-header-inner {
-			width: calc(100% - var(--space-6));
-			background: transparent;
+			padding: var(--space-4) var(--space-4) 0;
 		}
 	}
 
