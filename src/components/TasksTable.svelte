@@ -35,6 +35,7 @@
 		initialTasks,
 		initialCategoryColors,
 		initialViewMode,
+		initialCollapsed,
 		members,
 		ghostMembers,
 		canEdit,
@@ -47,6 +48,7 @@
 		initialTasks: Task[];
 		initialCategoryColors: CategoryColors;
 		initialViewMode: 'list' | 'calendar';
+		initialCollapsed: string[];
 		members: { id: string; displayName: string; avatar: string | null }[];
 		ghostMembers: { id: string; displayName: string }[];
 		canEdit: boolean;
@@ -241,14 +243,26 @@
 	// A plain array rather than a Set: $state doesn't proxy Sets, and the category
 	// count here is small enough that includes() is the cheaper thing to reason about.
 	// Entries for categories that later disappear are inert, so nothing prunes them.
-	let collapsed = $state<string[]>([]);
+	// Done arrives folded from the server (the default); after the first fold or
+	// unfold the whole set persists, so the next load renders pre-folded instead of
+	// flashing the list open on hydrate.
+	let collapsed = $state<string[]>(initialCollapsed);
 
 	function isCollapsed(category: string): boolean {
 		return collapsed.includes(category);
 	}
 
+	// Cookie and localStorage together, the way the view toggle does: the cookie is
+	// what the server reads on the next load, and the localStorage copy mirrors it.
+	function persistCollapsed() {
+		const value = JSON.stringify(collapsed);
+		localStorage.setItem(`p2-task-collapsed-${projectId}`, value);
+		document.cookie = `p2-task-collapsed-${projectId}=${encodeURIComponent(value)}; path=/; max-age=31536000; samesite=lax`;
+	}
+
 	function toggleGroup(category: string) {
 		collapsed = isCollapsed(category) ? collapsed.filter((c) => c !== category) : [...collapsed, category];
+		persistCollapsed();
 	}
 
 	function showMoreTasks() {

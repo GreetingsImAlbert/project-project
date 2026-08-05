@@ -91,6 +91,24 @@ for (const row of categoryRows ?? []) {
 const storedTaskView = Astro.cookies.get('p2-task-view-mode')?.value;
 const initialViewMode = storedTaskView === 'calendar' ? 'calendar' : 'list';
 
+// Which category bands are folded. Done folds by default; once the user has folded
+// or unfolded anything, the whole set is remembered in a per-project cookie instead
+// (so the server renders the page pre-folded rather than flashing the list open on
+// hydrate). Unparseable or all-garbage cookies fall back to the default.
+const storedCollapsed = Astro.cookies.get(`p2-task-collapsed-${id}`)?.value;
+let initialCollapsed = ['Done'];
+if (storedCollapsed) {
+	try {
+		const parsed: unknown = JSON.parse(decodeURIComponent(storedCollapsed));
+		if (Array.isArray(parsed)) {
+			const strings = parsed.filter((c): c is string => typeof c === 'string');
+			if (strings.length > 0) initialCollapsed = strings;
+		}
+	} catch {
+		// Leave the default.
+	}
+}
+
 // One fixed calendar for the whole app, so both islands and the server derive
 // identical statuses — see lib/today.ts.
 const serverToday = appToday();
@@ -107,6 +125,7 @@ const initialSummary = summarizeTasks(tasks, serverToday, serverNowTime);
 		initialTasks={tasks}
 		initialCategoryColors={categoryColors}
 		initialViewMode={initialViewMode}
+		initialCollapsed={initialCollapsed}
 		members={memberOptions}
 		ghostMembers={ghostOptions}
 		canEdit={canEdit}
