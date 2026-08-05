@@ -1,13 +1,15 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import Avatar from './Avatar.svelte';
+	import { TASKS_CHANGED_EVENT } from '../lib/tasks-changed';
 
 	interface SidebarProject {
 		id: string;
 		name: string;
 		owner: { displayName: string; avatar: string | null };
-		// The reader's own open tasks in that project.
-		taskCount: number;
+		// The reader's own open tasks in that project, split by status.
+		overdueTaskCount: number;
+		ongoingTaskCount: number;
 	}
 
 	let {
@@ -53,12 +55,28 @@
 				// The primary navigation links still work when the optional project list is unavailable.
 			});
 
+		// Task edits happen in an island on the tasks page, so the sidebar's counters
+		// re-fetch instead of waiting for the next navigation. A failed refresh keeps
+		// the old numbers; the next change (or reload) tries again.
+		function refreshProjects() {
+			navigationRequest = null;
+			void loadProjects()
+				.then((loadedProjects) => {
+					projects = loadedProjects;
+				})
+				.catch(() => {});
+		}
+
 		function updateCurrentPath() {
 			currentPath = window.location.pathname;
 		}
 
+		window.addEventListener(TASKS_CHANGED_EVENT, refreshProjects);
 		document.addEventListener('astro:after-swap', updateCurrentPath);
-		return () => document.removeEventListener('astro:after-swap', updateCurrentPath);
+		return () => {
+			window.removeEventListener(TASKS_CHANGED_EVENT, refreshProjects);
+			document.removeEventListener('astro:after-swap', updateCurrentPath);
+		};
 	});
 
 	let currentProjectId = $derived.by(() => {
@@ -187,9 +205,12 @@
 									<Avatar avatar={project.owner.avatar} displayName={project.owner.displayName} size={22} />
 								</span>
 								<span class="row-label project-name">{project.name}</span>
-								{#if project.taskCount > 0}
-									<span class="row-label task-count" title={`${project.taskCount} of your tasks`}>
-										{project.taskCount}
+								{#if project.overdueTaskCount > 0 || project.ongoingTaskCount > 0}
+									<!-- Two counts, one number in each status colour: overdue in the danger
+									     red the tasks page uses, ongoing in its green. -->
+									<span class="row-label task-counts" title={`${project.overdueTaskCount} overdue, ${project.ongoingTaskCount} ongoing`}>
+										{#if project.overdueTaskCount > 0}<span class="count-overdue">{project.overdueTaskCount}</span>{/if}
+										{#if project.ongoingTaskCount > 0}<span class="count-ongoing">{project.ongoingTaskCount}</span>{/if}
 									</span>
 								{/if}
 							</a>
@@ -405,11 +426,22 @@
 		flex: 1;
 	}
 
-	.task-count {
+	/* The two numbers sit in a plain row, space-separated like "5 2", each painted
+	   with its status colour — red before green, overdue first. */
+	.task-counts {
+		display: inline-flex;
+		gap: 0.35em;
 		flex: 0 0 auto;
 		font-size: 0.72rem;
-		color: var(--color-muted);
 		font-variant-numeric: tabular-nums;
+	}
+
+	.count-overdue {
+		color: var(--color-status-overdue);
+	}
+
+	.count-ongoing {
+		color: var(--color-status-ongoing);
 	}
 
 	.add-project {

@@ -1,5 +1,6 @@
 import { currentEpoch } from './nav-epoch';
 import { sortTasks, type Task } from './task-columns';
+import { notifyTasksChanged } from './tasks-changed';
 
 export type { Task, TaskAssignee } from './task-columns';
 
@@ -26,14 +27,18 @@ export function isTasksInitializedForCurrentEpoch(): boolean {
 
 // Every mutation re-sorts: adding a task or editing a deadline changes where the
 // row belongs, and neither should need a refetch to land in the right place.
+// The sidebar's counters listen for the change event each one fires.
 export function addTask(task: Task) {
 	tasksState.tasks = sortTasks([...tasksState.tasks, task]);
+	notifyTasksChanged();
 }
 
 export function updateTask(task: Task) {
 	tasksState.tasks = sortTasks(tasksState.tasks.map((t) => (t.id === task.id ? task : t)));
+	notifyTasksChanged();
 }
 
 export function removeTask(id: string) {
 	tasksState.tasks = tasksState.tasks.filter((t) => t.id !== id);
+	notifyTasksChanged();
 }
