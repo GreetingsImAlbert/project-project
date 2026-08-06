@@ -13,7 +13,10 @@
 	--color-frame: #f5f6f8;
 	--color-surface-raised: #ffffff;
 	--color-surface-inset: #fafbfc;
-	--color-surface-sidebar: var(--color-surface-raised);
+	/* Shell surfaces step subtly toward the frame from content to sidebar. */
+	--color-surface-content: #ffffff;
+	--color-surface-header: #fcfcfd;
+	--color-surface-sidebar: #f9fafb;
 	--color-surface-nav: var(--color-frame);
 	--color-fg: #111111;
 	--color-muted: #666666;
@@ -102,7 +105,9 @@
 	--color-frame: #091119;
 	--color-surface-raised: #16232d;
 	--color-surface-inset: #101b24;
-	--color-surface-sidebar: var(--color-surface-raised);
+	--color-surface-content: #192832;
+	--color-surface-header: #16232d;
+	--color-surface-sidebar: #121d26;
 	--color-surface-nav: var(--color-frame);
 	--color-fg: #e7edf1;
 	--color-muted: #91a0ad;
@@ -158,7 +163,9 @@
 	--color-frame: #07090b;
 	--color-surface-raised: #121519;
 	--color-surface-inset: #0c0f12;
-	--color-surface-sidebar: var(--color-surface-raised);
+	--color-surface-content: #15191d;
+	--color-surface-header: #121519;
+	--color-surface-sidebar: #0f1215;
 	--color-surface-nav: var(--color-frame);
 	--color-fg: #f1f3f5;
 	--color-muted: #8d969f;
