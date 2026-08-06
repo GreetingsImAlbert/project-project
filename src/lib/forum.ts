@@ -155,7 +155,7 @@ function authorFor(authorId: string | null, profiles: Map<string, ProfileRow>): 
 	};
 }
 
-export async function readForumFeed(client: ForumClient, userId: string, before: string | null): Promise<ForumFeed | { error: string }> {
+export async function readForumFeed(client: ForumClient, userId: string | null, before: string | null): Promise<ForumFeed | { error: string }> {
 	const cursor = before ? decodeForumCursor(before) : null;
 	if (before && !cursor) return { error: 'Invalid pagination cursor' };
 
@@ -250,7 +250,7 @@ export async function readForumFeed(client: ForumClient, userId: string, before:
 			author: authorFor(reply.author_id, profiles),
 			deleted,
 			likeCount: deleted ? 0 : likeUsers.length,
-			likedByMe: !deleted && likeUsers.includes(userId),
+			likedByMe: !deleted && userId !== null && likeUsers.includes(userId),
 			children: [],
 		};
 		replyDtos.set(reply.id, dto);
@@ -276,7 +276,7 @@ export async function readForumFeed(client: ForumClient, userId: string, before:
 			author: authorFor(post.author_id, profiles),
 			deleted,
 			likeCount: deleted ? 0 : likeUsers.length,
-			likedByMe: !deleted && likeUsers.includes(userId),
+			likedByMe: !deleted && userId !== null && likeUsers.includes(userId),
 			replies: repliesByPost.get(post.id) ?? [],
 		};
 	});

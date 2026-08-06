@@ -55,6 +55,13 @@
 		currentAvatar: string | null;
 	} = $props();
 
+	// A guest reads the Workshop but writes nothing: no composer, no like or
+	// reply controls, no delete menus. The server enforces the same boundary
+	// (every mutation endpoint returns 401 without a session) — this only hides
+	// the controls. `author.id === currentUserId` alone can't do it: a guest's
+	// `currentUserId` is null, and a deleted account's post also carries null.
+	const canInteract = currentUserId !== null;
+
 	let posts = $state<Post[]>([]);
 	let nextCursor = $state<string | null>(null);
 	let loading = $state(true);
@@ -454,8 +461,8 @@
 	{#snippet renderReply(post: Post, reply: Reply)}
 	<div class="reply-node">
 		<div class:deleted={reply.deleted} class="reply">
-			{#if !post.deleted && !reply.deleted && reply.author.id === currentUserId}
-				<div class="more-menu-wrap">
+		{#if canInteract && !post.deleted && !reply.deleted && reply.author.id === currentUserId}
+			<div class="more-menu-wrap">
 					<button
 						type="button"
 						class="more-button"
@@ -490,19 +497,21 @@
 			</div>
 			<p class="reply-body">{reply.deleted ? 'This reply was deleted.' : reply.body}</p>
 			<div class="post-actions">
-				<button
-					type="button"
-					class:liked={reply.likedByMe}
-					class:like-pending={isActionPending(`reply-like-${reply.id}`)}
-					class="icon-action"
-					aria-label={reply.likedByMe ? `Unlike reply (${reply.likeCount})` : `Like reply (${reply.likeCount})`}
-					title={reply.likedByMe ? 'Unlike reply' : 'Like reply'}
-					disabled={post.deleted || reply.deleted || isActionPending(`reply-like-${reply.id}`)}
-					onclick={() => void toggleReplyLike(post, reply)}
-				>
-					{@render likeIcon()}
-					<span class="action-count" aria-hidden="true">{reply.likeCount}</span>
-				</button>
+				{#if canInteract}
+					<button
+						type="button"
+						class:liked={reply.likedByMe}
+						class:like-pending={isActionPending(`reply-like-${reply.id}`)}
+						class="icon-action"
+						aria-label={reply.likedByMe ? `Unlike reply (${reply.likeCount})` : `Like reply (${reply.likeCount})`}
+						title={reply.likedByMe ? 'Unlike reply' : 'Like reply'}
+						disabled={post.deleted || reply.deleted || isActionPending(`reply-like-${reply.id}`)}
+						onclick={() => void toggleReplyLike(post, reply)}
+					>
+						{@render likeIcon()}
+						<span class="action-count" aria-hidden="true">{reply.likeCount}</span>
+					</button>
+				{/if}
 				{#if !post.deleted && !reply.deleted}
 					<button
 						type="button"
@@ -519,7 +528,7 @@
 			</div>
 		</div>
 
-		{#if !post.deleted && !reply.deleted && isReplyRepliesExpanded(reply.id)}
+		{#if canInteract && !post.deleted && !reply.deleted && isReplyRepliesExpanded(reply.id)}
 			{@render replyComposer(post.id, reply.id, `Reply to ${reply.author.displayName}`)}
 		{/if}
 
@@ -542,28 +551,30 @@
 		<p class="muted">Share thoughts and ideas with everyone on P2.</p>
 	</header>
 
-	<form class:expanded={composerExpanded} class="composer" onsubmit={(event) => { event.preventDefault(); void submitPost(); }}>
-		{#if !composerExpanded}
-			<button type="button" class="composer-trigger" onclick={() => composerExpanded = true}>What are you building?</button>
-		{:else}
-			<textarea
-				bind:value={composerBody}
-				maxlength={FORUM_MAX_BODY_LENGTH}
-				rows="3"
-				placeholder="What are you building?"
-				aria-label="New workshop post"
-				autofocus
-				disabled={posting}
-			></textarea>
-			<div class="composer-footer">
-				<span class="muted character-count">{composerBody.length}/{FORUM_MAX_BODY_LENGTH}</span>
-				<div class="composer-actions">
-					<button type="button" class="btn-plain" disabled={posting} onclick={() => { composerBody = ''; composerExpanded = false; }}>Cancel</button>
-					<button type="submit" disabled={posting || !composerBody.trim()}>{posting ? 'Posting…' : 'Post'}</button>
+	{#if canInteract}
+		<form class:expanded={composerExpanded} class="composer" onsubmit={(event) => { event.preventDefault(); void submitPost(); }}>
+			{#if !composerExpanded}
+				<button type="button" class="composer-trigger" onclick={() => composerExpanded = true}>What are you building?</button>
+			{:else}
+				<textarea
+					bind:value={composerBody}
+					maxlength={FORUM_MAX_BODY_LENGTH}
+					rows="3"
+					placeholder="What are you building?"
+					aria-label="New workshop post"
+					autofocus
+					disabled={posting}
+				></textarea>
+				<div class="composer-footer">
+					<span class="muted character-count">{composerBody.length}/{FORUM_MAX_BODY_LENGTH}</span>
+					<div class="composer-actions">
+						<button type="button" class="btn-plain" disabled={posting} onclick={() => { composerBody = ''; composerExpanded = false; }}>Cancel</button>
+						<button type="submit" disabled={posting || !composerBody.trim()}>{posting ? 'Posting…' : 'Post'}</button>
+					</div>
 				</div>
-			</div>
-		{/if}
-	</form>
+			{/if}
+		</form>
+	{/if}
 
 	{#if pendingPost}
 		<article class="post pending-post" aria-busy="true">
@@ -591,7 +602,7 @@
 		<div class="feed">
 			{#each posts as post (post.id)}
 				<article class:deleted={post.deleted} class="post">
-					{#if !post.deleted && post.author.id === currentUserId}
+					{#if canInteract && !post.deleted && post.author.id === currentUserId}
 						<div class="more-menu-wrap">
 							<button
 								type="button"
@@ -627,19 +638,21 @@
 					</div>
 					<p class="post-body">{post.deleted ? 'This post was deleted.' : post.body}</p>
 					<div class="post-actions">
-						<button
-							type="button"
-							class:liked={post.likedByMe}
-							class:like-pending={isActionPending(`post-like-${post.id}`)}
-							class="icon-action"
-							aria-label={post.likedByMe ? `Unlike post (${post.likeCount})` : `Like post (${post.likeCount})`}
-							title={post.likedByMe ? 'Unlike post' : 'Like post'}
-							disabled={post.deleted || isActionPending(`post-like-${post.id}`)}
-							onclick={() => void togglePostLike(post)}
-						>
-							{@render likeIcon()}
-							<span class="action-count" aria-hidden="true">{post.likeCount}</span>
-						</button>
+						{#if canInteract}
+							<button
+								type="button"
+								class:liked={post.likedByMe}
+								class:like-pending={isActionPending(`post-like-${post.id}`)}
+								class="icon-action"
+								aria-label={post.likedByMe ? `Unlike post (${post.likeCount})` : `Like post (${post.likeCount})`}
+								title={post.likedByMe ? 'Unlike post' : 'Like post'}
+								disabled={post.deleted || isActionPending(`post-like-${post.id}`)}
+								onclick={() => void togglePostLike(post)}
+							>
+								{@render likeIcon()}
+								<span class="action-count" aria-hidden="true">{post.likeCount}</span>
+							</button>
+						{/if}
 						{#if !post.deleted}
 							<button
 								type="button"
@@ -655,7 +668,7 @@
 						{/if}
 					</div>
 
-					{#if !post.deleted && isPostRepliesExpanded(post.id)}
+					{#if canInteract && !post.deleted && isPostRepliesExpanded(post.id)}
 						{@render replyComposer(post.id, null, `Reply to ${post.author.displayName}`)}
 					{/if}
 
