@@ -6,7 +6,8 @@
 	let {
 		avatar = null,
 		displayName = '',
-	}: { avatar?: string | null; displayName?: string } = $props();
+		guest = false,
+	}: { avatar?: string | null; displayName?: string; guest?: boolean } = $props();
 
 	let open = $state(false);
 	let reportOpen = $state(false);
@@ -86,11 +87,19 @@
 
 	{#if open}
 		<div class="menu-dropdown">
-			<a href="/account" class="menu-item" onclick={closeMenu} data-astro-prefetch>Account</a>
-			<button type="button" class="menu-item" onclick={openReport}>Help</button>
-			<form method="POST" action="/api/auth/logout" data-astro-reload>
-				<button type="submit" class="menu-item menu-logout">Log out</button>
-			</form>
+			{#if guest}
+				<!-- Guests get a single entry point: the login page is the combined
+				     login/signup page, so one item covers both. Help stays — the
+				     feedback endpoint accepts reports without a session. -->
+				<a href="/login" class="menu-item" onclick={closeMenu} data-astro-prefetch>Log in / Register</a>
+				<button type="button" class="menu-item" onclick={openReport}>Help</button>
+			{:else}
+				<a href="/account" class="menu-item" onclick={closeMenu} data-astro-prefetch>Account</a>
+				<button type="button" class="menu-item" onclick={openReport}>Help</button>
+				<form method="POST" action="/api/auth/logout" data-astro-reload>
+					<button type="submit" class="menu-item menu-logout">Log out</button>
+				</form>
+			{/if}
 		</div>
 	{/if}
 </div>
