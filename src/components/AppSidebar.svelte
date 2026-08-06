@@ -179,12 +179,14 @@
 					</svg>
 				</button>
 			</div>
-			<p class="sidebar-welcome row">
-				<span class="row-icon">
-					<Avatar {avatar} {displayName} size={26} />
-				</span>
-				<span class="row-label">Welcome, {displayName}</span>
-			</p>
+			{#if !guest}
+				<p class="sidebar-welcome row">
+					<span class="row-icon">
+						<Avatar {avatar} {displayName} size={26} />
+					</span>
+					<span class="row-label">Welcome, {displayName}</span>
+				</p>
+			{/if}
 
 			<nav class="sidebar-nav">
 				<a href="/" class="nav-link row" class:active={currentPath === '/'} title="Dashboard" data-astro-prefetch onpointerdown={keepExpandedForNavigation}>
@@ -203,39 +205,41 @@
 					<span class="row-label">Projects</span>
 				</a>
 
-				<ul class="project-list">
-					{#each projects as project}
-						<li>
-							<a
-								href={projectHref(project.id)}
-								class="nav-link project-link row"
-								class:active={currentProjectId === project.id}
-								title={project.name}
-								data-astro-prefetch
-								onpointerdown={keepExpandedForNavigation}
-							>
-								<span class="row-icon" title={project.owner.displayName}>
-									<Avatar avatar={project.owner.avatar} displayName={project.owner.displayName} size={22} />
-								</span>
-								<span class="row-label project-name">{project.name}</span>
-								{#if project.overdueTaskCount > 0 || project.ongoingTaskCount > 0}
-									<!-- Two counts, one number in each status colour: overdue in the danger
-									     red the tasks page uses, ongoing in its green. -->
-									<span class="row-label task-counts" title={`${project.overdueTaskCount} overdue, ${project.ongoingTaskCount} ongoing`}>
-										{#if project.overdueTaskCount > 0}<span class="count-overdue">{project.overdueTaskCount}</span>{/if}
-										{#if project.ongoingTaskCount > 0}<span class="count-ongoing">{project.ongoingTaskCount}</span>{/if}
+				{#if !guest}
+					<ul class="project-list">
+						{#each projects as project}
+							<li>
+								<a
+									href={projectHref(project.id)}
+									class="nav-link project-link row"
+									class:active={currentProjectId === project.id}
+									title={project.name}
+									data-astro-prefetch
+									onpointerdown={keepExpandedForNavigation}
+								>
+									<span class="row-icon" title={project.owner.displayName}>
+										<Avatar avatar={project.owner.avatar} displayName={project.owner.displayName} size={22} />
 									</span>
-								{/if}
+									<span class="row-label project-name">{project.name}</span>
+									{#if project.overdueTaskCount > 0 || project.ongoingTaskCount > 0}
+										<!-- Two counts, one number in each status colour: overdue in the danger
+										     red the tasks page uses, ongoing in its green. -->
+										<span class="row-label task-counts" title={`${project.overdueTaskCount} overdue, ${project.ongoingTaskCount} ongoing`}>
+											{#if project.overdueTaskCount > 0}<span class="count-overdue">{project.overdueTaskCount}</span>{/if}
+											{#if project.ongoingTaskCount > 0}<span class="count-ongoing">{project.ongoingTaskCount}</span>{/if}
+										</span>
+									{/if}
+								</a>
+							</li>
+						{/each}
+						<li>
+							<a href="/projects/new" class="nav-link add-project row" title="Add project" data-astro-prefetch onpointerdown={keepExpandedForNavigation}>
+								<span class="row-icon">+</span>
+								<span class="row-label">Add project</span>
 							</a>
 						</li>
-					{/each}
-					<li>
-						<a href="/projects/new" class="nav-link add-project row" title="Add project" data-astro-prefetch onpointerdown={keepExpandedForNavigation}>
-							<span class="row-icon">+</span>
-							<span class="row-label">Add project</span>
-						</a>
-					</li>
-				</ul>
+					</ul>
+				{/if}
 			</nav>
 		</div>
 	</aside>
