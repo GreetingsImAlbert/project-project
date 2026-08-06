@@ -849,6 +849,22 @@ export type Database = {
         Args: { check_project_id: string }
         Returns: number
       }
+      public_project_get: {
+        Args: { p_id: string }
+        Returns: {
+          description: string
+          id: string
+          name: string
+        }[]
+      }
+      public_project_list: {
+        Args: never
+        Returns: {
+          description: string
+          id: string
+          name: string
+        }[]
+      }
       replace_bulk_transaction_with_lines: {
         Args: {
           p_ghost_member_id: string

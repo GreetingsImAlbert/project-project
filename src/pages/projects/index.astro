@@ -1,7 +1,5 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
-import { env } from 'cloudflare:workers';
-import { getSupabaseAdmin } from '../../lib/supabase/admin';
 
 export const prerender = false;
 
@@ -10,19 +8,15 @@ const isGuest = !user;
 
 // Members list every project they're part of through RLS. Guests get the
 // public slice instead: same list UI, but only `is_public` projects and only
-// the id/name/description columns the public boundary allows. The service-role
-// client reads past RLS because there is deliberately no anonymous SELECT
-// policy on projects (see SCHEMA.md); the narrow column set keeps it a
-// boundary, and a `public_project_list` RPC is the follow-up that formalizes it.
+// the id/name/description columns the boundary RPC exposes. There is
+// deliberately no anonymous SELECT policy on projects (see SCHEMA.md) — the
+// `public_project_list` RPC is the only anonymous read path, so a guest cannot
+// name a field beyond those three.
 let projects: { id: string; name: string; description: string | null }[] | null = null;
 let errorMessage: string | null = null;
 
 if (isGuest) {
-	const { data, error } = await getSupabaseAdmin(env)
-		.from('projects')
-		.select('id, name, description')
-		.eq('is_public', true)
-		.order('created_at', { ascending: false });
+	const { data, error } = await Astro.locals.supabase.rpc('public_project_list');
 	projects = data;
 	errorMessage = error?.message ?? null;
 } else {
