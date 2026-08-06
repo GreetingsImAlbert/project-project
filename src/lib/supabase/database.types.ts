@@ -534,6 +534,7 @@ export type Database = {
           currency: string
           description: string | null
           id: string
+          is_public: boolean
           name: string
           owner_id: string
           updated_at: string | null
@@ -543,6 +544,7 @@ export type Database = {
           currency?: string
           description?: string | null
           id?: string
+          is_public?: boolean
           name: string
           owner_id: string
           updated_at?: string | null
@@ -552,6 +554,7 @@ export type Database = {
           currency?: string
           description?: string | null
           id?: string
+          is_public?: boolean
           name?: string
           owner_id?: string
           updated_at?: string | null

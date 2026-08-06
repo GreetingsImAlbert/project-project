@@ -8,6 +8,7 @@ import DeleteProjectPanel from '../../../components/DeleteProjectPanel.svelte';
 import ProjectNameEditor from '../../../components/ProjectNameEditor.svelte';
 import CurrencyPicker from '../../../components/CurrencyPicker.svelte';
 import TrashList from '../../../components/TrashList.svelte';
+import ProjectVisibilityPicker from '../../../components/ProjectVisibilityPicker.svelte';
 import { listGhostMembers } from '../../../lib/ghost-members';
 
 export const prerender = false;
@@ -20,7 +21,7 @@ if (!user) {
 const { id } = Astro.params;
 
 const [{ data: project, error }, { data: members }, ghostMembers] = await Promise.all([
-	Astro.locals.supabase.from('projects').select('id, name, description, owner_id, currency').eq('id', id).single(),
+	Astro.locals.supabase.from('projects').select('id, name, description, owner_id, currency, is_public').eq('id', id).single(),
 	Astro.locals.supabase
 		.from('project_members')
 		.select('role, is_auditor, user_id, profiles(display_name, email, avatar)')
@@ -69,6 +70,11 @@ const returnTo = `/projects/${id}/settings`;
 	<section>
 		<h3>Currency</h3>
 		<CurrencyPicker client:idle projectId={project.id} currency={project.currency} />
+	</section>
+
+	<section>
+		<h3>Visibility</h3>
+		<ProjectVisibilityPicker client:idle projectId={project.id} isPublic={project.is_public} />
 	</section>
 
 	<section>
