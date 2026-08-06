@@ -50,8 +50,8 @@
 		currentDisplayName,
 		currentAvatar,
 	}: {
-		currentUserId: string;
-		currentDisplayName: string;
+		currentUserId: string | null;
+		currentDisplayName: string | null;
 		currentAvatar: string | null;
 	} = $props();
 

@@ -5,16 +5,12 @@ import ForumPage from '../components/ForumPage.svelte';
 export const prerender = false;
 
 const user = Astro.locals.user;
-
-if (!user) {
-	return Astro.redirect('/login');
-}
 ---
 <BaseLayout title="Dashboard">
 	<ForumPage
 		client:load
-		currentUserId={user.id}
-		currentDisplayName={user.displayName ?? user.email ?? 'You'}
-		currentAvatar={user.avatar}
+		currentUserId={user?.id ?? null}
+		currentDisplayName={user ? (user.displayName ?? user.email ?? 'You') : null}
+		currentAvatar={user?.avatar ?? null}
 	/>
 </BaseLayout>
