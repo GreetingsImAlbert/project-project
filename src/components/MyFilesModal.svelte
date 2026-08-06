@@ -5,6 +5,7 @@
 	import { formatFileSize } from '../lib/format-bytes';
 	import { adjustStorageUsage } from '../lib/storage-usage.svelte';
 	import { onSwapOrDestroy } from '../lib/island-teardown';
+	import { loadViewerTabs, saveViewerTabs, type ViewerTab } from '../lib/viewer-tabs';
 
 	interface MyFile {
 		id: string;
@@ -21,7 +22,14 @@
 	let loadError = $state<string | null>(null);
 	let deletingId = $state<string | null>(null);
 	let rowError = $state<{ id: string; message: string } | null>(null);
-	let viewingFile = $state<MyFile | null>(null);
+	const VIEWER_TABS_KEY = 'p2-viewer-tabs-mine';
+	let viewerTabs = $state<ViewerTab[]>(loadViewerTabs(VIEWER_TABS_KEY));
+	let viewingFileId = $state<string | null>(null);
+	let viewingFile = $derived(viewingFileId ? viewerTabs.find((tab) => tab.id === viewingFileId) ?? null : null);
+
+	$effect(() => {
+		saveViewerTabs(VIEWER_TABS_KEY, viewerTabs);
+	});
 	// Reported by the panel. The modal centres itself in what's left of the viewport, so
 	// opening (or dragging) a preview slides it clear instead of hiding under it.
 	let panelWidth = $state(0);
@@ -72,15 +80,36 @@
 		loading = false;
 	}
 
+	function openViewer(file: MyFile) {
+		const tab = { id: file.id, filename: file.filename };
+		viewerTabs = viewerTabs.some((openTab) => openTab.id === file.id)
+			? viewerTabs.map((openTab) => (openTab.id === file.id ? tab : openTab))
+			: [...viewerTabs, tab];
+		viewingFileId = file.id;
+	}
+
+	function selectViewerTab(fileId: string) {
+		if (viewerTabs.some((tab) => tab.id === fileId)) viewingFileId = fileId;
+	}
+
+	function closeViewerTab(fileId: string) {
+		const index = viewerTabs.findIndex((tab) => tab.id === fileId);
+		if (index < 0) return;
+
+		const remaining = viewerTabs.filter((tab) => tab.id !== fileId);
+		viewerTabs = remaining;
+		if (viewingFileId === fileId) viewingFileId = remaining[Math.min(index, remaining.length - 1)]?.id ?? null;
+	}
+
 	function closeModal() {
 		// The preview has its own close button and must remain open while the user clicks
 		// around the modal backdrop. Closing the preview returns control here first.
-		if (viewingFile) return;
+		if (viewingFileId) return;
 		if (previewDirty && !confirm('Discard your unsaved changes to the open file?')) return;
 
 		open = false;
 		// The panel is fixed to the viewport, so it would outlive the modal it was opened from.
-		viewingFile = null;
+		viewingFileId = null;
 	}
 
 	function handleFileSaved(fileId: string, sizeBytes: number) {
@@ -110,7 +139,7 @@
 		const deletedFile = files.find((f) => f.id === fileId);
 		files = files.filter((f) => f.id !== fileId);
 		// The preview would keep showing a file that no longer exists.
-		if (viewingFile?.id === fileId) viewingFile = null;
+		closeViewerTab(fileId);
 		if (deletedFile?.size_bytes) adjustStorageUsage(-deletedFile.size_bytes);
 		deletingId = null;
 	}
@@ -120,7 +149,7 @@
 		// button or resize threshold is used.
 		function onKeydown(e: KeyboardEvent) {
 			if (!open || e.key !== 'Escape') return;
-			if (viewingFile) return;
+			if (viewingFileId) return;
 			closeModal();
 		}
 		window.addEventListener('keydown', onKeydown);
@@ -161,8 +190,8 @@
 							{#each group.files as file (file.id)}
 								{@const parts = splitFilename(file.filename)}
 								{#if viewMode === 'grid'}
-									<li class="grid-item" class:open={viewingFile?.id === file.id}>
-										<button type="button" class="grid-download" onclick={() => (viewingFile = file)}>
+									<li class="grid-item" class:open={viewingFileId === file.id}>
+										<button type="button" class="grid-download" onclick={() => openViewer(file)}>
 											<span class="grid-icon">📄</span>
 											<span class="grid-name">{parts.base}</span>
 											{#if parts.ext}<span class="grid-ext muted">{parts.ext}</span>{/if}
@@ -182,8 +211,8 @@
 										{#if rowError?.id === file.id}<p class="row-error">{rowError.message}</p>{/if}
 									</li>
 								{:else}
-									<li class="file-row" class:open={viewingFile?.id === file.id}>
-										<button type="button" class="btn-plain file-download" onclick={() => (viewingFile = file)}>
+									<li class="file-row" class:open={viewingFileId === file.id}>
+										<button type="button" class="btn-plain file-download" onclick={() => openViewer(file)}>
 											<span class="file-name">{parts.base}</span>
 											{#if parts.ext}<span class="file-ext muted">{parts.ext}</span>{/if}
 										</button>
@@ -216,15 +245,17 @@
      of the backdrop's, so it needs a z-index above the backdrop's own. -->
 <FileViewerPanel
 	file={viewingFile}
+	tabs={viewerTabs}
 	zIndex={110}
+	onTabSelect={selectViewerTab}
+	onTabClose={closeViewerTab}
 	onWidthChange={(w) => (panelWidth = w)}
 	onDirtyChange={(d) => (previewDirty = d)}
 	onSaved={handleFileSaved}
 	onFileRestore={(fileId) => {
-		const previous = files.find((f) => f.id === fileId);
-		if (previous) viewingFile = previous;
+		selectViewerTab(fileId);
 	}}
-	onClose={() => (viewingFile = null)}
+	onClose={() => (viewingFileId = null)}
 />
 
 <style>

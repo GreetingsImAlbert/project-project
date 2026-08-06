@@ -4,18 +4,17 @@
 	import { fileKind, isTextKind, languageFor, splitFilename } from '../lib/file-kind';
 	import { renderMarkdown } from '../lib/markdown';
 	import { onSwapOrDestroy } from '../lib/island-teardown';
+	import type { ViewerTab } from '../lib/viewer-tabs';
 	// Type-only, so it doesn't drag the highlighter into this component's bundle — the
 	// grammars stay behind the dynamic imports below.
 	import type { RootContent } from 'hast';
 
-	interface ViewerFile {
-		id: string;
-		filename: string;
-	}
-
 	let {
 		file,
+		tabs,
 		onClose,
+		onTabSelect,
+		onTabClose,
 		zIndex = 50,
 		editOnOpen = false,
 		onWidthChange,
@@ -23,8 +22,11 @@
 		onFileRestore,
 		onSaved,
 	}: {
-		file: ViewerFile | null;
+		file: ViewerTab | null;
+		tabs: ViewerTab[];
 		onClose: () => void;
+		onTabSelect: (fileId: string) => void;
+		onTabClose: (fileId: string) => void;
 		// Raised when the panel opens over something that already has its own overlay
 		// (MyFilesModal's backdrop sits at 100).
 		zIndex?: number;
@@ -111,6 +113,7 @@
 	let requestSeq = 0;
 	let contentRequest: AbortController | null = null;
 	let loadedId: string | null = null;
+	let skipDirtyPromptForId: string | null = null;
 	// Latched from editOnOpen at the moment a new file arrives, and spent by the load that
 	// follows — the prop may well have gone back to false by the time the content lands.
 	let autoEditPending = false;
@@ -139,7 +142,7 @@
 		etag = null;
 	}
 
-	function loadContent(current: ViewerFile) {
+	function loadContent(current: ViewerTab) {
 		contentRequest?.abort();
 		content = null;
 		error = null;
@@ -190,6 +193,7 @@
 			contentRequest?.abort();
 			contentRequest = null;
 			loadedId = null;
+			skipDirtyPromptForId = null;
 			autoEditPending = false;
 			// Every path that closes the panel has already asked about an unsaved buffer, so
 			// by here it's been abandoned on purpose — and leaving `dirty` true would keep
@@ -207,7 +211,7 @@
 
 		// Another file was clicked while an edit was still unsaved. `dirty` is only read
 		// once the id has actually changed, so an ordinary keystroke doesn't re-run this.
-		if (loadedId !== null && dirty) {
+		if (loadedId !== null && dirty && skipDirtyPromptForId !== loadedId) {
 			const previousId = loadedId;
 			if (!confirm('Discard your unsaved changes to this file?')) {
 				onFileRestore?.(previousId);
@@ -215,6 +219,7 @@
 			}
 		}
 
+		skipDirtyPromptForId = null;
 		loadedId = current.id;
 		resetEditor();
 		autoEditPending = editOnOpen;
@@ -438,6 +443,14 @@
 		onClose();
 	}
 
+	function requestTabClose(tabId: string) {
+		if (tabId === file?.id && dirty) {
+			if (!confirm('Discard your unsaved changes?')) return;
+			skipDirtyPromptForId = tabId;
+		}
+		onTabClose(tabId);
+	}
+
 	function resizeTo(px: number) {
 		if (px <= CLOSE_WIDTH) {
 			if (resizeClosePending) return;
@@ -565,6 +578,35 @@
 				<button type="button" class="btn-plain close-btn" aria-label="Close preview" onclick={requestClose}>✕</button>
 			</div>
 		</header>
+
+		<nav class="viewer-tabs" aria-label="Open files">
+			{#each tabs as tab (tab.id)}
+				{@const tabParts = splitFilename(tab.filename)}
+				<div class="viewer-tab" class:active={file?.id === tab.id}>
+					<button
+						type="button"
+						class="viewer-tab-select"
+						class:active={file?.id === tab.id}
+						aria-current={file?.id === tab.id ? 'page' : undefined}
+						title={`Open ${tab.filename}`}
+						onclick={() => onTabSelect(tab.id)}
+					>
+						<span class="viewer-tab-name">{tabParts.base}</span>
+						{#if tabParts.ext}<span class="viewer-tab-ext muted">{tabParts.ext}</span>{/if}
+						{#if file?.id === tab.id && dirty}<span class="viewer-tab-dirty" title="Unsaved changes">•</span>{/if}
+					</button>
+					<button
+						type="button"
+						class="viewer-tab-close"
+						aria-label={`Close ${tab.filename}`}
+						title={`Close ${tab.filename}`}
+						onclick={() => requestTabClose(tab.id)}
+					>
+						×
+					</button>
+				</div>
+			{/each}
+		</nav>
 
 		{#if downloadError}
 			<p class="download-error">{downloadError}</p>
@@ -735,6 +777,87 @@
 		border-color: var(--color-border);
 		color: var(--color-fg);
 		opacity: 1;
+	}
+
+	.viewer-tabs {
+		display: flex;
+		align-items: stretch;
+		gap: 2px;
+		flex: 0 0 auto;
+		min-width: 0;
+		overflow-x: auto;
+		padding: 0 var(--space-3);
+		background: var(--color-surface-inset);
+		border-bottom: 1px solid var(--color-border);
+		scrollbar-width: thin;
+	}
+
+	.viewer-tab {
+		display: flex;
+		align-items: stretch;
+		min-width: 0;
+		max-width: 200px;
+		border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+	}
+
+	.viewer-tab.active {
+		background: var(--color-surface-raised);
+		box-shadow: inset 0 -2px 0 var(--color-border-strong);
+	}
+
+	.viewer-tab-select,
+	.viewer-tab-close {
+		border: none;
+		background: transparent;
+		color: var(--color-muted);
+		cursor: pointer;
+	}
+
+	.viewer-tab-select {
+		display: flex;
+		align-items: baseline;
+		gap: 2px;
+		min-width: 0;
+		max-width: 176px;
+		padding: var(--space-2) var(--space-1) var(--space-2) var(--space-2);
+		text-align: left;
+	}
+
+	.viewer-tab-select:hover,
+	.viewer-tab-close:hover {
+		background: var(--color-highlight);
+		color: var(--color-fg);
+		opacity: 1;
+	}
+
+	.viewer-tab-select.active {
+		color: var(--color-fg);
+	}
+
+	.viewer-tab-name {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.viewer-tab-ext {
+		flex: 0 0 auto;
+		font-size: 0.72rem;
+	}
+
+	.viewer-tab-dirty {
+		flex: 0 0 auto;
+		color: var(--color-danger);
+		line-height: 1;
+	}
+
+	.viewer-tab-close {
+		flex: 0 0 auto;
+		width: 24px;
+		padding: 0;
+		font-size: 0.95rem;
+		line-height: 1;
 	}
 
 	.viewer-body {

@@ -12,6 +12,7 @@
 	import { formatBytes } from '../lib/format-bytes';
 	import { onSwapOrDestroy } from '../lib/island-teardown';
 	import { fileKind, isTextKind } from '../lib/file-kind';
+	import { loadViewerTabs, saveViewerTabs, type ViewerTab } from '../lib/viewer-tabs';
 
 	interface Folder {
 		id: string;
@@ -58,6 +59,18 @@
 		initialStorageFailed: boolean;
 	} = $props();
 
+	function viewerTabsKey() {
+		return `p2-viewer-tabs-project-${projectId}`;
+	}
+
+	let viewerTabs = $state<ViewerTab[]>(loadViewerTabs(viewerTabsKey()));
+	let viewingFileId = $state<string | null>(null);
+	let viewingFile = $derived(viewingFileId ? viewerTabs.find((tab) => tab.id === viewingFileId) ?? null : null);
+
+	$effect(() => {
+		saveViewerTabs(viewerTabsKey(), viewerTabs);
+	});
+
 	let currentFolderId = $state(initialFolderId);
 	let files = $state(initialFiles);
 	let allFolders = $state(initialAllFolders);
@@ -72,7 +85,6 @@
 
 	let viewMode = $state<'list' | 'grid'>(getInitialViewMode());
 	let backStack = $state<(string | null)[]>([]);
-	let viewingFile = $state<FileRow | null>(null);
 	let viewerEditOnOpen = $state(false);
 
 	let creatingFolder = $state(false);
@@ -108,7 +120,29 @@
 
 	function openViewer(file: FileRow, startEditing = false) {
 		viewerEditOnOpen = startEditing;
-		viewingFile = file;
+		const tab = { id: file.id, filename: file.filename };
+		viewerTabs = viewerTabs.some((openTab) => openTab.id === file.id)
+			? viewerTabs.map((openTab) => (openTab.id === file.id ? tab : openTab))
+			: [...viewerTabs, tab];
+		viewingFileId = file.id;
+	}
+
+	function selectViewerTab(fileId: string) {
+		if (viewerTabs.some((tab) => tab.id === fileId)) viewingFileId = fileId;
+	}
+
+	function closeViewerTab(fileId: string) {
+		const index = viewerTabs.findIndex((tab) => tab.id === fileId);
+		if (index < 0) return;
+
+		const remaining = viewerTabs.filter((tab) => tab.id !== fileId);
+		viewerTabs = remaining;
+		if (viewingFileId === fileId) viewingFileId = remaining[Math.min(index, remaining.length - 1)]?.id ?? null;
+	}
+
+	function closeViewerPanel() {
+		viewingFileId = null;
+		viewerEditOnOpen = false;
 	}
 
 	function toggleFolderActions(folderId: string) {
@@ -263,7 +297,7 @@
 
 	function handleFileRenamed(fileId: string, filename: string) {
 		files = files.map((f) => (f.id === fileId ? { ...f, filename } : f));
-		if (viewingFile?.id === fileId) viewingFile = { ...viewingFile, filename };
+		viewerTabs = viewerTabs.map((tab) => (tab.id === fileId ? { ...tab, filename } : tab));
 	}
 
 	function handleFileMoved(fileId: string, targetFolderId: string | null) {
@@ -294,7 +328,7 @@
 		const deletedFile = files.find((f) => f.id === fileId);
 		files = files.filter((f) => f.id !== fileId);
 		// The preview would keep showing a file that no longer exists.
-		if (viewingFile?.id === fileId) viewingFile = null;
+		closeViewerTab(fileId);
 		adjustProjectStorage(-(deletedFile?.size_bytes ?? 0));
 		// Only give quota back to the current viewer if it was actually their own
 		// file — deleting a project-mate's upload frees their quota, not ours.
@@ -736,7 +770,7 @@
 	files={loading ? [] : files}
 	viewMode={viewMode}
 	loading={loading}
-	openFileId={viewingFile?.id ?? null}
+	openFileId={viewingFileId}
 	onFileOpen={(file) => openViewer(file)}
 	onFileMoved={handleFileMoved}
 	onFileCopied={handleFileCopied}
@@ -758,15 +792,14 @@
 
 <FileViewerPanel
 	file={viewingFile}
+	tabs={viewerTabs}
 	editOnOpen={viewerEditOnOpen}
-	onClose={() => {
-		viewingFile = null;
-		viewerEditOnOpen = false;
-	}}
+	onTabSelect={selectViewerTab}
+	onTabClose={closeViewerTab}
+	onClose={closeViewerPanel}
 	onSaved={handleFileSaved}
 	onFileRestore={(fileId) => {
-		const previous = files.find((f) => f.id === fileId);
-		if (previous) viewingFile = previous;
+		selectViewerTab(fileId);
 	}}
 />
 
