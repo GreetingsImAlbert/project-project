@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { categoryColorStyle } from '../lib/category-color';
-	import { daysUntil, deadlinePassed, formatDeadline } from '../lib/task-status';
-import { formatDeadlineTime } from '../lib/deadline-time';
+	import { daysUntil, deadlinePassed, displayStatus, formatDeadline } from '../lib/task-status';
+	import { formatDeadlineTime } from '../lib/deadline-time';
 	import { HORIZON_COOKIE, HORIZON_OPTIONS, horizonLabel } from '../lib/task-horizon';
 	import type { Reminder } from '../lib/reminders';
 
@@ -29,6 +29,19 @@ import { formatDeadlineTime } from '../lib/deadline-time';
 	// Asia/Manila date there and would be the same one here — see today.ts.
 	const today = serverToday;
 	const nowTime = serverNowTime;
+
+	function statusOf(reminder: Reminder) {
+		return displayStatus(
+			{
+				status: reminder.status,
+				start_date: reminder.startDate,
+				deadline: reminder.deadline,
+				deadline_time: reminder.deadlineTime,
+			},
+			today,
+			nowTime,
+		);
+	}
 
 	// Not a store: neither page that renders this edits tasks, so there's no second
 	// island whose copy could go stale.
@@ -95,14 +108,15 @@ import { formatDeadlineTime } from '../lib/deadline-time';
 	{:else}
 		<ul class="reminder-list">
 			{#each due as reminder (reminder.id)}
-				{@const late = deadlinePassed(reminder.deadline, reminder.deadlineTime, today, nowTime)}
+				{@const status = statusOf(reminder)}
 				<!-- Three things per reminder and nothing else: the category's colour, the
 				     task's name, and when it's due — the date and time carrying the status
-				     in their colour, green while it's still ahead and red once it isn't.
+				     in the same colours as the Tasks page: green while ongoing, muted before
+				     the start date, and red once overdue.
 				     The category name, the appointed members and the 'in 3 days' restatement
 				     of the date all moved out: the panel behind the link says every one of
 				     them, and this list is read at a glance. -->
-				<li class="reminder" class:late style={categoryColorStyle(reminder.colorIndex)}>
+				<li class="reminder" style={categoryColorStyle(reminder.colorIndex)}>
 					<span class="band" aria-hidden="true"></span>
 					<!-- Straight to the task, not just to the page it lives on: the hash is what
 					     TasksTable reads on mount to open that task's detail panel. The link is
@@ -118,7 +132,7 @@ import { formatDeadlineTime } from '../lib/deadline-time';
 					{#if reminder.projectName}
 						<span class="reminder-project">{reminder.projectName}</span>
 					{/if}
-					<span class="reminder-date">
+					<span class="reminder-date status-{status}">
 						{formatDeadline(reminder.deadline, today)}
 						<span class="reminder-time">{formatDeadlineTime(reminder.deadlineTime)}</span>
 					</span>
@@ -291,16 +305,14 @@ import { formatDeadlineTime } from '../lib/deadline-time';
 		white-space: nowrap;
 	}
 
-	/* Green while the deadline is still ahead, red once it has passed — the same two
-	   colours the Tasks list's status dot uses for ongoing and overdue, which are the
-	   only two states a reminder can be in (a done task never becomes one). */
+	/* Use the same status tokens as the Tasks list's dot. The time inherits the date's
+	   colour, so the whole deadline communicates one state. */
 	.reminder-date {
 		flex: 0 0 auto;
 		margin-left: auto;
 		font-size: 0.8rem;
 		font-variant-numeric: tabular-nums;
 		white-space: nowrap;
-		color: var(--color-status-ongoing);
 	}
 
 	/* Rides along with the date rather than taking a column of its own — it's the same
@@ -310,8 +322,20 @@ import { formatDeadlineTime } from '../lib/deadline-time';
 		font-size: 0.72rem;
 	}
 
-	.reminder.late .reminder-date {
+	.reminder-date.status-overdue {
 		color: var(--color-status-overdue);
+	}
+
+	.reminder-date.status-not-started {
+		color: var(--color-status-not-started);
+	}
+
+	.reminder-date.status-done {
+		color: var(--color-status-done);
+	}
+
+	.reminder-date.status-ongoing {
+		color: var(--color-status-ongoing);
 	}
 
 	/* Narrow enough that three things can't share a line: the project drops out rather

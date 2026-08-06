@@ -17,10 +17,12 @@ import type { Task } from './task-columns';
 export interface Reminder {
 	id: string;
 	name: string;
+	startDate: string | null;
 	// Never null: a task with no deadline can't come due, so it never becomes a reminder.
 	deadline: string;
 	// 'HH:MM', the time of day that deadline falls at — see deadline-time.ts.
 	deadlineTime: string;
+	status: Task['status'];
 	colorIndex: number | null;
 	projectId: string;
 	// The project's name, or null on a page that's already about one project and would
@@ -38,8 +40,10 @@ export function projectReminders(tasks: Task[], projectId: string, colors: Categ
 		.map((task) => ({
 			id: task.id,
 			name: task.name,
+			startDate: task.start_date,
 			deadline: task.deadline!,
 			deadlineTime: task.deadline_time,
+			status: task.status,
 			colorIndex: categoryColorIndex(task.category, colors),
 			projectId,
 			projectName: null,
