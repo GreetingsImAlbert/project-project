@@ -17,7 +17,6 @@
 		file,
 		onClose,
 		zIndex = 50,
-		closeOnEscape = true,
 		editOnOpen = false,
 		onWidthChange,
 		onDirtyChange,
@@ -29,10 +28,6 @@
 		// Raised when the panel opens over something that already has its own overlay
 		// (MyFilesModal's backdrop sits at 100).
 		zIndex?: number;
-		// Off when the host already owns Escape: two window listeners both firing on the
-		// same keydown would close the panel and its host in one press, and which of the
-		// two runs first isn't something either component can rely on.
-		closeOnEscape?: boolean;
 		// Drop straight into the editor once this file's content has loaded, instead of
 		// showing it read-only first. Set by hosts that just created the file, where there
 		// is nothing to read yet and Edit is the only reason the panel opened. Read when the
@@ -55,6 +50,8 @@
 	} = $props();
 
 	const MIN_WIDTH = 280;
+	// Below this width the preview is no longer useful, so resizing it farther closes it.
+	const CLOSE_WIDTH = 240;
 
 	// Kept across opens, so a width the user dragged to survives closing the panel.
 	// `sized` is deliberately not $state — the effect below writes `width`, and reading
@@ -62,7 +59,7 @@
 	let width = $state<number | null>(null);
 	let sized = false;
 	let resizing = $state(false);
-	let panelEl = $state<HTMLElement | null>(null);
+	let resizeClosePending = false;
 
 	let content = $state<string | null>(null);
 	let error = $state<string | null>(null);
@@ -435,87 +432,54 @@
 
 	function requestClose() {
 		if (dirty && !confirm('Discard your unsaved changes?')) return;
+		resizing = false;
+		resizeClosePending = false;
+		document.body.style.userSelect = '';
 		onClose();
+	}
+
+	function resizeTo(px: number) {
+		if (px <= CLOSE_WIDTH) {
+			if (resizeClosePending) return;
+			resizeClosePending = true;
+			requestClose();
+			return;
+		}
+
+		resizeClosePending = false;
+		width = clampWidth(px);
 	}
 
 	function startResize(e: PointerEvent) {
 		e.preventDefault();
 		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
 		resizing = true;
+		resizeClosePending = false;
 		document.body.style.userSelect = 'none';
 	}
 
 	function moveResize(e: PointerEvent) {
 		if (!resizing) return;
-		width = clampWidth(window.innerWidth - e.clientX);
+		resizeTo(window.innerWidth - e.clientX);
 	}
 
 	function endResize(e: PointerEvent) {
 		if (!resizing) return;
 		(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
 		resizing = false;
+		resizeClosePending = false;
 		document.body.style.userSelect = '';
 	}
 
 	function resizeKeys(e: KeyboardEvent) {
 		if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
 		e.preventDefault();
-		width = clampWidth((width ?? defaultWidth()) + (e.key === 'ArrowLeft' ? 24 : -24));
-	}
-
-	function onWindowKeydown(e: KeyboardEvent) {
-		// Escape is deliberately inert while there are unsaved changes, here and in every
-		// host: a buffer only ever leaves through Save or Cancel, so it can't depend on
-		// which window listener happens to have been registered first.
-		if (dirty) return;
-		if (e.key === 'Escape' && file && closeOnEscape) onClose();
+		resizeTo((width ?? defaultWidth()) + (e.key === 'ArrowLeft' ? 24 : -24));
 	}
 
 	function onBeforeUnload(e: BeforeUnloadEvent) {
 		if (!dirty) return;
 		e.preventDefault();
-	}
-
-	// The ancestor chain the press travelled, and what was open at the time. Both are read
-	// by onWindowClick below; see the reasoning there.
-	let pressPath: EventTarget[] | null = null;
-	let fileAtPress: ViewerFile | null = null;
-
-	function onWindowPointerDown(e: PointerEvent) {
-		// The whole path, not just e.target: a button that swaps itself out of the DOM when
-		// clicked (Edit becomes Save/Cancel, and back) is already detached by the time the
-		// click reaches the window, so asking whether the panel still contains it answers
-		// no — and the panel would close on its own Edit button. An event's path is fixed
-		// when it's dispatched, so it still names the panel either way.
-		pressPath = e.composedPath();
-		fileAtPress = file;
-	}
-
-	function onWindowClick(e: MouseEvent) {
-		// Both press values are consumed here, not just read: a keyboard-activated click has
-		// no pointerdown of its own, and stale values from the last real press would make it
-		// look like a click on some other element, on some other file.
-		const path = pressPath ?? e.composedPath();
-		const openAtPress = fileAtPress;
-		pressPath = null;
-		fileAtPress = null;
-
-		if (!file) return;
-
-		// An unsaved buffer isn't something a stray click gets to discard.
-		if (dirty) return;
-
-		// The click that opened this file arrives here too — it bubbles to the window after
-		// the list's own handler has already swapped `file` — and closing on it would make
-		// files in the list un-openable.
-		if (file.id !== openAtPress?.id) return;
-
-		// Where the press started, not where the click landed: a resize drag that starts on
-		// the handle and ends out over the page reads as a click on their common ancestor,
-		// and selecting text in the panel can end anywhere at all.
-		if (panelEl && path.includes(panelEl)) return;
-
-		onClose();
 	}
 
 	// A width dragged out on a wide window would overhang a narrower one.
@@ -528,19 +492,13 @@
 	// ever destroying it. A leaked onbeforeunload is the one that shows: it would keep
 	// warning about a buffer whose editor is long gone. See lib/island-teardown.ts.
 	onMount(() => {
-		window.addEventListener('keydown', onWindowKeydown);
 		window.addEventListener('resize', onWindowResize);
-		window.addEventListener('pointerdown', onWindowPointerDown);
-		window.addEventListener('click', onWindowClick);
 		window.addEventListener('beforeunload', onBeforeUnload);
 		return onSwapOrDestroy(() => {
 			requestSeq += 1;
 			contentRequest?.abort();
 			contentRequest = null;
-			window.removeEventListener('keydown', onWindowKeydown);
 			window.removeEventListener('resize', onWindowResize);
-			window.removeEventListener('pointerdown', onWindowPointerDown);
-			window.removeEventListener('click', onWindowClick);
 			window.removeEventListener('beforeunload', onBeforeUnload);
 		});
 	});
@@ -556,7 +514,6 @@
 {#if file}
 	{@const parts = splitFilename(file.filename)}
 	<aside
-		bind:this={panelEl}
 		class="viewer"
 		style={`width: ${width ?? 480}px; z-index: ${zIndex}`}
 		transition:fly={{ x: width ?? 480, duration: 180 }}

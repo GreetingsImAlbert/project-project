@@ -73,6 +73,9 @@
 	}
 
 	function closeModal() {
+		// The preview has its own close button and must remain open while the user clicks
+		// around the modal backdrop. Closing the preview returns control here first.
+		if (viewingFile) return;
 		if (previewDirty && !confirm('Discard your unsaved changes to the open file?')) return;
 
 		open = false;
@@ -113,15 +116,12 @@
 	}
 
 	onMount(() => {
-		// Escape peels off one layer at a time, so it can't close the modal out from under
-		// an open preview. The panel's own Escape handling is off for the same reason.
+		// Escape closes only the file modal itself. An open preview stays until its own close
+		// button or resize threshold is used.
 		function onKeydown(e: KeyboardEvent) {
 			if (!open || e.key !== 'Escape') return;
-			// An open editor with unsaved changes swallows Escape entirely, exactly as it
-			// does in the panel itself — the buffer leaves through Save or Cancel only.
-			if (previewDirty) return;
-			if (viewingFile) viewingFile = null;
-			else closeModal();
+			if (viewingFile) return;
+			closeModal();
 		}
 		window.addEventListener('keydown', onKeydown);
 		return onSwapOrDestroy(() => window.removeEventListener('keydown', onKeydown));
@@ -217,7 +217,6 @@
 <FileViewerPanel
 	file={viewingFile}
 	zIndex={110}
-	closeOnEscape={false}
 	onWidthChange={(w) => (panelWidth = w)}
 	onDirtyChange={(d) => (previewDirty = d)}
 	onSaved={handleFileSaved}
