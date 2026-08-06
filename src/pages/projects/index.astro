@@ -1,24 +1,46 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import { env } from 'cloudflare:workers';
+import { getSupabaseAdmin } from '../../lib/supabase/admin';
 
 export const prerender = false;
 
-if (!Astro.locals.user) {
-	return Astro.redirect('/login');
+const user = Astro.locals.user;
+const isGuest = !user;
+
+// Members list every project they're part of through RLS. Guests get the
+// public slice instead: same list UI, but only `is_public` projects and only
+// the id/name/description columns the public boundary allows. The service-role
+// client reads past RLS because there is deliberately no anonymous SELECT
+// policy on projects (see SCHEMA.md); the narrow column set keeps it a
+// boundary, and a `public_project_list` RPC is the follow-up that formalizes it.
+let projects: { id: string; name: string; description: string | null }[] | null = null;
+let errorMessage: string | null = null;
+
+if (isGuest) {
+	const { data, error } = await getSupabaseAdmin(env)
+		.from('projects')
+		.select('id, name, description')
+		.eq('is_public', true)
+		.order('created_at', { ascending: false });
+	projects = data;
+	errorMessage = error?.message ?? null;
+} else {
+	const { data, error } = await Astro.locals.supabase
+		.from('projects')
+		.select('id, name, description, created_at')
+		.order('created_at', { ascending: false });
+	projects = data;
+	errorMessage = error?.message ?? null;
 }
-
-const { data: projects, error } = await Astro.locals.supabase
-	.from('projects')
-	.select('id, name, description, created_at')
-	.order('created_at', { ascending: false });
 ---
-<BaseLayout title="My Projects">
-	<h1>My Projects</h1>
-	<p><a href="/projects/new" data-astro-prefetch>+ New project</a></p>
+<BaseLayout title={isGuest ? 'Public Projects' : 'My Projects'}>
+	<h1>{isGuest ? 'Public Projects' : 'My Projects'}</h1>
+	{user && <p><a href="/projects/new" data-astro-prefetch>+ New project</a></p>}
 
-	{error && <p class="muted">Error loading projects: {error.message}</p>}
+	{errorMessage && <p class="muted">Error loading projects: {errorMessage}</p>}
 
-	{projects && projects.length === 0 && <p class="muted">No projects yet.</p>}
+	{projects && projects.length === 0 && <p class="muted">{isGuest ? 'No public projects yet.' : 'No projects yet.'}</p>}
 
 	<ul class="list-plain">
 		{projects?.map((project) => (
