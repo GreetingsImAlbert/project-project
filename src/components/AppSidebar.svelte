@@ -84,6 +84,15 @@
 		return match ? match[1] : null;
 	});
 
+	let currentProjectPage = $derived.by(() => {
+		const match = currentPath.match(/^\/projects\/[^/]+(\/[^/]+)?\/?$/);
+		return match?.[1] ?? '';
+	});
+
+	function projectHref(projectId: string): string {
+		return `/projects/${projectId}${currentProjectPage}`;
+	}
+
 	// Pinned = stays open without the pointer, and the rail widens to the full panel so
 	// the content reflows beside it instead of sitting under it. Persisted because the
 	// component remounts on every page navigation (client:load + ClientRouter), and a
@@ -194,7 +203,7 @@
 					{#each projects as project}
 						<li>
 							<a
-								href={`/projects/${project.id}`}
+								href={projectHref(project.id)}
 								class="nav-link project-link row"
 								class:active={currentProjectId === project.id}
 								title={project.name}
