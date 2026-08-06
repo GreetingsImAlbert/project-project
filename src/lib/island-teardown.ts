@@ -13,25 +13,33 @@
 //   });
 
 type Teardown = () => void;
+interface PendingTeardown {
+	fn: Teardown;
+	persistSelector?: string;
+}
 
-const pending = new Set<Teardown>();
+const pending = new Set<PendingTeardown>();
 
 if (!import.meta.env.SSR) {
-	document.addEventListener('astro:before-swap', () => {
+	document.addEventListener('astro:before-swap', (event) => {
 		// Copy first: a teardown that itself calls the returned disposer would otherwise
 		// mutate the set mid-iteration.
-		const fns = [...pending];
-		pending.clear();
-		for (const fn of fns) fn();
+		const entries = [...pending];
+		for (const entry of entries) {
+			if (entry.persistSelector && event.newDocument.querySelector(entry.persistSelector)) continue;
+			pending.delete(entry);
+			entry.fn();
+		}
 	});
 }
 
 // Returns a disposer safe to use as an `onMount` cleanup — running it de-registers the
 // teardown as well as performing it, so it can never run twice.
-export function onSwapOrDestroy(fn: Teardown): Teardown {
-	pending.add(fn);
+export function onSwapOrDestroy(fn: Teardown, persistSelector?: string): Teardown {
+	const entry = { fn, persistSelector };
+	pending.add(entry);
 	return () => {
-		if (!pending.delete(fn)) return;
+		if (!pending.delete(entry)) return;
 		fn();
 	};
 }

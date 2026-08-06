@@ -513,7 +513,7 @@
 			contentRequest = null;
 			window.removeEventListener('resize', onWindowResize);
 			window.removeEventListener('beforeunload', onBeforeUnload);
-		});
+		}, '[data-global-file-viewer]');
 	});
 </script>
 

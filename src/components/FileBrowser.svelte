@@ -2,7 +2,6 @@
 	import { onMount } from 'svelte';
 	import { slide } from 'svelte/transition';
 	import FileList from './FileList.svelte';
-	import FileViewerPanel from './FileViewerPanel.svelte';
 	import UploadForm from './UploadForm.svelte';
 	import RenameModal from './RenameModal.svelte';
 	import ProjectStorageUsed from './ProjectStorageUsed.svelte';
@@ -12,7 +11,14 @@
 	import { formatBytes } from '../lib/format-bytes';
 	import { onSwapOrDestroy } from '../lib/island-teardown';
 	import { fileKind, isTextKind } from '../lib/file-kind';
-	import { loadViewerTabs, saveViewerTabs, type ViewerTab } from '../lib/viewer-tabs';
+	import {
+		VIEWER_SAVED_EVENT,
+		VIEWER_STATE_EVENT,
+		closeViewerFile,
+		openViewerFile,
+		renameViewerFile,
+		type ViewerState,
+	} from '../lib/viewer-tabs';
 
 	interface Folder {
 		id: string;
@@ -59,17 +65,7 @@
 		initialStorageFailed: boolean;
 	} = $props();
 
-	function viewerTabsKey() {
-		return `p2-viewer-tabs-project-${projectId}`;
-	}
-
-	let viewerTabs = $state<ViewerTab[]>(loadViewerTabs(viewerTabsKey()));
 	let viewingFileId = $state<string | null>(null);
-	let viewingFile = $derived(viewingFileId ? viewerTabs.find((tab) => tab.id === viewingFileId) ?? null : null);
-
-	$effect(() => {
-		saveViewerTabs(viewerTabsKey(), viewerTabs);
-	});
 
 	let currentFolderId = $state(initialFolderId);
 	let files = $state(initialFiles);
@@ -85,7 +81,6 @@
 
 	let viewMode = $state<'list' | 'grid'>(getInitialViewMode());
 	let backStack = $state<(string | null)[]>([]);
-	let viewerEditOnOpen = $state(false);
 
 	let creatingFolder = $state(false);
 	let createMode = $state<'folder' | 'file' | 'upload'>('folder');
@@ -119,30 +114,7 @@
 	}
 
 	function openViewer(file: FileRow, startEditing = false) {
-		viewerEditOnOpen = startEditing;
-		const tab = { id: file.id, filename: file.filename };
-		viewerTabs = viewerTabs.some((openTab) => openTab.id === file.id)
-			? viewerTabs.map((openTab) => (openTab.id === file.id ? tab : openTab))
-			: [...viewerTabs, tab];
-		viewingFileId = file.id;
-	}
-
-	function selectViewerTab(fileId: string) {
-		if (viewerTabs.some((tab) => tab.id === fileId)) viewingFileId = fileId;
-	}
-
-	function closeViewerTab(fileId: string) {
-		const index = viewerTabs.findIndex((tab) => tab.id === fileId);
-		if (index < 0) return;
-
-		const remaining = viewerTabs.filter((tab) => tab.id !== fileId);
-		viewerTabs = remaining;
-		if (viewingFileId === fileId) viewingFileId = remaining[Math.min(index, remaining.length - 1)]?.id ?? null;
-	}
-
-	function closeViewerPanel() {
-		viewingFileId = null;
-		viewerEditOnOpen = false;
+		openViewerFile({ id: file.id, filename: file.filename }, startEditing);
 	}
 
 	function toggleFolderActions(folderId: string) {
@@ -297,7 +269,7 @@
 
 	function handleFileRenamed(fileId: string, filename: string) {
 		files = files.map((f) => (f.id === fileId ? { ...f, filename } : f));
-		viewerTabs = viewerTabs.map((tab) => (tab.id === fileId ? { ...tab, filename } : tab));
+		renameViewerFile(fileId, filename);
 	}
 
 	function handleFileMoved(fileId: string, targetFolderId: string | null) {
@@ -328,7 +300,7 @@
 		const deletedFile = files.find((f) => f.id === fileId);
 		files = files.filter((f) => f.id !== fileId);
 		// The preview would keep showing a file that no longer exists.
-		closeViewerTab(fileId);
+		closeViewerFile(fileId);
 		adjustProjectStorage(-(deletedFile?.size_bytes ?? 0));
 		// Only give quota back to the current viewer if it was actually their own
 		// file — deleting a project-mate's upload frees their quota, not ours.
@@ -524,12 +496,23 @@
 		};
 		window.addEventListener('popstate', onPopState);
 		window.addEventListener('click', handleWindowClick);
+		const onViewerState = (event: Event) => {
+			viewingFileId = (event as CustomEvent<ViewerState>).detail.activeFileId;
+		};
+		const onViewerSaved = (event: Event) => {
+			const { fileId, sizeBytes } = (event as CustomEvent<{ fileId: string; sizeBytes: number }>).detail;
+			handleFileSaved(fileId, sizeBytes);
+		};
+		window.addEventListener(VIEWER_STATE_EVENT, onViewerState);
+		window.addEventListener(VIEWER_SAVED_EVENT, onViewerSaved);
 		return onSwapOrDestroy(() => {
 			requestSeq += 1;
 			folderRequest?.abort();
 			folderRequest = null;
 			window.removeEventListener('popstate', onPopState);
 			window.removeEventListener('click', handleWindowClick);
+			window.removeEventListener(VIEWER_STATE_EVENT, onViewerState);
+			window.removeEventListener(VIEWER_SAVED_EVENT, onViewerSaved);
 		});
 	});
 </script>
@@ -789,19 +772,6 @@
 		onCancel={closeRenameFolder}
 	/>
 {/if}
-
-<FileViewerPanel
-	file={viewingFile}
-	tabs={viewerTabs}
-	editOnOpen={viewerEditOnOpen}
-	onTabSelect={selectViewerTab}
-	onTabClose={closeViewerTab}
-	onClose={closeViewerPanel}
-	onSaved={handleFileSaved}
-	onFileRestore={(fileId) => {
-		selectViewerTab(fileId);
-	}}
-/>
 
 <Toasts />
 

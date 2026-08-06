@@ -668,7 +668,7 @@
 			scene = null;
 			camera = null;
 			controls = null;
-		});
+		}, '[data-global-file-viewer]');
 	});
 
 	// Not folded into onMount: the panel keeps one CadViewer alive and re-points it at

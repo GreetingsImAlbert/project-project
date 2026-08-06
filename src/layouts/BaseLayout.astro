@@ -4,6 +4,7 @@ import { ClientRouter } from 'astro:transitions';
 import Header from '../components/Header.astro';
 import ProjectNav from '../components/ProjectNav.astro';
 import AppSidebar from '../components/AppSidebar.svelte';
+import GlobalFileViewer from '../components/GlobalFileViewer.svelte';
 
 interface Props {
 	title?: string;
@@ -68,6 +69,7 @@ const path = Astro.url.pathname;
 		<Header user={user} />
 		{user ? (
 			<div class="app-shell">
+				<GlobalFileViewer client:load transition:persist userId={user.id} />
 				<AppSidebar
 					client:idle
 					transition:persist

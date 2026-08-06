@@ -1,11 +1,17 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import FileViewerPanel from './FileViewerPanel.svelte';
 	import { splitFilename } from '../lib/file-kind';
 	import { formatFileSize } from '../lib/format-bytes';
 	import { adjustStorageUsage } from '../lib/storage-usage.svelte';
 	import { onSwapOrDestroy } from '../lib/island-teardown';
-	import { loadViewerTabs, saveViewerTabs, type ViewerTab } from '../lib/viewer-tabs';
+	import {
+		VIEWER_SAVED_EVENT,
+		VIEWER_STATE_EVENT,
+		closeViewerFile,
+		openViewerFile,
+		requestViewerState,
+		type ViewerState,
+	} from '../lib/viewer-tabs';
 
 	interface MyFile {
 		id: string;
@@ -22,20 +28,12 @@
 	let loadError = $state<string | null>(null);
 	let deletingId = $state<string | null>(null);
 	let rowError = $state<{ id: string; message: string } | null>(null);
-	const VIEWER_TABS_KEY = 'p2-viewer-tabs-mine';
-	let viewerTabs = $state<ViewerTab[]>(loadViewerTabs(VIEWER_TABS_KEY));
 	let viewingFileId = $state<string | null>(null);
-	let viewingFile = $derived(viewingFileId ? viewerTabs.find((tab) => tab.id === viewingFileId) ?? null : null);
-
-	$effect(() => {
-		saveViewerTabs(VIEWER_TABS_KEY, viewerTabs);
-	});
 	// Reported by the panel. The modal centres itself in what's left of the viewport, so
 	// opening (or dragging) a preview slides it clear instead of hiding under it.
 	let panelWidth = $state(0);
 	// Also reported by the panel: true while its editor holds unsaved changes. The modal
 	// closes the panel by unmounting it, so every close path here has to ask first.
-	let previewDirty = $state(false);
 
 	// One group per project, biggest project first, biggest file first inside it. The
 	// endpoint already orders by size, but grouping has to happen somewhere and doing
@@ -81,35 +79,13 @@
 	}
 
 	function openViewer(file: MyFile) {
-		const tab = { id: file.id, filename: file.filename };
-		viewerTabs = viewerTabs.some((openTab) => openTab.id === file.id)
-			? viewerTabs.map((openTab) => (openTab.id === file.id ? tab : openTab))
-			: [...viewerTabs, tab];
-		viewingFileId = file.id;
-	}
-
-	function selectViewerTab(fileId: string) {
-		if (viewerTabs.some((tab) => tab.id === fileId)) viewingFileId = fileId;
-	}
-
-	function closeViewerTab(fileId: string) {
-		const index = viewerTabs.findIndex((tab) => tab.id === fileId);
-		if (index < 0) return;
-
-		const remaining = viewerTabs.filter((tab) => tab.id !== fileId);
-		viewerTabs = remaining;
-		if (viewingFileId === fileId) viewingFileId = remaining[Math.min(index, remaining.length - 1)]?.id ?? null;
+		openViewerFile({ id: file.id, filename: file.filename });
 	}
 
 	function closeModal() {
 		// The preview has its own close button and must remain open while the user clicks
 		// around the modal backdrop. Closing the preview returns control here first.
-		if (viewingFileId) return;
-		if (previewDirty && !confirm('Discard your unsaved changes to the open file?')) return;
-
 		open = false;
-		// The panel is fixed to the viewport, so it would outlive the modal it was opened from.
-		viewingFileId = null;
 	}
 
 	function handleFileSaved(fileId: string, sizeBytes: number) {
@@ -139,7 +115,7 @@
 		const deletedFile = files.find((f) => f.id === fileId);
 		files = files.filter((f) => f.id !== fileId);
 		// The preview would keep showing a file that no longer exists.
-		closeViewerTab(fileId);
+		closeViewerFile(fileId);
 		if (deletedFile?.size_bytes) adjustStorageUsage(-deletedFile.size_bytes);
 		deletingId = null;
 	}
@@ -149,11 +125,26 @@
 		// button or resize threshold is used.
 		function onKeydown(e: KeyboardEvent) {
 			if (!open || e.key !== 'Escape') return;
-			if (viewingFileId) return;
 			closeModal();
 		}
 		window.addEventListener('keydown', onKeydown);
-		return onSwapOrDestroy(() => window.removeEventListener('keydown', onKeydown));
+		const onViewerState = (event: Event) => {
+			const state = (event as CustomEvent<ViewerState>).detail;
+			viewingFileId = state.activeFileId;
+			panelWidth = state.width;
+		};
+		const onViewerSaved = (event: Event) => {
+			const { fileId, sizeBytes } = (event as CustomEvent<{ fileId: string; sizeBytes: number }>).detail;
+			handleFileSaved(fileId, sizeBytes);
+		};
+		window.addEventListener(VIEWER_STATE_EVENT, onViewerState);
+		window.addEventListener(VIEWER_SAVED_EVENT, onViewerSaved);
+		requestViewerState();
+		return onSwapOrDestroy(() => {
+			window.removeEventListener('keydown', onKeydown);
+			window.removeEventListener(VIEWER_STATE_EVENT, onViewerState);
+			window.removeEventListener(VIEWER_SAVED_EVENT, onViewerSaved);
+		});
 	});
 </script>
 
@@ -239,24 +230,6 @@
 		</div>
 	</div>
 {/if}
-
-<!-- Outside .modal-backdrop on purpose: a click anywhere inside it closes the modal, and
-     the panel is a place people click. That puts it in the page's stacking context instead
-     of the backdrop's, so it needs a z-index above the backdrop's own. -->
-<FileViewerPanel
-	file={viewingFile}
-	tabs={viewerTabs}
-	zIndex={110}
-	onTabSelect={selectViewerTab}
-	onTabClose={closeViewerTab}
-	onWidthChange={(w) => (panelWidth = w)}
-	onDirtyChange={(d) => (previewDirty = d)}
-	onSaved={handleFileSaved}
-	onFileRestore={(fileId) => {
-		selectViewerTab(fileId);
-	}}
-	onClose={() => (viewingFileId = null)}
-/>
 
 <style>
 	.open-link {
