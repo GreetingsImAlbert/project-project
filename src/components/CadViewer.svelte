@@ -763,6 +763,10 @@
 		flex-direction: column;
 		height: 100%;
 		min-height: 0;
+		padding: var(--space-3);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-sm);
+		background: var(--color-surface-raised);
 	}
 
 	.color-bar {
@@ -770,8 +774,8 @@
 		flex-wrap: wrap;
 		flex: 0 0 auto;
 		gap: var(--space-1);
-		padding-bottom: var(--space-2);
-		margin-bottom: var(--space-2);
+		padding-bottom: var(--space-3);
+		margin-bottom: var(--space-3);
 		border-bottom: 1px solid var(--color-border);
 	}
 
@@ -812,6 +816,9 @@
 	.stage {
 		flex: 1;
 		min-height: 0;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-sm);
+		background: var(--color-surface-inset);
 		/* The canvas is sized in JS from this element's box, so it must not be sized by the
 		   canvas in turn — hence the explicit overflow and the block display below. */
 		overflow: hidden;
@@ -852,7 +859,8 @@
 		align-items: center;
 		gap: var(--space-3);
 		flex: 0 0 auto;
-		padding-top: var(--space-2);
+		padding-top: var(--space-3);
+		margin-top: var(--space-3);
 		border-top: 1px solid var(--color-border);
 		font-size: 0.75rem;
 	}

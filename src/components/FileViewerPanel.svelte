@@ -578,7 +578,7 @@
 
 		<header class="viewer-head">
 			<span class="viewer-name" title={file.filename}>
-				{parts.base}{#if parts.ext}<span class="muted">{parts.ext}</span>{/if}{#if dirty}<span class="dirty-dot" title="Unsaved changes">•</span>{/if}
+				{parts.base}{#if parts.ext}<span class="viewer-ext muted">{parts.ext}</span>{/if}{#if dirty}<span class="dirty-dot" title="Unsaved changes">•</span>{/if}
 			</span>
 
 			<div class="viewer-actions">
@@ -675,15 +675,18 @@
 <style>
 	.viewer {
 		position: fixed;
-		top: 0;
-		right: 0;
-		bottom: 0;
+		top: var(--space-4);
+		right: var(--space-4);
+		bottom: var(--space-4);
 		/* z-index comes in inline, from the zIndex prop. */
 		display: flex;
 		flex-direction: column;
 		max-width: 100vw;
-		background: var(--color-bg);
-		border-left: 1px solid var(--color-border-strong);
+		background: var(--color-surface-raised);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-md);
+		box-shadow: 0 12px 32px rgb(0 0 0 / 14%);
+		overflow: hidden;
 		/* Set, not inherited: the panel is fixed, but `color` still comes down from
 		   whatever mounted it, and MyFilesModal's host line is muted. */
 		color: var(--color-fg);
@@ -702,7 +705,7 @@
 	.resize-handle:hover,
 	.resize-handle:focus-visible,
 	.resize-handle.resizing {
-		background: var(--color-border-strong);
+		background: var(--color-highlight-strong);
 		outline: none;
 	}
 
@@ -711,12 +714,14 @@
 		align-items: center;
 		justify-content: space-between;
 		gap: var(--space-3);
-		padding: var(--space-2) var(--space-3);
-		border-bottom: 1px solid var(--color-border-strong);
+		padding: var(--space-3) var(--space-4);
+		border-bottom: 1px solid var(--color-border);
+		background: var(--color-surface-raised);
 	}
 
 	.viewer-name {
 		font-size: 0.85rem;
+		font-weight: 700;
 		/* min-width:0 — a flex item won't shrink below its content without it, and the
 		   ellipsis never kicks in. */
 		flex: 1 1 auto;
@@ -726,11 +731,18 @@
 		text-overflow: ellipsis;
 	}
 
+	.viewer-ext {
+		margin-left: 2px;
+		font-size: 0.78rem;
+		font-weight: 400;
+	}
+
 	.download-error,
 	.save-error {
 		margin: 0;
-		padding: var(--space-2) var(--space-3);
+		padding: var(--space-2) var(--space-4);
 		border-bottom: 1px solid var(--color-border);
+		background: var(--color-surface-inset);
 		color: var(--color-danger);
 		font-size: 0.8rem;
 	}
@@ -738,24 +750,42 @@
 	.viewer-actions {
 		display: flex;
 		align-items: center;
-		gap: var(--space-2);
+		gap: var(--space-1);
 		flex: 0 0 auto;
 	}
 
 	.viewer-actions button {
 		font-size: 0.8rem;
 		padding: var(--space-1) var(--space-2);
+		line-height: 1.4;
 	}
 
-	.close-btn {
+	.viewer-actions .close-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 28px;
+		height: 28px;
+		padding: 0;
+		border-color: transparent;
+		color: var(--color-muted);
+		font-size: 1rem;
 		line-height: 1;
+	}
+
+	.viewer-actions .close-btn:hover {
+		background: var(--color-highlight);
+		border-color: var(--color-border);
+		color: var(--color-fg);
+		opacity: 1;
 	}
 
 	.viewer-body {
 		flex: 1;
 		min-height: 0;
 		overflow: auto;
-		padding: var(--space-3);
+		padding: var(--space-4);
+		background: var(--color-surface-inset);
 	}
 
 	/* The textarea sizes itself to the body, so the body must not scroll on its own —
@@ -777,7 +807,7 @@
 		flex: 1;
 		min-width: 0;
 		border: 0;
-		background: var(--color-bg);
+		background: var(--color-surface-raised);
 	}
 
 	/* The viewer fills the body, and its own flex column puts the readout bar at the
@@ -794,8 +824,10 @@
 		box-sizing: border-box;
 		resize: none;
 		margin: 0;
-		padding: var(--space-2);
-		font-family: inherit;
+		padding: var(--space-3);
+		border: 1px solid var(--color-border);
+		background: var(--color-surface-raised);
+		font-family: var(--font-mono);
 		font-size: 0.78rem;
 		line-height: 1.6;
 		tab-size: 4;
@@ -816,6 +848,7 @@
 
 	.viewer-note {
 		margin: 0 0 var(--space-2);
+		max-width: 34rem;
 		font-size: 0.85rem;
 	}
 
@@ -825,6 +858,10 @@
 
 	.text-body {
 		margin: 0;
+		padding: var(--space-4);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-sm);
+		background: var(--color-surface-raised);
 		font-size: 0.78rem;
 		line-height: 1.6;
 		white-space: pre-wrap;
@@ -918,6 +955,10 @@
 	   rule below has to be :global, kept under .md-body so it can't leak out. */
 
 	.md-body {
+		padding: var(--space-4);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-sm);
+		background: var(--color-surface-raised);
 		font-size: 0.85rem;
 	}
 
@@ -1064,11 +1105,29 @@
 	   to beat the inline width the drag handle writes. */
 	@media (max-width: 768px) {
 		.viewer {
+			top: 0;
+			right: 0;
+			bottom: 0;
 			width: 100vw !important;
+			border: none;
+			border-radius: 0;
+			box-shadow: none;
 		}
 
 		.resize-handle {
 			display: none;
+		}
+
+		.viewer-head {
+			padding: var(--space-3) var(--space-4);
+		}
+
+		.viewer-body {
+			padding: var(--space-3);
+		}
+
+		.viewer-body.pdf {
+			padding: 0;
 		}
 	}
 </style>
