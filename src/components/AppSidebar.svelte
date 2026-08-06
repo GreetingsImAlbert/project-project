@@ -17,11 +17,13 @@
 		currentPath: initialCurrentPath,
 		displayName,
 		avatar,
+		guest = false,
 	}: {
 		projects?: SidebarProject[];
 		currentPath: string;
 		displayName: string;
 		avatar: string | null;
+		guest?: boolean;
 	} = $props();
 
 	let projects = $state(initialProjects);
@@ -47,13 +49,15 @@
 	}
 
 	onMount(() => {
-		void loadProjects()
-			.then((loadedProjects) => {
-				projects = loadedProjects;
-			})
-			.catch(() => {
-				// The primary navigation links still work when the optional project list is unavailable.
-			});
+		if (!guest) {
+			void loadProjects()
+				.then((loadedProjects) => {
+					projects = loadedProjects;
+				})
+				.catch(() => {
+					// The primary navigation links still work when the optional project list is unavailable.
+				});
+		}
 
 		// Task edits happen in an island on the tasks page, so the sidebar's counters
 		// re-fetch instead of waiting for the next navigation. A failed refresh keeps
