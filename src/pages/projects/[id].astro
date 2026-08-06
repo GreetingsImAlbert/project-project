@@ -137,8 +137,13 @@ const memberGroups = roles.map((role) => ({
 ---
 {publicProject && (
 	<BaseLayout title={publicProject.name}>
-		<h1>{publicProject.name}</h1>
-		{publicProject.description && <p class="muted">{publicProject.description}</p>}
+		<h1 class="public-title">{publicProject.name}</h1>
+		<section class="overview-description">
+			<div class="overview-heading">
+				<h2>Description</h2>
+			</div>
+			<p class="muted description-text">{publicProject.description || 'No description yet.'}</p>
+		</section>
 	</BaseLayout>
 )}
 {!publicProject && (
@@ -215,6 +220,24 @@ const memberGroups = roles.map((role) => ({
 )}
 
 <style>
+	.public-title {
+		margin-top: 0;
+		margin-bottom: var(--space-4);
+	}
+
+	/* Mirrors the member overview's description block, minus the editor and
+	   the expand/collapse JS — a plain read-only version of the same text. */
+	.overview-heading h2 {
+		margin-top: 0;
+		padding-top: 0;
+		border-top: none;
+	}
+
+	.description-text {
+		white-space: pre-wrap;
+		margin: 0;
+	}
+
 	.overview-description {
 		margin-bottom: var(--space-4);
 	}

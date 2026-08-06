@@ -12,6 +12,16 @@
 		ongoingTaskCount: number;
 	}
 
+	interface SidebarPublicProject {
+		id: string;
+		name: string;
+	}
+
+	interface NavigationData {
+		projects: SidebarProject[];
+		publicProjects: SidebarPublicProject[];
+	}
+
 	let {
 		projects: initialProjects = [],
 		currentPath: initialCurrentPath,
@@ -27,17 +37,17 @@
 	} = $props();
 
 	let projects = $state(initialProjects);
+	let publicProjects = $state<SidebarPublicProject[]>([]);
 	let currentPath = $state(initialCurrentPath);
 
-	let navigationRequest: Promise<SidebarProject[]> | null = null;
+	let navigationRequest: Promise<NavigationData> | null = null;
 
-	async function loadProjects(): Promise<SidebarProject[]> {
+	async function loadNavigation(): Promise<NavigationData> {
 		if (!navigationRequest) {
 			navigationRequest = fetch('/api/navigation')
 				.then(async (response) => {
 					if (!response.ok) throw new Error('Could not load navigation');
-					const result = (await response.json()) as { projects: SidebarProject[] };
-					return result.projects;
+					return (await response.json()) as NavigationData;
 				})
 				.catch((error) => {
 					navigationRequest = null;
@@ -49,24 +59,24 @@
 	}
 
 	onMount(() => {
-		if (!guest) {
-			void loadProjects()
-				.then((loadedProjects) => {
-					projects = loadedProjects;
-				})
-				.catch(() => {
-					// The primary navigation links still work when the optional project list is unavailable.
-				});
-		}
+		void loadNavigation()
+			.then(({ projects: loadedProjects, publicProjects: loadedPublicProjects }) => {
+				projects = loadedProjects;
+				publicProjects = loadedPublicProjects;
+			})
+			.catch(() => {
+				// The primary navigation links still work when the optional project list is unavailable.
+			});
 
 		// Task edits happen in an island on the tasks page, so the sidebar's counters
 		// re-fetch instead of waiting for the next navigation. A failed refresh keeps
 		// the old numbers; the next change (or reload) tries again.
 		function refreshProjects() {
 			navigationRequest = null;
-			void loadProjects()
-				.then((loadedProjects) => {
+			void loadNavigation()
+				.then(({ projects: loadedProjects, publicProjects: loadedPublicProjects }) => {
 					projects = loadedProjects;
+					publicProjects = loadedPublicProjects;
 				})
 				.catch(() => {});
 		}
@@ -93,8 +103,8 @@
 		return match?.[1] ?? '';
 	});
 
-	function projectHref(projectId: string): string {
-		return `/projects/${projectId}${currentProjectPage}`;
+	function projectHref(projectId: string, isPublic = false): string {
+		return isPublic ? `/projects/${projectId}` : `/projects/${projectId}${currentProjectPage}`;
 	}
 
 	// Pinned = stays open without the pointer, and the rail widens to the full panel so
@@ -205,39 +215,67 @@
 					<span class="row-label">Projects</span>
 				</a>
 
-				{#if !guest}
+				{#if !guest || publicProjects.length > 0}
 					<ul class="project-list">
-						{#each projects as project}
-							<li>
-								<a
-									href={projectHref(project.id)}
-									class="nav-link project-link row"
-									class:active={currentProjectId === project.id}
-									title={project.name}
-									data-astro-prefetch
-									onpointerdown={keepExpandedForNavigation}
-								>
-									<span class="row-icon" title={project.owner.displayName}>
-										<Avatar avatar={project.owner.avatar} displayName={project.owner.displayName} size={22} />
-									</span>
-									<span class="row-label project-name">{project.name}</span>
-									{#if project.overdueTaskCount > 0 || project.ongoingTaskCount > 0}
-										<!-- Two counts, one number in each status colour: overdue in the danger
-										     red the tasks page uses, ongoing in its green. -->
-										<span class="row-label task-counts" title={`${project.overdueTaskCount} overdue, ${project.ongoingTaskCount} ongoing`}>
-											{#if project.overdueTaskCount > 0}<span class="count-overdue">{project.overdueTaskCount}</span>{/if}
-											{#if project.ongoingTaskCount > 0}<span class="count-ongoing">{project.ongoingTaskCount}</span>{/if}
+						{#if !guest}
+							{#each projects as project}
+								<li>
+									<a
+										href={projectHref(project.id)}
+										class="nav-link project-link row"
+										class:active={currentProjectId === project.id}
+										title={project.name}
+										data-astro-prefetch
+										onpointerdown={keepExpandedForNavigation}
+									>
+										<span class="row-icon" title={project.owner.displayName}>
+											<Avatar avatar={project.owner.avatar} displayName={project.owner.displayName} size={22} />
 										</span>
-									{/if}
+										<span class="row-label project-name">{project.name}</span>
+										{#if project.overdueTaskCount > 0 || project.ongoingTaskCount > 0}
+											<!-- Two counts, one number in each status colour: overdue in the danger
+											     red the tasks page uses, ongoing in its green. -->
+											<span class="row-label task-counts" title={`${project.overdueTaskCount} overdue, ${project.ongoingTaskCount} ongoing`}>
+												{#if project.overdueTaskCount > 0}<span class="count-overdue">{project.overdueTaskCount}</span>{/if}
+												{#if project.ongoingTaskCount > 0}<span class="count-ongoing">{project.ongoingTaskCount}</span>{/if}
+											</span>
+										{/if}
+									</a>
+								</li>
+							{/each}
+							<li>
+								<a href="/projects/new" class="nav-link add-project row" title="Add project" data-astro-prefetch onpointerdown={keepExpandedForNavigation}>
+									<span class="row-icon">+</span>
+									<span class="row-label">Add project</span>
 								</a>
 							</li>
-						{/each}
-						<li>
-							<a href="/projects/new" class="nav-link add-project row" title="Add project" data-astro-prefetch onpointerdown={keepExpandedForNavigation}>
-								<span class="row-icon">+</span>
-								<span class="row-label">Add project</span>
-							</a>
-						</li>
+						{/if}
+						{#if publicProjects.length > 0}
+							<li class="project-section-label row">
+								<span class="row-icon" aria-hidden="true"></span>
+								<span class="row-label">Public</span>
+							</li>
+							{#each publicProjects as project}
+								<li>
+									<a
+										href={projectHref(project.id, true)}
+										class="nav-link project-link public-project-link row"
+										class:active={currentProjectId === project.id}
+										title={project.name}
+										data-astro-prefetch
+										onpointerdown={keepExpandedForNavigation}
+									>
+										<span class="row-icon" aria-hidden="true">
+											<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+												<circle cx="12" cy="12" r="9" />
+												<path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" />
+											</svg>
+										</span>
+										<span class="row-label project-name">{project.name}</span>
+									</a>
+								</li>
+							{/each}
+						{/if}
 					</ul>
 				{/if}
 			</nav>
@@ -471,6 +509,21 @@
 
 	.add-project:hover {
 		color: var(--color-fg);
+	}
+
+	.project-section-label {
+		padding-top: var(--space-4);
+		padding-bottom: var(--space-1);
+		color: var(--color-muted);
+		font-size: 0.68rem;
+		font-weight: 700;
+		letter-spacing: 0.05em;
+		text-transform: uppercase;
+		pointer-events: none;
+	}
+
+	.public-project-link .row-icon {
+		color: var(--color-muted);
 	}
 
 	@media (max-width: 768px) {

@@ -1,12 +1,31 @@
 export const prerender = false;
 
+import { env } from 'cloudflare:workers';
 import { appNowTime, appToday } from '../../lib/today';
+import { getSupabaseAdmin } from '../../lib/supabase/admin';
 
 export async function GET({ locals }: { locals: App.Locals }) {
 	const user = locals.user;
-	if (!user) return new Response('Not signed in', { status: 401 });
+	if (!user) {
+		const { data: publicProjectRows, error } = await getSupabaseAdmin(env)
+			.from('projects')
+			.select('id, name')
+			.eq('is_public', true)
+			.order('created_at', { ascending: false });
 
-	const [{ data, error: projectsError }, { data: taskRows, error: tasksError }] = await Promise.all([
+		if (error) return new Response('Could not load navigation', { status: 500 });
+
+		return Response.json(
+			{ projects: [], publicProjects: (publicProjectRows ?? []).map((project) => ({ id: project.id, name: project.name })) },
+			{ headers: { 'cache-control': 'private, no-store' } },
+		);
+	}
+
+	const [
+		{ data, error: projectsError },
+		{ data: taskRows, error: tasksError },
+		{ data: publicProjectRows, error: publicProjectsError },
+	] = await Promise.all([
 		locals.supabase
 			.from('projects')
 			.select('id, name, owner_id, project_members(user_id, role, profiles(display_name, avatar))')
@@ -35,9 +54,16 @@ export async function GET({ locals }: { locals: App.Locals }) {
 				deadline: string | null;
 				deadline_time: string;
 			}[]>(),
+		// This endpoint is authenticated, but the service-role query keeps the
+		// public sidebar slice independent of the member-only projects policy.
+		getSupabaseAdmin(env)
+			.from('projects')
+			.select('id, name')
+			.eq('is_public', true)
+			.order('created_at', { ascending: false }),
 	]);
 
-	if (projectsError || tasksError) {
+	if (projectsError || tasksError || publicProjectsError) {
 		return new Response('Could not load navigation', { status: 500 });
 	}
 
@@ -73,5 +99,10 @@ export async function GET({ locals }: { locals: App.Locals }) {
 		};
 	});
 
-	return Response.json({ projects }, { headers: { 'cache-control': 'private, no-store' } });
+	const memberProjectIds = new Set(projects.map((project) => project.id));
+	const publicProjects = (publicProjectRows ?? [])
+		.filter((project) => !memberProjectIds.has(project.id))
+		.map((project) => ({ id: project.id, name: project.name }));
+
+	return Response.json({ projects, publicProjects }, { headers: { 'cache-control': 'private, no-store' } });
 }
