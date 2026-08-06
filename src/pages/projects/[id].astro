@@ -13,25 +13,49 @@ import { HORIZON_COOKIE, parseHorizonDays } from '../../lib/task-horizon';
 import { projectReminders } from '../../lib/reminders';
 import { listGhostMembers } from '../../lib/ghost-members';
 import { appNowTime, appToday } from '../../lib/today';
+import { type CurrencyCode } from '../../lib/currency';
 
 export const prerender = false;
 
 const user = Astro.locals.user;
-if (!user) {
-	return Astro.redirect('/login');
-}
-
 const { id } = Astro.params;
 
-const [
-	{ data: project, error },
-	{ data: members },
-	ghostMembers,
-	{ data: bomItems },
-	{ totalBytes: projectStorageBytes, failed: projectStorageFailed },
-	{ data: taskRows },
-	{ data: categoryRows },
-] = await Promise.all([
+// Two access paths (see SCHEMA.md, "Public project boundary"). Guests and
+// authenticated non-members only ever read the id/name/description slice
+// through public_project_get, which filters on is_public; a private or
+// nonexistent project is the same 404, so private-project membership never
+// leaks to outsiders. Members keep the full RLS queries and UI below.
+let publicProject: { id: string; name: string; description: string | null } | null = null;
+
+if (!user) {
+	const { data } = await Astro.locals.supabase.rpc('public_project_get', { p_id: id! });
+	publicProject = data?.[0] ?? null;
+	if (!publicProject) {
+		return new Response('Project not found', { status: 404 });
+	}
+}
+
+let project: { id: string; name: string; description: string | null; owner_id: string; currency: string } | null = null;
+let members: { role: string; is_auditor: boolean; user_id: string; profiles: { display_name: string; email: string; avatar: string | null } | null }[] | null = null;
+let ghostMembers: Awaited<ReturnType<typeof listGhostMembers>> = [];
+let totalCost = 0;
+let categoryColors: CategoryColors = {};
+let reminders: ReturnType<typeof projectReminders> = [];
+let projectStorageBytes = 0;
+let projectStorageFailed = false;
+let userRole: string | undefined;
+let isOwner = false;
+
+if (user) {
+	const [
+		{ data: projectData, error },
+		{ data: membersData },
+		ghostMembersData,
+		{ data: bomItems },
+		{ totalBytes, failed },
+		{ data: taskRows },
+		{ data: categoryRows },
+	] = await Promise.all([
 		Astro.locals.supabase
 			.from('projects')
 			.select('id, name, description, owner_id, currency')
@@ -67,21 +91,29 @@ const [
 			.overrideTypes<{ name: string; color_index: number }[]>(),
 	]);
 
-if (error || !project) {
-	return new Response('Project not found', { status: 404 });
+	if (error || !projectData) {
+		// Authenticated non-member: RLS shows no project row. Try the public
+		// boundary before deciding it's missing.
+		const { data } = await Astro.locals.supabase.rpc('public_project_get', { p_id: id! });
+		publicProject = data?.[0] ?? null;
+		if (!publicProject) {
+			return new Response('Project not found', { status: 404 });
+		}
+	} else {
+		project = projectData;
+		members = membersData;
+		ghostMembers = ghostMembersData;
+		projectStorageBytes = totalBytes;
+		projectStorageFailed = failed;
+		userRole = membersData?.find((member) => member.user_id === user.id)?.role;
+		isOwner = userRole === 'owner';
+		totalCost = (bomItems ?? []).reduce((sum, item) => sum + (item.total_cost ?? 0), 0);
+		for (const row of categoryRows ?? []) {
+			if (isCategoryColorIndex(row.color_index)) categoryColors[row.name] = row.color_index;
+		}
+		reminders = projectReminders((taskRows ?? []).map(normalizeTask), id!, categoryColors, user.id);
+	}
 }
-
-const userRole = members?.find(member => member.user_id === user.id)?.role;
-const isOwner = userRole === 'owner';
-
-const totalCost = (bomItems ?? []).reduce((sum, item) => sum + (item.total_cost ?? 0), 0);
-
-const categoryColors: CategoryColors = {};
-for (const row of categoryRows ?? []) {
-	if (isCategoryColorIndex(row.color_index)) categoryColors[row.name] = row.color_index;
-}
-
-const reminders = projectReminders((taskRows ?? []).map(normalizeTask), id!, categoryColors, user.id);
 
 const horizonDays = parseHorizonDays(Astro.cookies.get(HORIZON_COOKIE)?.value);
 
@@ -103,76 +135,84 @@ const memberGroups = roles.map((role) => ({
 	members: (members ?? []).filter((m) => m.role === role),
 }));
 ---
-<BaseLayout title={project.name} projectNav={{ projectId: project.id, userRole: userRole ?? '' }}>
-	<section class="overview-description">
-		<ProjectDescriptionEditor
-			client:load
-			projectId={project.id}
-			initialDescription={project.description}
-			canEdit={isOwner}
-		/>
-	</section>
+{publicProject && (
+	<BaseLayout title={publicProject.name}>
+		<h1>{publicProject.name}</h1>
+		{publicProject.description && <p class="muted">{publicProject.description}</p>}
+	</BaseLayout>
+)}
+{!publicProject && (
+	<BaseLayout title={project!.name} projectNav={{ projectId: project!.id, userRole: userRole ?? '' }}>
+		<section class="overview-description">
+			<ProjectDescriptionEditor
+				client:load
+				projectId={project!.id}
+				initialDescription={project!.description}
+				canEdit={isOwner}
+			/>
+		</section>
 
-	<div class="overview-columns">
-		<div class="overview-column-main">
-			<section class="overview-members">
-				<h2>Members</h2>
-				<!-- The role is said once, as the heading of its own group, and the members
-				     under it are indented rather than each repeating it in a column of its
-				     own. Each carries their picture ahead of the name — Avatar falls back to
-				     the initial, so a member who never picked one still gets the same shape. -->
-				<div class="member-groups">
-					{memberGroups.map((group) => (
-						<div class="member-group">
-							<p class="member-role">{group.label}</p>
-							<ul class="member-list">
-								{group.members.map((m) => (
-									<li class="member">
-										<Avatar avatar={m.profiles?.avatar} displayName={m.profiles?.display_name ?? ''} size={24} />
-										<span class="member-name">{m.profiles?.display_name}</span>
-										{m.is_auditor && <span class="member-tag">auditor</span>}
-									</li>
-								))}
-							</ul>
-						</div>
-					))}
-					{ghostMembers.length > 0 && (
-						<div class="member-group">
-							<p class="member-role">Ghosts</p>
-							<ul class="member-list">
-								{ghostMembers.map((g) => (
-									<li class="member">
-										<Avatar avatar={null} displayName={g.display_name} size={24} />
-										<span class="member-name muted">{g.display_name}</span>
-										{g.is_deleted_account && <span class="member-tag">deleted</span>}
-									</li>
-								))}
-							</ul>
-						</div>
-					)}
-				</div>
-			</section>
+		<div class="overview-columns">
+			<div class="overview-column-main">
+				<section class="overview-members">
+					<h2>Members</h2>
+					<!-- The role is said once, as the heading of its own group, and the members
+					     under it are indented rather than each repeating it in a column of its
+					     own. Each carries their picture ahead of the name — Avatar falls back to
+					     the initial, so a member who never picked one still gets the same shape. -->
+					<div class="member-groups">
+						{memberGroups.map((group) => (
+							<div class="member-group">
+								<p class="member-role">{group.label}</p>
+								<ul class="member-list">
+									{group.members.map((m) => (
+										<li class="member">
+											<Avatar avatar={m.profiles?.avatar} displayName={m.profiles?.display_name ?? ''} size={24} />
+											<span class="member-name">{m.profiles?.display_name}</span>
+											{m.is_auditor && <span class="member-tag">auditor</span>}
+										</li>
+									))}
+								</ul>
+							</div>
+						))}
+						{ghostMembers.length > 0 && (
+							<div class="member-group">
+								<p class="member-role">Ghosts</p>
+								<ul class="member-list">
+									{ghostMembers.map((g) => (
+										<li class="member">
+											<Avatar avatar={null} displayName={g.display_name} size={24} />
+											<span class="member-name muted">{g.display_name}</span>
+											{g.is_deleted_account && <span class="member-tag">deleted</span>}
+										</li>
+									))}
+								</ul>
+							</div>
+						)}
+					</div>
+				</section>
 
-			<section class="overview-reminders">
-				<UpcomingTasks
-					client:load
-					reminders={reminders}
-					initialHorizonDays={horizonDays}
-					serverToday={serverToday}
-					serverNowTime={serverNowTime}
-					showMineFilter={true}
-				/>
+				<section class="overview-reminders">
+					<UpcomingTasks
+						client:load
+						reminders={reminders}
+						initialHorizonDays={horizonDays}
+						serverToday={serverToday}
+						serverNowTime={serverNowTime}
+						showMineFilter={true}
+					/>
+				</section>
+			</div>
+
+			<section class="overview-faqs">
+				<h2>Quick FAQs</h2>
+				<TotalCostDisplay client:visible totalCost={totalCost} currency={project!.currency as CurrencyCode} />
+				<ProjectStorageUsed client:visible initialUsedBytes={projectStorageBytes} initialFailed={projectStorageFailed} />
+				<DownloadProjectButton client:visible projectId={project!.id} />
 			</section>
 		</div>
-
-		<section class="overview-faqs">
-			<h2>Quick FAQs</h2>
-			<TotalCostDisplay client:visible totalCost={totalCost} currency={project.currency} />
-			<ProjectStorageUsed client:visible initialUsedBytes={projectStorageBytes} initialFailed={projectStorageFailed} />
-			<DownloadProjectButton client:visible projectId={project.id} />
-		</section>
-	</div>
-</BaseLayout>
+	</BaseLayout>
+)}
 
 <style>
 	.overview-description {
