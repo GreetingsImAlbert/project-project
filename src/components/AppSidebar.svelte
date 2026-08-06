@@ -272,7 +272,7 @@
 		width: var(--rail-width);
 		display: flex;
 		background: var(--color-surface-sidebar);
-		border-radius: var(--radius-md);
+		border-radius: var(--radius-sm);
 		overflow: hidden;
 		z-index: 2;
 		transition: width 0.15s ease;
