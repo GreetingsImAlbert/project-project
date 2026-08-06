@@ -201,6 +201,11 @@ const path = Astro.url.pathname;
 			width: 100%;
 		}
 
+		.container {
+			width: calc(100% - var(--space-4));
+			margin: var(--space-2);
+		}
+
 		.app-shell:has(.sidebar-rail:hover) .app-main,
 		.app-shell:has(.sidebar-rail:focus-within) .app-main,
 		html[data-sidebar-pinned] .app-shell .app-main,
@@ -218,8 +223,8 @@ const path = Astro.url.pathname;
 
 		.container {
 			width: calc(100% - var(--space-6));
-			margin-top: var(--space-6);
-			margin-bottom: var(--space-6);
+			margin-top: var(--space-2);
+			margin-bottom: var(--space-3);
 		}
 	}
 
