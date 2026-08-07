@@ -1,10 +1,11 @@
 import type { APIRoute } from 'astro';
 import { canEditMoney } from '../../../../lib/money-access';
+import { errorResponse } from '../../../../lib/error-report';
 
 export const prerender = false;
 
 // Undoes delete.ts — restoring a bulk parent restores its lines with it.
-export const POST: APIRoute = async ({ params, locals }) => {
+export const POST: APIRoute = async ({ params, request, locals }) => {
 	if (!locals.user) {
 		return new Response('Unauthorized', { status: 401 });
 	}
@@ -39,7 +40,13 @@ export const POST: APIRoute = async ({ params, locals }) => {
 	});
 
 	if (error) {
-		return new Response(`Failed to restore transaction: ${error.message}`, { status: 500 });
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: `Failed to restore transaction: ${error.message}`,
+			action: 'Failed to restore transaction.',
+			context: { transactionId: transactionId ?? null, projectId: transaction.project_id },
+		});
 	}
 
 	return new Response(null, { status: 204 });

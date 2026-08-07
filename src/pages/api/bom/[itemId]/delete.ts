@@ -1,10 +1,11 @@
 import type { APIRoute } from 'astro';
 import { canEditMoney } from '../../../../lib/money-access';
+import { errorResponse } from '../../../../lib/error-report';
 
 export const prerender = false;
 
 // Soft-delete — moves the item to the project's Trash instead of removing it.
-export const POST: APIRoute = async ({ params, locals }) => {
+export const POST: APIRoute = async ({ params, request, locals }) => {
 	if (!locals.user) {
 		return new Response('Unauthorized', { status: 401 });
 	}
@@ -28,7 +29,13 @@ export const POST: APIRoute = async ({ params, locals }) => {
 	const { error } = await locals.supabase.from('bom_items').update({ deleted_at: new Date().toISOString() }).eq('id', itemId);
 
 	if (error) {
-		return new Response(`Failed to delete BOM item: ${error.message}`, { status: 500 });
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: `Failed to delete BOM item: ${error.message}`,
+			action: 'Failed to delete BOM item.',
+			context: { itemId: itemId ?? null, projectId: item.project_id },
+		});
 	}
 
 	return new Response(null, { status: 204 });

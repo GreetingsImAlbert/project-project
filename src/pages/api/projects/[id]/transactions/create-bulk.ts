@@ -4,6 +4,7 @@ import { buildBulkRows } from '../../../../../lib/bulk-transaction';
 import { TRANSACTION_COLUMNS } from '../../../../../lib/transaction-columns';
 import { resolveParty } from '../../../../../lib/ghost-members';
 import type { Json } from '../../../../../lib/supabase/database.types';
+import { errorResponse } from '../../../../../lib/error-report';
 
 export const prerender = false;
 
@@ -48,7 +49,13 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 	});
 
 	if (transactionError || !parentId) {
-		return new Response(`Failed to create transaction: ${transactionError?.message ?? 'unknown error'}`, { status: 500 });
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: `Failed to create transaction: ${transactionError?.message ?? 'unknown error'}`,
+			action: 'Failed to create transaction.',
+			context: { projectId: projectId ?? null },
+		});
 	}
 
 	const { data: rows, error: readError } = await locals.supabase
@@ -61,7 +68,13 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 	const lines = rows?.filter((row) => row.group_id === parentId) ?? [];
 
 	if (readError || !parent) {
-		return new Response(`Transaction created but could not be read back: ${readError?.message ?? 'unknown error'}`, { status: 500 });
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: `Transaction created but could not be read back: ${readError?.message ?? 'unknown error'}`,
+			action: 'Transaction created but could not be read back.',
+			context: { projectId: projectId ?? null, parentId: parentId ?? null },
+		});
 	}
 
 	return Response.json({ parent, lines });

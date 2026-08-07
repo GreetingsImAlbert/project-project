@@ -4,6 +4,7 @@ import { buildBulkRows } from '../../../../lib/bulk-transaction';
 import { TRANSACTION_COLUMNS } from '../../../../lib/transaction-columns';
 import { resolveParty } from '../../../../lib/ghost-members';
 import type { Json } from '../../../../lib/supabase/database.types';
+import { errorResponse } from '../../../../lib/error-report';
 
 export const prerender = false;
 
@@ -62,7 +63,13 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 	});
 
 	if (transactionError) {
-		return new Response(`Failed to update transaction: ${transactionError.message}`, { status: 500 });
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: `Failed to update transaction: ${transactionError.message}`,
+			action: 'Failed to update transaction.',
+			context: { transactionId: transactionId ?? null, projectId: existing.project_id },
+		});
 	}
 
 	const { data: rows, error: readError } = await locals.supabase
@@ -75,7 +82,13 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 	const lines = rows?.filter((row) => row.group_id === transactionId) ?? [];
 
 	if (readError || !parent) {
-		return new Response(`Transaction updated but could not be read back: ${readError?.message ?? 'unknown error'}`, { status: 500 });
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: `Transaction updated but could not be read back: ${readError?.message ?? 'unknown error'}`,
+			action: 'Transaction updated but could not be read back.',
+			context: { transactionId: transactionId ?? null, projectId: existing.project_id },
+		});
 	}
 
 	return Response.json({ parent, lines });

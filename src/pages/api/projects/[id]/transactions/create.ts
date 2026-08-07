@@ -5,6 +5,7 @@ import { transactionDateError } from '../../../../../lib/transaction-date';
 import { TRANSACTION_COLUMNS } from '../../../../../lib/transaction-columns';
 import { resolveParty } from '../../../../../lib/ghost-members';
 import { partyColumns, relatedPartyColumns } from '../../../../../lib/money-parties';
+import { errorResponse } from '../../../../../lib/error-report';
 
 export const prerender = false;
 
@@ -119,7 +120,13 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 		.single();
 
 	if (error) {
-		return new Response(`Failed to create transaction: ${error.message}`, { status: 500 });
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: `Failed to create transaction: ${error.message}`,
+			action: 'Failed to create transaction.',
+			context: { projectId: projectId ?? null },
+		});
 	}
 
 	return Response.json(created);

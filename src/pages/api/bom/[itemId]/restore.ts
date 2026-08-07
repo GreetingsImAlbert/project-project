@@ -1,10 +1,11 @@
 import type { APIRoute } from 'astro';
 import { canEditMoney } from '../../../../lib/money-access';
+import { errorResponse } from '../../../../lib/error-report';
 
 export const prerender = false;
 
 // Undoes delete.ts.
-export const POST: APIRoute = async ({ params, locals }) => {
+export const POST: APIRoute = async ({ params, request, locals }) => {
 	if (!locals.user) {
 		return new Response('Unauthorized', { status: 401 });
 	}
@@ -32,7 +33,13 @@ export const POST: APIRoute = async ({ params, locals }) => {
 	const { error } = await locals.supabase.from('bom_items').update({ deleted_at: null }).eq('id', itemId);
 
 	if (error) {
-		return new Response(`Failed to restore BOM item: ${error.message}`, { status: 500 });
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: `Failed to restore BOM item: ${error.message}`,
+			action: 'Failed to restore BOM item.',
+			context: { itemId: itemId ?? null, projectId: item.project_id },
+		});
 	}
 
 	return new Response(null, { status: 204 });

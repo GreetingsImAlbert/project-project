@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
 import { canEditMoney } from '../../../../lib/money-access';
 import { itemUrlError } from '../../../../lib/item-url';
+import { errorResponse } from '../../../../lib/error-report';
 
 export const prerender = false;
 
@@ -93,7 +94,13 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 		.single();
 
 	if (error) {
-		return new Response(`Failed to update BOM item: ${error.message}`, { status: 500 });
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: `Failed to update BOM item: ${error.message}`,
+			action: 'Failed to update BOM item.',
+			context: { itemId: itemId ?? null, projectId: item.project_id },
+		});
 	}
 
 	return Response.json(updated);
