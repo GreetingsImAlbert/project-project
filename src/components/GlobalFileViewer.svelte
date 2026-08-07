@@ -14,7 +14,7 @@
 		type ViewerTab,
 	} from '../lib/viewer-tabs';
 
-	let { userId }: { userId: string } = $props();
+	let { userId = 'guest' }: { userId?: string } = $props();
 	const tabsStorageKey = () => `p2-viewer-tabs-${userId}`;
 	const activeFileStorageKey = () => `p2-viewer-active-file-${userId}`;
 	const initialTabs = loadViewerTabs(tabsStorageKey());

@@ -10,6 +10,8 @@ export const prerender = false;
 const user = Astro.locals.user;
 const { id } = Astro.params;
 const currentFolderId = Astro.url.searchParams.get('folder');
+// A shared public link (the Files route with ?file=) lands the viewer on that file.
+const openFileId = Astro.url.searchParams.get('file');
 
 interface FileRow {
 	id: string;
@@ -36,6 +38,7 @@ let files: FileRow[] = [];
 let availableBytes: number | null = null;
 let projectStorageBytes = 0;
 let projectStorageFailed = false;
+let initialOpenFile: { id: string; filename: string } | null = null;
 
 const admin = getSupabaseAdmin(env);
 
@@ -98,6 +101,18 @@ if (user) {
 		if (currentFolderId && !folderById.has(currentFolderId)) {
 			return new Response('Folder not found', { status: 404 });
 		}
+
+		// RLS scopes this to files in the caller's projects, so an open-file param
+		// pointing anywhere else simply doesn't resolve; a bogus id is ignored too.
+		if (openFileId) {
+			const { data: openFile } = await Astro.locals.supabase
+				.from('files')
+				.select('id, filename')
+				.eq('id', openFileId)
+				.maybeSingle();
+
+			initialOpenFile = openFile ?? null;
+		}
 	}
 }
 
@@ -135,6 +150,12 @@ if (!project) {
 	project = { id: gate.id, name: gate.name, public_files_enabled: true };
 	readOnly = true;
 	files = publicFiles ?? [];
+
+	// An open-file param only resolves against the effectively-public flat list —
+	// anything else stays a no-op rather than opening the viewer on a private file.
+	if (openFileId) {
+		initialOpenFile = files.find((f) => f.id === openFileId) ?? null;
+	}
 }
 
 // Files edit rights stay with the base role (owner/editor); auditor is Money-only.
@@ -158,5 +179,6 @@ const initialViewMode = storedViewMode === 'list' ? 'list' : 'grid';
 		initialViewMode={initialViewMode}
 		initialStorageBytes={projectStorageBytes}
 		initialStorageFailed={projectStorageFailed}
+		initialOpenFile={initialOpenFile}
 	/>
 </BaseLayout>

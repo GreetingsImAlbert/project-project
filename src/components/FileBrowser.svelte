@@ -57,6 +57,7 @@
 		initialViewMode,
 		initialStorageBytes,
 		initialStorageFailed,
+		initialOpenFile = null,
 	}: {
 		projectId: string;
 		currentUserId: string;
@@ -73,6 +74,9 @@
 		initialViewMode?: 'list' | 'grid';
 		initialStorageBytes: number;
 		initialStorageFailed: boolean;
+		// The viewer tab to open on mount — a public link (the Files route with
+		// ?file=) resolved server-side, so the viewer lands on the shared file.
+		initialOpenFile?: { id: string; filename: string } | null;
 	} = $props();
 
 	let viewingFileId = $state<string | null>(null);
@@ -519,6 +523,11 @@
 		};
 		window.addEventListener(VIEWER_STATE_EVENT, onViewerState);
 		window.addEventListener(VIEWER_SAVED_EVENT, onViewerSaved);
+
+		// Opened after the listeners above are in place, so the state publish that
+		// follows the open command syncs viewingFileId for the row highlight.
+		if (initialOpenFile) openViewerFile(initialOpenFile);
+
 		return onSwapOrDestroy(() => {
 			requestSeq += 1;
 			folderRequest?.abort();
@@ -762,6 +771,7 @@
 {#if error}<p class="row-error">{error}</p>{/if}
 
 <FileList
+	projectId={projectId}
 	canEdit={canEdit}
 	readOnly={readOnly}
 	publicFilesEnabled={publicFilesEnabled}

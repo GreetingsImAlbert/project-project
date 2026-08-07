@@ -40,6 +40,7 @@
 	}
 
 	let {
+		projectId,
 		canEdit,
 		readOnly = false,
 		currentFolderId,
@@ -57,6 +58,7 @@
 		publicFilesEnabled,
 		onFileVisibilityChanged,
 	}: {
+		projectId: string;
 		canEdit: boolean;
 		// Outsider mode: the flat public list — no uploader identity in the meta
 		// column and no purge warnings that would hint at a deleted account.
@@ -92,6 +94,9 @@
 	let visibilitySavedId = $state<string | null>(null);
 	let visibilityError = $state<{ id: string; message: string } | null>(null);
 	let visibilitySavedTimer: ReturnType<typeof setTimeout> | undefined;
+	let copiedLinkId = $state<string | null>(null);
+	let copyLinkFailedId = $state<string | null>(null);
+	let copyLinkTimer: ReturnType<typeof setTimeout> | undefined;
 	let renderedFileCount = $state(FILE_PAGE_SIZE);
 	let lastPaginationKey = $state<string | null>(null);
 
@@ -202,6 +207,26 @@
 		renameTarget = null;
 	}
 
+	// The shared link is the Files route with the viewer pointed at this file — the
+	// same page outsiders land on, with no dedicated public file page. Only shown
+	// while the file is effectively public (gate on, switch on), so it vanishes the
+	// moment either one is turned off.
+	async function copyPublicLink(file: FileRow) {
+		const url = `/projects/${projectId}/files?file=${file.id}`;
+		try {
+			await navigator.clipboard.writeText(url);
+			copyLinkFailedId = null;
+			clearTimeout(copyLinkTimer);
+			copiedLinkId = file.id;
+			copyLinkTimer = setTimeout(() => {
+				if (copiedLinkId === file.id) copiedLinkId = null;
+			}, 2500);
+		} catch {
+			copiedLinkId = null;
+			copyLinkFailedId = file.id;
+		}
+	}
+
 	async function setFileVisibility(file: FileRow, isPublic: boolean) {
 		if (!publicFilesEnabled || visibilitySavingId !== null || file.is_public === isPublic) return;
 
@@ -262,6 +287,7 @@
 
 	onSwapOrDestroy(() => {
 		clearTimeout(visibilitySavedTimer);
+		clearTimeout(copyLinkTimer);
 	});
 </script>
 
@@ -298,6 +324,11 @@
 {#snippet actionsPanel(file: FileRow)}
 	<div class="actions-panel" data-file-actions transition:slide={{ duration: 150 }}>
 		{@render visibilityControl(file)}
+		{#if publicFilesEnabled && file.is_public}
+			<button type="button" class="btn-plain" onclick={() => copyPublicLink(file)}>
+				{copiedLinkId === file.id ? 'Copied' : copyLinkFailedId === file.id ? 'Copy failed' : 'Copy public link'}
+			</button>
+		{/if}
 		<button type="button" class="btn-plain" onclick={() => openRename(file)}>Rename</button>
 		<button type="button" class="btn-plain" onclick={() => openModal(file, 'move')}>Move</button>
 		<button type="button" class="btn-plain" onclick={() => openModal(file, 'copy')}>Copy</button>
@@ -361,6 +392,11 @@
 					{#if canEdit && !file.is_journal}
 						<div class="cell cell-actions" onclick={(e) => e.stopPropagation()}>
 							{@render visibilityControl(file)}
+							{#if publicFilesEnabled && file.is_public}
+								<button type="button" class="btn-plain" onclick={() => copyPublicLink(file)}>
+									{copiedLinkId === file.id ? 'Copied' : copyLinkFailedId === file.id ? 'Copy failed' : 'Copy public link'}
+								</button>
+							{/if}
 							<button type="button" class="btn-plain" onclick={() => openRename(file)}>Rename</button>
 							<button type="button" class="btn-plain" onclick={() => openModal(file, 'move')}>Move</button>
 							<button type="button" class="btn-plain" onclick={() => openModal(file, 'copy')}>Copy</button>
