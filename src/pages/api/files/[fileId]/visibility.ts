@@ -1,4 +1,5 @@
 import type { APIRoute } from 'astro';
+import { errorResponse } from '../../../../lib/error-report';
 
 export const prerender = false;
 
@@ -53,7 +54,13 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 		.eq('id', fileId);
 
 	if (error) {
-		return new Response(`Failed to update file visibility: ${error.message}`, { status: 500 });
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: `Failed to update file visibility: ${error.message}`,
+			action: 'Failed to update file visibility.',
+			context: { fileId: fileId ?? null, projectId: file.project_id },
+		});
 	}
 
 	return Response.json({ isPublic });

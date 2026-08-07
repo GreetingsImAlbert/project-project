@@ -3,6 +3,7 @@ import { AwsClient } from 'aws4fetch';
 import { env } from 'cloudflare:workers';
 import { getSupabaseAdmin } from '../../../../lib/supabase/admin';
 import { wouldExceedUserStorageQuota } from '../../../../lib/r2-quota';
+import { errorResponse } from '../../../../lib/error-report';
 
 export const prerender = false;
 
@@ -79,7 +80,15 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 	});
 
 	if (!copyRes.ok) {
-		return new Response(`Failed to copy source file in storage: ${await copyRes.text()}`, { status: 502 });
+		const copyErrorText = await copyRes.text();
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: `Failed to copy source file in storage: ${copyErrorText}`,
+			action: 'Failed to copy source file in storage.',
+			status: 502,
+			context: { fileId: fileId ?? null, projectId: file.project_id },
+		});
 	}
 
 	const { data: created, error: insertError } = await locals.supabase
@@ -99,7 +108,13 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 
 	if (insertError) {
 		await r2.fetch(destUrl, { method: 'DELETE' }).catch(() => {});
-		return new Response(`Failed to save copied file: ${insertError.message}`, { status: 500 });
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: `Failed to save copied file: ${insertError.message}`,
+			action: 'Failed to save copied file.',
+			context: { fileId: fileId ?? null, projectId: file.project_id },
+		});
 	}
 
 	return Response.json(created);

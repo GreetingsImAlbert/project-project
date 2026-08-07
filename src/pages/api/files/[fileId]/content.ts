@@ -5,6 +5,7 @@ import { getSupabaseAdmin } from '../../../../lib/supabase/admin';
 import { wouldExceedUserStorageQuota } from '../../../../lib/r2-quota';
 import { fileKind, isTextKind, MAX_VIEWABLE_BYTES } from '../../../../lib/file-kind';
 import { getReadableFile } from '../../../../lib/file-access';
+import { errorResponse } from '../../../../lib/error-report';
 
 export const prerender = false;
 
@@ -29,7 +30,7 @@ function objectUrlFor(r2Key: string) {
 // presigned URL like download-url.ts does. A browser `fetch` of an R2 presigned URL is
 // cross-origin, so it would need CORS opened up on the bucket; proxying keeps the read
 // same-origin and gives the size/type limits somewhere to actually be enforced.
-export const GET: APIRoute = async ({ params, locals }) => {
+export const GET: APIRoute = async ({ params, request, locals }) => {
 	const { fileId } = params;
 
 	// Members resolve through RLS; outsiders (guests and authenticated non-members)
@@ -62,7 +63,14 @@ export const GET: APIRoute = async ({ params, locals }) => {
 	const object = await env.R2_BUCKET.get(file.r2_key);
 
 	if (!object) {
-		return new Response('Could not read this file', { status: 502 });
+		return errorResponse({
+			request,
+			userId: locals.user?.id ?? null,
+			privateMessage: 'Could not read this file: no R2 object found',
+			action: 'Could not read this file.',
+			status: 502,
+			context: { fileId: fileId ?? null },
+		});
 	}
 
 	const bytes = await object.arrayBuffer();
@@ -195,14 +203,29 @@ export const PUT: APIRoute = async ({ params, request, locals }) => {
 	});
 
 	if (!putRes.ok) {
-		return new Response(`Failed to save file: ${await putRes.text()}`, { status: 502 });
+		const putErrorText = await putRes.text();
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: `Failed to save file: ${putErrorText}`,
+			action: 'Failed to save file.',
+			status: 502,
+			context: { fileId: fileId ?? null, projectId: file.project_id },
+		});
 	}
 
 	// R2's own record of what landed, same rule as confirm.ts — never the length the
 	// client sent, and not even the length we just encoded.
 	const verifyRes = await r2.fetch(objectUrl, { method: 'HEAD' });
 	if (!verifyRes.ok) {
-		return new Response('Saved, but could not confirm the new size', { status: 502 });
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: 'Saved, but could not confirm the new size',
+			action: 'Saved, but could not confirm the new size.',
+			status: 502,
+			context: { fileId: fileId ?? null, projectId: file.project_id },
+		});
 	}
 	const sizeBytes = Number(verifyRes.headers.get('content-length') ?? bytes.byteLength);
 
@@ -215,7 +238,13 @@ export const PUT: APIRoute = async ({ params, request, locals }) => {
 	// there's nothing to compensate with the way confirm.ts deletes its orphan. The file
 	// itself is saved; only the recorded size is stale, and the next save corrects it.
 	if (updateError) {
-		return new Response(`Saved, but failed to record the new size: ${updateError.message}`, { status: 500 });
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: `Saved, but failed to record the new size: ${updateError.message}`,
+			action: 'Saved, but failed to record the new size.',
+			context: { fileId: fileId ?? null, projectId: file.project_id },
+		});
 	}
 
 	return Response.json({ sizeBytes, etag: verifyRes.headers.get('etag') });

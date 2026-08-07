@@ -1,11 +1,12 @@
 import type { APIRoute } from 'astro';
+import { errorResponse } from '../../../../lib/error-report';
 
 export const prerender = false;
 
 // Soft-delete — moves the file to the project's Trash instead of removing it.
 // The R2 object is left alone until the trash cron actually purges the row (see
 // src/lib/trash.ts) — restore.ts undoes this, purge.ts does the same removal on demand.
-export const POST: APIRoute = async ({ params, locals }) => {
+export const POST: APIRoute = async ({ params, request, locals }) => {
 	if (!locals.user) {
 		return new Response('Unauthorized', { status: 401 });
 	}
@@ -43,7 +44,13 @@ export const POST: APIRoute = async ({ params, locals }) => {
 	const { error } = await locals.supabase.from('files').update({ deleted_at: new Date().toISOString() }).eq('id', fileId);
 
 	if (error) {
-		return new Response(`Failed to delete file: ${error.message}`, { status: 500 });
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: `Failed to delete file: ${error.message}`,
+			action: 'Failed to delete file.',
+			context: { fileId: fileId ?? null, projectId: file.project_id },
+		});
 	}
 
 	return new Response(null, { status: 204 });

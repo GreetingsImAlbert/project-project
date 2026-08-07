@@ -1,11 +1,12 @@
 import type { APIRoute } from 'astro';
+import { errorResponse } from '../../../../lib/error-report';
 
 export const prerender = false;
 
 // Undoes delete.ts. If the file's folder is itself still trashed, it's reparented
 // to the project root instead — restoring one item deep inside a trashed tree
 // shouldn't leave it invisible under a still-deleted folder.
-export const POST: APIRoute = async ({ params, locals }) => {
+export const POST: APIRoute = async ({ params, request, locals }) => {
 	if (!locals.user) {
 		return new Response('Unauthorized', { status: 401 });
 	}
@@ -49,7 +50,13 @@ export const POST: APIRoute = async ({ params, locals }) => {
 		.eq('id', fileId);
 
 	if (error) {
-		return new Response(`Failed to restore file: ${error.message}`, { status: 500 });
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: `Failed to restore file: ${error.message}`,
+			action: 'Failed to restore file.',
+			context: { fileId: fileId ?? null, projectId: file.project_id },
+		});
 	}
 
 	return new Response(null, { status: 204 });

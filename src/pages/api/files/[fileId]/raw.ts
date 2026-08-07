@@ -3,6 +3,7 @@ import { env } from 'cloudflare:workers';
 import { getSupabaseAdmin } from '../../../../lib/supabase/admin';
 import { fileKind, MAX_MODEL_BYTES, MAX_PDF_BYTES } from '../../../../lib/file-kind';
 import { getReadableFile } from '../../../../lib/file-access';
+import { errorResponse } from '../../../../lib/error-report';
 
 export const prerender = false;
 
@@ -14,7 +15,7 @@ export const prerender = false;
 //
 // Not merged into download-url.ts either: that hands out a signed URL with an attachment
 // Content-Disposition, which is a download, not something fetch() can read back.
-export const GET: APIRoute = async ({ params, locals }) => {
+export const GET: APIRoute = async ({ params, request, locals }) => {
 	const { fileId } = params;
 
 	// Members resolve through RLS; outsiders (guests and authenticated non-members)
@@ -48,7 +49,14 @@ export const GET: APIRoute = async ({ params, locals }) => {
 	const object = await env.R2_BUCKET.get(file.r2_key);
 
 	if (!object || !object.body) {
-		return new Response('Could not read this file', { status: 502 });
+		return errorResponse({
+			request,
+			userId: locals.user?.id ?? null,
+			privateMessage: 'Could not read this file: no R2 object found',
+			action: 'Could not read this file.',
+			status: 502,
+			context: { fileId: fileId ?? null },
+		});
 	}
 
 	// Second guard, for rows whose size_bytes predates the HEAD-at-upload behaviour.
