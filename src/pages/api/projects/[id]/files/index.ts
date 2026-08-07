@@ -1,8 +1,9 @@
 import type { APIRoute } from 'astro';
+import { errorResponse } from '../../../../../lib/error-report';
 
 export const prerender = false;
 
-export const GET: APIRoute = async ({ params, url, locals }) => {
+export const GET: APIRoute = async ({ params, url, request, locals }) => {
 	if (!locals.user) {
 		return new Response('Unauthorized', { status: 401 });
 	}
@@ -22,7 +23,13 @@ export const GET: APIRoute = async ({ params, url, locals }) => {
 		.overrideTypes<{ id: string; filename: string; size_bytes: number | null; mime_type: string | null; created_at: string; uploaded_by: string; is_journal: boolean; is_public: boolean; profiles: { display_name: string } }[]>();
 
 	if (error) {
-		return new Response(`Failed to load files: ${error.message}`, { status: 500 });
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: `Failed to load files: ${error.message}`,
+			action: 'Failed to load files.',
+			context: { projectId: projectId ?? null },
+		});
 	}
 
 	return Response.json(files ?? []);

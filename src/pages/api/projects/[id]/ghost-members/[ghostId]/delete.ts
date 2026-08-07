@@ -2,10 +2,11 @@ import type { APIRoute } from 'astro';
 import { env } from 'cloudflare:workers';
 import { canEditMoney } from '../../../../../../lib/money-access';
 import { getSupabaseAdmin } from '../../../../../../lib/supabase/admin';
+import { errorResponse } from '../../../../../../lib/error-report';
 
 export const prerender = false;
 
-export const POST: APIRoute = async ({ params, locals }) => {
+export const POST: APIRoute = async ({ params, request, locals }) => {
 	if (!locals.user) {
 		return new Response('Unauthorized', { status: 401 });
 	}
@@ -29,7 +30,13 @@ export const POST: APIRoute = async ({ params, locals }) => {
 		.maybeSingle();
 
 	if (ghostError) {
-		return new Response(`Failed to find ghost member: ${ghostError.message}`, { status: 500 });
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: `Failed to find ghost member: ${ghostError.message}`,
+			action: 'Failed to find ghost member.',
+			context: { projectId: projectId ?? null, ghostId: ghostId ?? null },
+		});
 	}
 	if (!ghost) {
 		return new Response('Ghost member not found', { status: 404 });
@@ -47,7 +54,13 @@ export const POST: APIRoute = async ({ params, locals }) => {
 		.or(`ghost_member_id.eq.${ghostId},related_ghost_member_id.eq.${ghostId}`);
 
 	if (countError) {
-		return new Response(`Failed to delete ghost member: ${countError.message}`, { status: 500 });
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: `Failed to delete ghost member: ${countError.message}`,
+			action: 'Failed to delete ghost member.',
+			context: { projectId: projectId ?? null, ghostId: ghostId ?? null },
+		});
 	}
 	if ((count ?? 0) > 0) {
 		return new Response(
@@ -62,7 +75,13 @@ export const POST: APIRoute = async ({ params, locals }) => {
 		.eq('ghost_member_id', ghostId);
 
 	if (taskCountError) {
-		return new Response(`Failed to delete ghost member: ${taskCountError.message}`, { status: 500 });
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: `Failed to delete ghost member: ${taskCountError.message}`,
+			action: 'Failed to delete ghost member.',
+			context: { projectId: projectId ?? null, ghostId: ghostId ?? null },
+		});
 	}
 	if ((taskCount ?? 0) > 0) {
 		return new Response(
@@ -80,7 +99,13 @@ export const POST: APIRoute = async ({ params, locals }) => {
 		.maybeSingle();
 
 	if (error) {
-		return new Response(`Failed to delete ghost member: ${error.message}`, { status: 500 });
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: `Failed to delete ghost member: ${error.message}`,
+			action: 'Failed to delete ghost member.',
+			context: { projectId: projectId ?? null, ghostId: ghostId ?? null },
+		});
 	}
 	if (!removed) {
 		return new Response('Ghost member not found', { status: 404 });

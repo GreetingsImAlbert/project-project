@@ -1,4 +1,5 @@
 import type { APIRoute } from 'astro';
+import { errorResponse } from '../../../../../../lib/error-report';
 
 export const prerender = false;
 
@@ -49,7 +50,13 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 		.eq('id', folderId);
 
 	if (error) {
-		return new Response(`Failed to rename folder: ${error.message}`, { status: 500 });
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: `Failed to rename folder: ${error.message}`,
+			action: 'Failed to rename folder.',
+			context: { projectId: projectId ?? null, folderId: folderId ?? null },
+		});
 	}
 
 	return new Response(null, { status: 204 });

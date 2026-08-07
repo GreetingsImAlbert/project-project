@@ -7,6 +7,7 @@ import {
 	ghostNoteError,
 	type GhostMemberRow,
 } from '../../../../../lib/ghost-members';
+import { errorResponse } from '../../../../../lib/error-report';
 
 export const prerender = false;
 
@@ -53,7 +54,13 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 		.single();
 
 	if (error) {
-		return new Response(`Failed to add ghost member: ${error.message}`, { status: 500 });
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: `Failed to add ghost member: ${error.message}`,
+			action: 'Failed to add ghost member.',
+			context: { projectId: projectId ?? null },
+		});
 	}
 
 	return Response.json(created as GhostMemberRow);

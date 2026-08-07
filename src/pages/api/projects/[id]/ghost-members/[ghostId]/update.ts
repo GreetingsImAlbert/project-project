@@ -6,6 +6,7 @@ import {
 	ghostNoteError,
 	type GhostMemberRow,
 } from '../../../../../../lib/ghost-members';
+import { errorResponse } from '../../../../../../lib/error-report';
 
 export const prerender = false;
 
@@ -74,7 +75,13 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 		.maybeSingle();
 
 	if (error) {
-		return new Response(`Failed to update ghost member: ${error.message}`, { status: 500 });
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: `Failed to update ghost member: ${error.message}`,
+			action: 'Failed to update ghost member.',
+			context: { projectId: projectId ?? null, ghostId: ghostId ?? null },
+		});
 	}
 	if (!updated) {
 		return new Response('Ghost member not found', { status: 404 });

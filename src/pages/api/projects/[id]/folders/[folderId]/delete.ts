@@ -1,4 +1,5 @@
 import type { APIRoute } from 'astro';
+import { errorResponse } from '../../../../../../lib/error-report';
 
 export const prerender = false;
 
@@ -6,7 +7,7 @@ export const prerender = false;
 // it in one pass, moving them to the project's Trash instead of removing them.
 // The R2 objects and rows themselves are left alone until the trash cron (or a
 // user-triggered permanent delete, see purge.ts) actually removes them.
-export const POST: APIRoute = async ({ params, locals }) => {
+export const POST: APIRoute = async ({ params, request, locals }) => {
 	if (!locals.user) {
 		return new Response('Unauthorized', { status: 401 });
 	}
@@ -45,7 +46,13 @@ export const POST: APIRoute = async ({ params, locals }) => {
 	});
 
 	if (error) {
-		return new Response(`Failed to delete folder contents: ${error.message}`, { status: 500 });
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: `Failed to delete folder contents: ${error.message}`,
+			action: 'Failed to delete folder contents.',
+			context: { projectId: projectId ?? null, folderId: folderId ?? null },
+		});
 	}
 
 	return new Response(null, { status: 204 });

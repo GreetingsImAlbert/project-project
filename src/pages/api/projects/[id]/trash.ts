@@ -1,3 +1,5 @@
+import { errorResponse } from '../../../../lib/error-report';
+
 export const prerender = false;
 
 interface FileRow {
@@ -37,7 +39,7 @@ interface TransactionRow {
 	deleted_at: string;
 }
 
-export async function GET({ locals, params }: { locals: App.Locals; params: Record<string, string | undefined> }) {
+export async function GET({ locals, params, request }: { locals: App.Locals; params: Record<string, string | undefined>; request: Request }) {
 	if (!locals.user) return new Response('Not signed in', { status: 401 });
 
 	const projectId = params.id;
@@ -83,7 +85,13 @@ export async function GET({ locals, params }: { locals: App.Locals; params: Reco
 	]);
 
 	if (filesError || foldersError || tasksError || bomError || transactionsError) {
-		return new Response('Could not load trash', { status: 500 });
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: `Could not load trash: ${[filesError, foldersError, tasksError, bomError, transactionsError].find((e) => e !== null)?.message ?? 'unknown error'}`,
+			action: 'Could not load trash.',
+			context: { projectId: projectId ?? null },
+		});
 	}
 
 	return Response.json(

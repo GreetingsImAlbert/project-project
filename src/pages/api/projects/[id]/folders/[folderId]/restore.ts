@@ -1,4 +1,5 @@
 import type { APIRoute } from 'astro';
+import { errorResponse } from '../../../../../../lib/error-report';
 
 export const prerender = false;
 
@@ -9,7 +10,7 @@ export const prerender = false;
 // the bottom up (a parent up first would briefly leave a child pointing nowhere
 // visible, which is harmless but reads oddly), or its own root down — the Trash
 // page lists every trashed folder individually either way.
-export const POST: APIRoute = async ({ params, locals }) => {
+export const POST: APIRoute = async ({ params, request, locals }) => {
 	if (!locals.user) {
 		return new Response('Unauthorized', { status: 401 });
 	}
@@ -59,7 +60,13 @@ export const POST: APIRoute = async ({ params, locals }) => {
 		.eq('id', folderId);
 
 	if (error) {
-		return new Response(`Failed to restore folder: ${error.message}`, { status: 500 });
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: `Failed to restore folder: ${error.message}`,
+			action: 'Failed to restore folder.',
+			context: { projectId: projectId ?? null, folderId: folderId ?? null },
+		});
 	}
 
 	return new Response(null, { status: 204 });

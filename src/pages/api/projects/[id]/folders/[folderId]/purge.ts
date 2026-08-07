@@ -2,6 +2,7 @@ import type { APIRoute } from 'astro';
 import { AwsClient } from 'aws4fetch';
 import { env } from 'cloudflare:workers';
 import { collectDescendantFolderIds } from '../../../../../../lib/folder-tree';
+import { errorResponse } from '../../../../../../lib/error-report';
 
 export const prerender = false;
 
@@ -10,7 +11,7 @@ export const prerender = false;
 // once, so every descendant is already trashed too); the cron in
 // src/lib/trash.ts does the same thing on a schedule once TRASH_GRACE_DAYS has
 // passed.
-export const POST: APIRoute = async ({ params, locals }) => {
+export const POST: APIRoute = async ({ params, request, locals }) => {
 	if (!locals.user) {
 		return new Response('Unauthorized', { status: 401 });
 	}
@@ -58,14 +59,26 @@ export const POST: APIRoute = async ({ params, locals }) => {
 			);
 
 		if (filesDeleteError) {
-			return new Response(`Failed to delete folder contents: ${filesDeleteError.message}`, { status: 500 });
+			return errorResponse({
+				request,
+				userId: locals.user.id,
+				privateMessage: `Failed to delete folder contents: ${filesDeleteError.message}`,
+				action: 'Failed to delete folder contents.',
+				context: { projectId: projectId ?? null, folderId: folderId ?? null },
+			});
 		}
 	}
 
 	const { error } = await locals.supabase.from('folders').delete().eq('id', folderId);
 
 	if (error) {
-		return new Response(`Failed to delete folder: ${error.message}`, { status: 500 });
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: `Failed to delete folder: ${error.message}`,
+			action: 'Failed to delete folder.',
+			context: { projectId: projectId ?? null, folderId: folderId ?? null },
+		});
 	}
 
 	// Best-effort: the DB side is already committed, so a failed R2 delete here
