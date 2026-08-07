@@ -109,7 +109,7 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 
 		return Response.json(
 			{
-				error: `Failed to save file record: ${error.message}. Reference ID: ${reportId}`,
+				error: `Failed to save file record. Reference ID: ${reportId}`,
 				cleanedUp,
 			},
 			{ status: 500 }

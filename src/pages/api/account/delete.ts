@@ -2,7 +2,7 @@ import type { APIRoute } from 'astro';
 import { env } from 'cloudflare:workers';
 import { getSupabaseAdmin } from '../../../lib/supabase/admin';
 import { createStatelessSupabaseClient } from '../../../lib/supabase/stateless';
-import { logError } from '../../../lib/error-report';
+import { errorResponse } from '../../../lib/error-report';
 
 export const prerender = false;
 
@@ -53,15 +53,13 @@ export const POST: APIRoute = async ({ request, locals }) => {
 		.eq('id', userId);
 
 	if (profileError) {
-		const reportId = await logError(admin, {
-			message: `Failed to schedule account deletion: ${profileError.message}`,
-			source: 'server',
-			method: request.method,
-			path: new URL(request.url).pathname,
+		return errorResponse({
+			request,
 			userId,
+			privateMessage: `Failed to schedule account deletion: ${profileError.message}`,
+			action: 'Failed to schedule account deletion.',
 			context: { stage: 'profile-update' },
 		});
-		return new Response(`Failed to schedule account deletion: ${profileError.message}. Reference ID: ${reportId}`, { status: 500 });
 	}
 
 	// Mirrored onto app_metadata (admin-only to write, unlike user_metadata) so
@@ -73,15 +71,13 @@ export const POST: APIRoute = async ({ request, locals }) => {
 
 	if (metadataError) {
 		await admin.from('profiles').update({ pending_deletion_at: null }).eq('id', userId);
-		const reportId = await logError(admin, {
-			message: `Failed to schedule account deletion: ${metadataError.message}`,
-			source: 'server',
-			method: request.method,
-			path: new URL(request.url).pathname,
+		return errorResponse({
+			request,
 			userId,
+			privateMessage: `Failed to schedule account deletion: ${metadataError.message}`,
+			action: 'Failed to schedule account deletion.',
 			context: { stage: 'metadata-update' },
 		});
-		return new Response(`Failed to schedule account deletion: ${metadataError.message}. Reference ID: ${reportId}`, { status: 500 });
 	}
 
 	// Every session — including this one — has to end here: the only way back in

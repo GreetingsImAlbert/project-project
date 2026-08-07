@@ -1,7 +1,7 @@
 import type { APIRoute } from 'astro';
 import { env } from 'cloudflare:workers';
 import { getSupabaseAdmin } from '../../../lib/supabase/admin';
-import { logError } from '../../../lib/error-report';
+import { errorResponse } from '../../../lib/error-report';
 
 export const prerender = false;
 
@@ -19,15 +19,13 @@ export const POST: APIRoute = async ({ request, locals }) => {
 		.eq('id', userId);
 
 	if (profileError) {
-		const reportId = await logError(admin, {
-			message: `Failed to cancel deletion: ${profileError.message}`,
-			source: 'server',
-			method: request.method,
-			path: new URL(request.url).pathname,
+		return errorResponse({
+			request,
 			userId,
+			privateMessage: `Failed to cancel deletion: ${profileError.message}`,
+			action: 'Failed to cancel deletion.',
 			context: { stage: 'profile-update' },
 		});
-		return new Response(`Failed to cancel deletion: ${profileError.message}. Reference ID: ${reportId}`, { status: 500 });
 	}
 
 	const { error: metadataError } = await admin.auth.admin.updateUserById(userId, {
@@ -35,15 +33,13 @@ export const POST: APIRoute = async ({ request, locals }) => {
 	});
 
 	if (metadataError) {
-		const reportId = await logError(admin, {
-			message: `Failed to cancel deletion: ${metadataError.message}`,
-			source: 'server',
-			method: request.method,
-			path: new URL(request.url).pathname,
+		return errorResponse({
+			request,
 			userId,
+			privateMessage: `Failed to cancel deletion: ${metadataError.message}`,
+			action: 'Failed to cancel deletion.',
 			context: { stage: 'metadata-update' },
 		});
-		return new Response(`Failed to cancel deletion: ${metadataError.message}. Reference ID: ${reportId}`, { status: 500 });
 	}
 
 	// The session that's here right now was minted with the stale claim (that's
