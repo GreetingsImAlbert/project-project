@@ -12,6 +12,7 @@ interface Props {
 		projectId: string;
 		userRole: string;
 		readOnly?: boolean;
+		publicFilesEnabled?: boolean;
 	};
 }
 const { title = 'P2', projectNav } = Astro.props;
@@ -81,7 +82,7 @@ const path = Astro.url.pathname;
 			<main class="app-main project-main">
 				<div class="page-loading-indicator" role="status" aria-label="Loading"></div>
 				{projectNav && (
-					<ProjectNav projectId={projectNav.projectId} userRole={projectNav.userRole} readOnly={projectNav.readOnly} />
+					<ProjectNav projectId={projectNav.projectId} userRole={projectNav.userRole} readOnly={projectNav.readOnly} publicFilesEnabled={projectNav.publicFilesEnabled} />
 				)}
 				<slot />
 			</main>

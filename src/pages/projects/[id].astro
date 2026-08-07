@@ -153,7 +153,7 @@ const memberGroups = roles.map((role) => ({
 ---
 <BaseLayout
 	title={displayedProject.name}
-	projectNav={{ projectId: displayedProject.id, userRole: userRole ?? '', readOnly }}
+	projectNav={{ projectId: displayedProject.id, userRole: userRole ?? '', readOnly, publicFilesEnabled: publicProject?.public_files_enabled ?? false }}
 >
 	<section class="overview-description">
 		<ProjectDescriptionEditor

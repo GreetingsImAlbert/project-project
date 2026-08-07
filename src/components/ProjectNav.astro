@@ -3,8 +3,9 @@ interface Props {
 	projectId: string;
 	userRole: string;
 	readOnly?: boolean;
+	publicFilesEnabled?: boolean;
 }
-const { projectId, userRole, readOnly = false } = Astro.props;
+const { projectId, userRole, readOnly = false, publicFilesEnabled = false } = Astro.props;
 const path = Astro.url.pathname;
 
 const isOwner = userRole === 'owner';
@@ -19,7 +20,14 @@ function isActive(page: string) {
 
 <nav class="project-nav">
 	<a href={`/projects/${projectId}`} class={isActive('overview') ? 'active' : ''} data-astro-prefetch>Overview</a>
-	{!readOnly && (
+	{readOnly ? (
+		// Outsiders share the same nav; the owner's enabled sections are all they
+		// get. Overview is implied (the page 404s otherwise), Files only when the
+		// owner turned it on — never Tasks, Money, Journal, or Settings.
+		publicFilesEnabled && (
+			<a href={`/projects/${projectId}/files`} class={isActive('files') ? 'active' : ''} data-astro-prefetch>Files</a>
+		)
+	) : (
 		<>
 			<a href={`/projects/${projectId}/tasks`} class={isActive('tasks') ? 'active' : ''} data-astro-prefetch>Tasks</a>
 			<a href={`/projects/${projectId}/files`} class={isActive('files') ? 'active' : ''} data-astro-prefetch>Files</a>
