@@ -81,14 +81,20 @@
 <div class="visibility-picker">
 	<div class="visibility-row">
 		<strong>Project</strong>
-		<div class="visibility-options" role="group" aria-label="Project visibility">
-			<button type="button" class:active={projectValue} disabled={saving !== null} onclick={() => setVisibility('project', true)}>
-				Public
-			</button>
-			<button type="button" class:active={!projectValue} disabled={saving !== null} onclick={() => setVisibility('project', false)}>
-				Private
-			</button>
-		</div>
+		<button
+			type="button"
+			class="visibility-switch"
+			class:active={projectValue}
+			role="switch"
+			aria-checked={projectValue}
+			aria-label="Project visibility"
+			disabled={saving !== null}
+			title={projectValue ? 'Make project private' : 'Make project public'}
+			onclick={() => setVisibility('project', !projectValue)}
+		>
+			<span class="visibility-switch-track" aria-hidden="true"><span class="visibility-switch-thumb"></span></span>
+			<span class="visibility-switch-label">{projectValue ? 'Public' : 'Private'}</span>
+		</button>
 		{#if saving === 'project'}
 			<p class="visibility-status muted" role="status">Saving…</p>
 		{:else if saved === 'project'}
@@ -99,14 +105,20 @@
 
 	<div class="visibility-row">
 		<strong>Files</strong>
-		<div class="visibility-options" role="group" aria-label="File visibility">
-			<button type="button" class:active={filesValue} disabled={saving !== null} onclick={() => setVisibility('files', true)}>
-				Enabled
-			</button>
-			<button type="button" class:active={!filesValue} disabled={saving !== null} onclick={() => setVisibility('files', false)}>
-				Disabled
-			</button>
-		</div>
+		<button
+			type="button"
+			class="visibility-switch"
+			class:active={filesValue}
+			role="switch"
+			aria-checked={filesValue}
+			aria-label="File visibility"
+			disabled={saving !== null}
+			title={filesValue ? 'Make files private' : 'Make files public'}
+			onclick={() => setVisibility('files', !filesValue)}
+		>
+			<span class="visibility-switch-track" aria-hidden="true"><span class="visibility-switch-thumb"></span></span>
+			<span class="visibility-switch-label">{filesValue ? 'Public' : 'Private'}</span>
+		</button>
 		{#if saving === 'files'}
 			<p class="visibility-status muted" role="status">Saving…</p>
 		{:else if saved === 'files'}
@@ -135,18 +147,59 @@
 		min-width: 4rem;
 	}
 
-	.visibility-options {
-		display: flex;
-		gap: var(--space-1);
+	.visibility-switch {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-2);
+		padding: var(--space-1) var(--space-2);
+		border: 1px solid var(--color-border-strong);
+		background: var(--color-bg);
+		color: var(--color-fg);
+		cursor: pointer;
 	}
 
-	.visibility-options button {
-		padding: var(--space-1) var(--space-4);
-		font-size: 0.85rem;
+	.visibility-switch.active {
+		background: var(--color-highlight);
 	}
 
-	.visibility-options button.active {
+	.visibility-switch:disabled {
+		cursor: not-allowed;
+		opacity: 0.65;
+	}
+
+	.visibility-switch-track {
+		position: relative;
+		display: block;
+		width: 2rem;
+		height: 1.1rem;
+		border-radius: 999px;
+		background: var(--color-muted);
+		transition: background 0.12s ease;
+	}
+
+	.visibility-switch.active .visibility-switch-track {
 		background: var(--color-highlight-strong);
+	}
+
+	.visibility-switch-thumb {
+		position: absolute;
+		top: 2px;
+		left: 2px;
+		width: calc(1.1rem - 4px);
+		height: calc(1.1rem - 4px);
+		border-radius: 50%;
+		background: var(--color-bg);
+		transition: transform 0.12s ease;
+	}
+
+	.visibility-switch.active .visibility-switch-thumb {
+		transform: translateX(0.9rem);
+	}
+
+	.visibility-switch-label {
+		font-size: 0.85rem;
+		font-weight: 700;
+		letter-spacing: 0.02em;
 	}
 
 	.visibility-status {

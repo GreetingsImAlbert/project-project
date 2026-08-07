@@ -262,30 +262,22 @@
 {#snippet visibilityControl(file: FileRow)}
 	<div class="file-visibility">
 		<span class="visibility-label">Visibility</span>
-		<div class="visibility-options" role="group" aria-label={`${file.filename} visibility`}>
-			<button
-				type="button"
-				class="btn-plain"
-				class:active={file.is_public}
-				aria-pressed={file.is_public}
-				disabled={!publicFilesEnabled || visibilitySavingId !== null || file.is_public}
-				title={publicFilesEnabled ? 'Make this file public' : 'Enable Files in Project Settings first'}
-				onclick={() => setFileVisibility(file, true)}
-			>
-				Public
-			</button>
-			<button
-				type="button"
-				class="btn-plain"
-				class:active={!file.is_public}
-				aria-pressed={!file.is_public}
-				disabled={!publicFilesEnabled || visibilitySavingId !== null || !file.is_public}
-				title={publicFilesEnabled ? 'Make this file private' : 'Enable Files in Project Settings first'}
-				onclick={() => setFileVisibility(file, false)}
-			>
-				Private
-			</button>
-		</div>
+		<button
+			type="button"
+			class="visibility-switch"
+			class:active={file.is_public}
+			role="switch"
+			aria-checked={file.is_public}
+			aria-label={`${file.filename} visibility`}
+			disabled={!publicFilesEnabled || visibilitySavingId !== null}
+			title={publicFilesEnabled ? (file.is_public ? 'Make this file private' : 'Make this file public') : 'Enable Files in Project Settings first'}
+			onclick={() => setFileVisibility(file, !file.is_public)}
+		>
+			<span class="visibility-switch-track" aria-hidden="true">
+				<span class="visibility-switch-thumb"></span>
+			</span>
+			<span class="visibility-switch-label">{file.is_public ? 'Public' : 'Private'}</span>
+		</button>
 		{#if visibilitySavingId === file.id}
 			<span class="visibility-status muted" role="status">Saving…</span>
 		{:else if visibilitySavedId === file.id}
@@ -694,6 +686,10 @@
 		width: 100%;
 	}
 
+	.actions-panel .visibility-switch {
+		width: auto;
+	}
+
 	.file-visibility {
 		display: flex;
 		flex-direction: column;
@@ -709,18 +705,61 @@
 		text-transform: uppercase;
 	}
 
-	.visibility-options {
-		display: flex;
-		gap: var(--space-1);
-	}
-
-	.visibility-options button {
+	.visibility-switch {
+		display: inline-flex;
+		align-items: center;
+		align-self: flex-start;
+		gap: var(--space-2);
 		width: auto;
-		flex: 1;
+		padding: var(--space-1) var(--space-2);
+		border: 1px solid var(--color-border-strong);
+		background: var(--color-bg);
+		color: var(--color-fg);
+		cursor: pointer;
 	}
 
-	.visibility-options button.active {
+	.visibility-switch.active {
+		background: var(--color-highlight);
+	}
+
+	.visibility-switch:disabled {
+		cursor: not-allowed;
+		opacity: 0.65;
+	}
+
+	.visibility-switch-track {
+		position: relative;
+		display: block;
+		width: 2rem;
+		height: 1.1rem;
+		border-radius: 999px;
+		background: var(--color-muted);
+		transition: background 0.12s ease;
+	}
+
+	.visibility-switch.active .visibility-switch-track {
 		background: var(--color-highlight-strong);
+	}
+
+	.visibility-switch-thumb {
+		position: absolute;
+		top: 2px;
+		left: 2px;
+		width: calc(1.1rem - 4px);
+		height: calc(1.1rem - 4px);
+		border-radius: 50%;
+		background: var(--color-bg);
+		transition: transform 0.12s ease;
+	}
+
+	.visibility-switch.active .visibility-switch-thumb {
+		transform: translateX(0.9rem);
+	}
+
+	.visibility-switch-label {
+		font-size: 0.72rem;
+		font-weight: 700;
+		letter-spacing: 0.02em;
 	}
 
 	.visibility-status {
