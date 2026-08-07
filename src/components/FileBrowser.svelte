@@ -46,6 +46,7 @@
 		projectId,
 		currentUserId,
 		canEdit,
+		publicFilesEnabled,
 		initialAllFolders,
 		initialFolderId,
 		initialFiles,
@@ -57,6 +58,7 @@
 		projectId: string;
 		currentUserId: string;
 		canEdit: boolean;
+		publicFilesEnabled: boolean;
 		initialAllFolders: Folder[];
 		initialFolderId: string | null;
 		initialFiles: FileRow[];
@@ -271,6 +273,10 @@
 	function handleFileRenamed(fileId: string, filename: string) {
 		files = files.map((f) => (f.id === fileId ? { ...f, filename } : f));
 		renameViewerFile(fileId, filename);
+	}
+
+	function handleFileVisibilityChanged(fileId: string, isPublic: boolean) {
+		files = files.map((f) => (f.id === fileId ? { ...f, is_public: isPublic } : f));
 	}
 
 	function handleFileMoved(fileId: string, targetFolderId: string | null) {
@@ -748,6 +754,7 @@
 
 <FileList
 	canEdit={canEdit}
+	publicFilesEnabled={publicFilesEnabled}
 	currentFolderId={currentFolderId}
 	paginationKey={currentFolderId ?? 'root'}
 	allFolders={allFolders}
@@ -760,6 +767,7 @@
 	onFileCopied={handleFileCopied}
 	onFileDeleted={handleFileDeleted}
 	onFileRenamed={handleFileRenamed}
+	onFileVisibilityChanged={handleFileVisibilityChanged}
 />
 {#if loading}<p class="muted">Loading…</p>{/if}
 

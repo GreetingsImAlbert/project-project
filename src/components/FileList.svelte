@@ -3,6 +3,7 @@
 	import FolderPickerModal from './FolderPickerModal.svelte';
 	import RenameModal from './RenameModal.svelte';
 	import { splitFilename } from '../lib/file-kind';
+	import { onSwapOrDestroy } from '../lib/island-teardown';
 
 	interface FileRow {
 		id: string;
@@ -50,6 +51,8 @@
 		onFileCopied,
 		onFileDeleted,
 		onFileRenamed,
+		publicFilesEnabled,
+		onFileVisibilityChanged,
 	}: {
 		canEdit: boolean;
 		currentFolderId: string | null;
@@ -64,6 +67,8 @@
 		onFileCopied: (file: FileRow, targetFolderId: string | null) => void;
 		onFileDeleted: (fileId: string) => void;
 		onFileRenamed: (fileId: string, filename: string) => void;
+		publicFilesEnabled: boolean;
+		onFileVisibilityChanged: (fileId: string, isPublic: boolean) => void;
 	} = $props();
 
 	let deletingId = $state<string | null>(null);
@@ -77,6 +82,10 @@
 	let renameTarget = $state<FileRow | null>(null);
 	let renameBusy = $state(false);
 	let renameError = $state<string | null>(null);
+	let visibilitySavingId = $state<string | null>(null);
+	let visibilitySavedId = $state<string | null>(null);
+	let visibilityError = $state<{ id: string; message: string } | null>(null);
+	let visibilitySavedTimer: ReturnType<typeof setTimeout> | undefined;
 	let renderedFileCount = $state(FILE_PAGE_SIZE);
 	let lastPaginationKey = $state<string | null>(null);
 
@@ -187,6 +196,41 @@
 		renameTarget = null;
 	}
 
+	async function setFileVisibility(file: FileRow, isPublic: boolean) {
+		if (!publicFilesEnabled || visibilitySavingId !== null || file.is_public === isPublic) return;
+
+		visibilitySavingId = file.id;
+		visibilitySavedId = null;
+		visibilityError = null;
+
+		try {
+			const res = await fetch(`/api/files/${file.id}/visibility`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ isPublic }),
+			});
+
+			if (!res.ok) {
+				visibilityError = { id: file.id, message: await res.text() };
+				return;
+			}
+
+			onFileVisibilityChanged(file.id, isPublic);
+			clearTimeout(visibilitySavedTimer);
+			visibilitySavedId = file.id;
+			visibilitySavedTimer = setTimeout(() => {
+				if (visibilitySavedId === file.id) visibilitySavedId = null;
+			}, 2500);
+		} catch (cause) {
+			visibilityError = {
+				id: file.id,
+				message: cause instanceof Error ? cause.message : 'Could not save file visibility',
+			};
+		} finally {
+			visibilitySavingId = null;
+		}
+	}
+
 	async function handleDelete(fileId: string) {
 		if (!confirm('Delete this file? This cannot be undone.')) return;
 
@@ -209,10 +253,53 @@
 	function showMoreFiles() {
 		renderedFileCount = Math.min(renderedFileCount + FILE_PAGE_SIZE, files.length);
 	}
+
+	onSwapOrDestroy(() => {
+		clearTimeout(visibilitySavedTimer);
+	});
 </script>
+
+{#snippet visibilityControl(file: FileRow)}
+	<div class="file-visibility">
+		<span class="visibility-label">Visibility</span>
+		<div class="visibility-options" role="group" aria-label={`${file.filename} visibility`}>
+			<button
+				type="button"
+				class="btn-plain"
+				class:active={file.is_public}
+				aria-pressed={file.is_public}
+				disabled={!publicFilesEnabled || visibilitySavingId !== null || file.is_public}
+				title={publicFilesEnabled ? 'Make this file public' : 'Enable Files in Project Settings first'}
+				onclick={() => setFileVisibility(file, true)}
+			>
+				Public
+			</button>
+			<button
+				type="button"
+				class="btn-plain"
+				class:active={!file.is_public}
+				aria-pressed={!file.is_public}
+				disabled={!publicFilesEnabled || visibilitySavingId !== null || !file.is_public}
+				title={publicFilesEnabled ? 'Make this file private' : 'Enable Files in Project Settings first'}
+				onclick={() => setFileVisibility(file, false)}
+			>
+				Private
+			</button>
+		</div>
+		{#if visibilitySavingId === file.id}
+			<span class="visibility-status muted" role="status">Saving…</span>
+		{:else if visibilitySavedId === file.id}
+			<span class="visibility-status muted" role="status">Saved</span>
+		{/if}
+		{#if visibilityError?.id === file.id}
+			<span class="row-error">{visibilityError.message}</span>
+		{/if}
+	</div>
+{/snippet}
 
 {#snippet actionsPanel(file: FileRow)}
 	<div class="actions-panel" data-file-actions transition:slide={{ duration: 150 }}>
+		{@render visibilityControl(file)}
 		<button type="button" class="btn-plain" onclick={() => openRename(file)}>Rename</button>
 		<button type="button" class="btn-plain" onclick={() => openModal(file, 'move')}>Move</button>
 		<button type="button" class="btn-plain" onclick={() => openModal(file, 'copy')}>Copy</button>
@@ -273,6 +360,7 @@
 
 					{#if canEdit && !file.is_journal}
 						<div class="cell cell-actions" onclick={(e) => e.stopPropagation()}>
+							{@render visibilityControl(file)}
 							<button type="button" class="btn-plain" onclick={() => openRename(file)}>Rename</button>
 							<button type="button" class="btn-plain" onclick={() => openModal(file, 'move')}>Move</button>
 							<button type="button" class="btn-plain" onclick={() => openModal(file, 'copy')}>Copy</button>
@@ -427,6 +515,17 @@
 		padding: 0 var(--space-2);
 		font-size: 0.7rem;
 		line-height: 1.8;
+	}
+
+	.cell-actions .file-visibility {
+		flex-direction: row;
+		align-items: center;
+		border-bottom: none;
+		padding-bottom: 0;
+	}
+
+	.cell-actions .visibility-label {
+		display: none;
 	}
 
 	.row-error {
@@ -593,5 +692,43 @@
 
 	.actions-panel button {
 		width: 100%;
+	}
+
+	.file-visibility {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-1);
+		border-bottom: 1px solid var(--color-border);
+		padding-bottom: var(--space-2);
+	}
+
+	.visibility-label {
+		font-size: 0.72rem;
+		font-weight: 700;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+	}
+
+	.visibility-options {
+		display: flex;
+		gap: var(--space-1);
+	}
+
+	.visibility-options button {
+		width: auto;
+		flex: 1;
+	}
+
+	.visibility-options button.active {
+		background: var(--color-highlight-strong);
+	}
+
+	.visibility-status {
+		font-size: 0.72rem;
+		margin: 0;
+	}
+
+	.file-visibility .row-error {
+		padding: 0;
 	}
 </style>

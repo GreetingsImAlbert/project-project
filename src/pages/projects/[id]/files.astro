@@ -41,7 +41,7 @@ const [
 ] = await Promise.all([
 	Astro.locals.supabase
 		.from('projects')
-		.select('id, name, description, owner_id')
+		.select('id, name, description, owner_id, public_files_enabled')
 		.eq('id', id)
 		.single(),
 	Astro.locals.supabase
@@ -85,6 +85,7 @@ const initialViewMode = storedViewMode === 'list' ? 'list' : 'grid';
 		projectId={project.id}
 		currentUserId={user.id}
 		canEdit={canEdit}
+		publicFilesEnabled={project.public_files_enabled}
 		initialAllFolders={allFolders ?? []}
 		initialFolderId={currentFolderId}
 		initialFiles={files ?? []}
