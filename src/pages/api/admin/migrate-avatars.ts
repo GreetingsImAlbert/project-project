@@ -9,16 +9,24 @@ import {
 	isCustomAvatarDataUrl,
 	parseCustomAvatarDataUrl,
 } from '../../../lib/avatars';
+import { errorResponse } from '../../../lib/error-report';
 
 export const prerender = false;
 
-export const POST: APIRoute = async ({ locals }) => {
+export const POST: APIRoute = async ({ request, locals }) => {
 	if (!locals.user) return new Response('Unauthorized', { status: 401 });
 	if (!(await isAdminUser(locals.supabase, locals.user.id))) return new Response('Forbidden', { status: 403 });
 
 	const admin = getSupabaseAdmin(env);
 	const { data: profiles, error: profileReadError } = await admin.from('profiles').select('id, avatar');
-	if (profileReadError) return new Response(`Failed to read profiles: ${profileReadError.message}`, { status: 500 });
+	if (profileReadError) {
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: `Failed to read profiles: ${profileReadError.message}`,
+			action: 'Failed to read profiles.',
+		});
+	}
 
 	let migrated = 0;
 	let skipped = 0;

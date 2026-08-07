@@ -2,6 +2,7 @@ import type { APIRoute } from 'astro';
 import { env } from 'cloudflare:workers';
 import { getSupabaseAdmin } from '../../../lib/supabase/admin';
 import { displayNameProblem } from '../../../lib/account-validation';
+import { errorResponse } from '../../../lib/error-report';
 
 export const prerender = false;
 
@@ -35,7 +36,12 @@ export const POST: APIRoute = async ({ request, locals }) => {
 		.single();
 
 	if (readError || !previous) {
-		return new Response(`Failed to update display name: ${readError?.message ?? 'profile not found'}`, { status: 500 });
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: `Failed to update display name: ${readError?.message ?? 'profile not found'}`,
+			action: 'Failed to update display name.',
+		});
 	}
 
 	const { error: profileError } = await admin
@@ -44,7 +50,12 @@ export const POST: APIRoute = async ({ request, locals }) => {
 		.eq('id', locals.user.id);
 
 	if (profileError) {
-		return new Response(`Failed to update display name: ${profileError.message}`, { status: 500 });
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: `Failed to update display name: ${profileError.message}`,
+			action: 'Failed to update display name.',
+		});
 	}
 
 	const { error: authError } = await locals.supabase.auth.updateUser({
@@ -55,7 +66,12 @@ export const POST: APIRoute = async ({ request, locals }) => {
 		// Leaving the two halves disagreeing is worse than not changing anything —
 		// the profile row would say one name and every JWT another.
 		await admin.from('profiles').update({ display_name: previous.display_name }).eq('id', locals.user.id);
-		return new Response(`Failed to update display name: ${authError.message}`, { status: 500 });
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: `Failed to update display name: ${authError.message}`,
+			action: 'Failed to update display name.',
+		});
 	}
 
 	// updateUser writes the metadata to the auth record but does not mint a new access

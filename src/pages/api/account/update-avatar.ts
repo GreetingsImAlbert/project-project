@@ -12,6 +12,7 @@ import {
 	isStoredAvatarPath,
 	parseCustomAvatarDataUrl,
 } from '../../../lib/avatars';
+import { errorResponse } from '../../../lib/error-report';
 
 export const prerender = false;
 
@@ -108,7 +109,12 @@ export const POST: APIRoute = async ({ request, locals }) => {
 		.single();
 
 	if (readError || !previous) {
-		return new Response(`Failed to update profile picture: ${readError?.message ?? 'profile not found'}`, { status: 500 });
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: `Failed to update profile picture: ${readError?.message ?? 'profile not found'}`,
+			action: 'Failed to update profile picture.',
+		});
 	}
 
 	let uploadedAvatar: string | null = null;
@@ -121,7 +127,13 @@ export const POST: APIRoute = async ({ request, locals }) => {
 		});
 
 		if (uploadError) {
-			return new Response(`Failed to store profile picture: ${uploadError.message}`, { status: 502 });
+			return errorResponse({
+				request,
+				userId: locals.user.id,
+				privateMessage: `Failed to store profile picture: ${uploadError.message}`,
+				action: 'Failed to store profile picture.',
+				status: 502,
+			});
 		}
 		avatar = uploadedAvatar;
 	}
@@ -133,7 +145,12 @@ export const POST: APIRoute = async ({ request, locals }) => {
 
 	if (profileError) {
 		await removeStoredAvatar(admin, uploadedAvatar);
-		return new Response(`Failed to update profile picture: ${profileError.message}`, { status: 500 });
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: `Failed to update profile picture: ${profileError.message}`,
+			action: 'Failed to update profile picture.',
+		});
 	}
 
 	const authAvatar = avatar && isStoredAvatarPath(avatar) ? CUSTOM_AVATAR_MARKER : avatar;
@@ -146,7 +163,12 @@ export const POST: APIRoute = async ({ request, locals }) => {
 		await removeStoredAvatar(admin, uploadedAvatar);
 		const previousAuthAvatar = previous.avatar && (isCustomAvatarDataUrl(previous.avatar) || isStoredAvatarPath(previous.avatar)) ? CUSTOM_AVATAR_MARKER : previous.avatar;
 		await locals.supabase.auth.updateUser({ data: { avatar: previousAuthAvatar } });
-		return new Response(`Failed to update profile picture: ${authError.message}`, { status: 500 });
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: `Failed to update profile picture: ${authError.message}`,
+			action: 'Failed to update profile picture.',
+		});
 	}
 
 	// The new object is unique, so deleting the old one cannot destroy the current

@@ -1,4 +1,5 @@
 import type { APIRoute } from "astro";
+import { errorResponse } from "../../../lib/error-report";
 
 export const prerender = false;
 
@@ -28,7 +29,12 @@ export const POST: APIRoute = async({ request, locals, redirect }) => {
         .insert({ name, description, owner_id: locals.user.id });
 
     if (error) {
-        return new Response(`Failed to create project: ${error.message}`, { status: 500 });
+        return errorResponse({
+            request,
+            userId: locals.user.id,
+            privateMessage: `Failed to create project: ${error.message}`,
+            action: "Failed to create project.",
+        });
     }
 
     return redirect('/projects');
