@@ -4,6 +4,7 @@ import { env } from 'cloudflare:workers';
 import { getSupabaseAdmin } from '../../../../lib/supabase/admin';
 import { wouldExceedUserStorageQuota } from '../../../../lib/r2-quota';
 import { fileKind, isTextKind, MAX_VIEWABLE_BYTES } from '../../../../lib/file-kind';
+import { getReadableFile } from '../../../../lib/file-access';
 
 export const prerender = false;
 
@@ -29,20 +30,18 @@ function objectUrlFor(r2Key: string) {
 // cross-origin, so it would need CORS opened up on the bucket; proxying keeps the read
 // same-origin and gives the size/type limits somewhere to actually be enforced.
 export const GET: APIRoute = async ({ params, locals }) => {
-	if (!locals.user) {
-		return new Response('Unauthorized', { status: 401 });
-	}
-
 	const { fileId } = params;
 
-	// RLS scopes this to files in projects the caller is a member of.
-	const { data: file, error } = await locals.supabase
-		.from('files')
-		.select('project_id, r2_key, filename, size_bytes')
-		.eq('id', fileId)
-		.single();
+	// Members resolve through RLS; outsiders (guests and authenticated non-members)
+	// only when the file is effectively public.
+	const file = await getReadableFile(
+		locals.supabase,
+		getSupabaseAdmin(env),
+		fileId,
+		locals.user?.id ?? null,
+	);
 
-	if (error || !file) {
+	if (!file) {
 		return new Response('File not found', { status: 404 });
 	}
 
@@ -83,14 +82,18 @@ export const GET: APIRoute = async ({ params, locals }) => {
 	// as a prop, because the two surfaces that host the panel know different things: the
 	// Files page has the caller's role for that one project, the Dashboard's My-files
 	// modal spans every project the caller has uploaded into and has none of them.
-	const { data: membership } = await locals.supabase
-		.from('project_members')
-		.select('role')
-		.eq('project_id', file.project_id)
-		.eq('user_id', locals.user.id)
-		.single();
+	// Outsiders (guests included) never edit, so the query only runs for signed-in callers.
+	let canEdit = false;
+	if (locals.user) {
+		const { data: membership } = await locals.supabase
+			.from('project_members')
+			.select('role')
+			.eq('project_id', file.project_id)
+			.eq('user_id', locals.user.id)
+			.single();
 
-	const canEdit = !!membership && ['owner', 'editor'].includes(membership.role);
+		canEdit = !!membership && ['owner', 'editor'].includes(membership.role);
+	}
 
 	// The object's ETag rides along so a later save can tell whether it's overwriting the
 	// same bytes it started from — see the conflict check in PUT.

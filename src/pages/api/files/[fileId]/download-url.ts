@@ -1,23 +1,24 @@
 import type { APIRoute } from 'astro';
 import { AwsClient } from 'aws4fetch';
 import { env } from 'cloudflare:workers';
+import { getSupabaseAdmin } from '../../../../lib/supabase/admin';
+import { getReadableFile } from '../../../../lib/file-access';
 
 export const prerender = false;
 
 export const GET: APIRoute = async ({ params, locals }) => {
-	if (!locals.user) {
-		return new Response('Unauthorized', { status: 401 });
-	}
-
 	const { fileId } = params;
 
-	const { data: file, error } = await locals.supabase
-		.from('files')
-		.select('r2_key, filename')
-		.eq('id', fileId)
-		.single();
+	// Members resolve through RLS; outsiders (guests and authenticated non-members)
+	// only when the file is effectively public.
+	const file = await getReadableFile(
+		locals.supabase,
+		getSupabaseAdmin(env),
+		fileId,
+		locals.user?.id ?? null,
+	);
 
-	if (error || !file) {
+	if (!file) {
 		return new Response('File not found', { status: 404 });
 	}
 

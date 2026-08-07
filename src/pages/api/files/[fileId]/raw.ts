@@ -1,6 +1,8 @@
 import type { APIRoute } from 'astro';
 import { env } from 'cloudflare:workers';
+import { getSupabaseAdmin } from '../../../../lib/supabase/admin';
 import { fileKind, MAX_MODEL_BYTES, MAX_PDF_BYTES } from '../../../../lib/file-kind';
+import { getReadableFile } from '../../../../lib/file-access';
 
 export const prerender = false;
 
@@ -13,20 +15,18 @@ export const prerender = false;
 // Not merged into download-url.ts either: that hands out a signed URL with an attachment
 // Content-Disposition, which is a download, not something fetch() can read back.
 export const GET: APIRoute = async ({ params, locals }) => {
-	if (!locals.user) {
-		return new Response('Unauthorized', { status: 401 });
-	}
-
 	const { fileId } = params;
 
-	// RLS scopes this to files in projects the caller is a member of.
-	const { data: file, error } = await locals.supabase
-		.from('files')
-		.select('r2_key, filename, size_bytes')
-		.eq('id', fileId)
-		.single();
+	// Members resolve through RLS; outsiders (guests and authenticated non-members)
+	// only when the file is effectively public.
+	const file = await getReadableFile(
+		locals.supabase,
+		getSupabaseAdmin(env),
+		fileId,
+		locals.user?.id ?? null,
+	);
 
-	if (error || !file) {
+	if (!file) {
 		return new Response('File not found', { status: 404 });
 	}
 
