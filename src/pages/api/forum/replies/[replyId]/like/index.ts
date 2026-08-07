@@ -1,10 +1,11 @@
 import type { APIRoute } from 'astro';
 import { env } from 'cloudflare:workers';
+import { errorResponse } from '../../../../../../lib/error-report';
 import { getSupabaseAdmin } from '../../../../../../lib/supabase/admin';
 
 export const prerender = false;
 
-export const POST: APIRoute = async ({ params, locals }) => {
+export const POST: APIRoute = async ({ params, request, locals }) => {
 	if (!locals.user) return new Response('Unauthorized', { status: 401 });
 	const replyId = params.replyId;
 	if (!replyId) return new Response('Reply not found', { status: 404 });
@@ -14,7 +15,7 @@ export const POST: APIRoute = async ({ params, locals }) => {
 		.select('id, post_id, deleted_at')
 		.eq('id', replyId)
 		.maybeSingle();
-	if (replyError) return new Response(`Failed to read reply: ${replyError.message}`, { status: 500 });
+	if (replyError) return errorResponse({ request, userId: locals.user.id, privateMessage: replyError.message, action: 'Failed to read reply.', context: { replyId } });
 	if (!reply) return new Response('Reply not found', { status: 404 });
 	if (reply.deleted_at) return new Response('Deleted replies cannot be liked', { status: 409 });
 
@@ -33,9 +34,9 @@ export const POST: APIRoute = async ({ params, locals }) => {
 			.eq('user_id', locals.user.id)
 			.maybeSingle(),
 	]);
-	if (postError) return new Response(`Failed to read post: ${postError.message}`, { status: 500 });
+	if (postError) return errorResponse({ request, userId: locals.user.id, privateMessage: postError.message, action: 'Failed to read post.', context: { replyId, postId: reply.post_id } });
 	if (!post || post.deleted_at) return new Response('Replies to deleted posts cannot be liked', { status: 409 });
-	if (existingError) return new Response(`Failed to read like: ${existingError.message}`, { status: 500 });
+	if (existingError) return errorResponse({ request, userId: locals.user.id, privateMessage: existingError.message, action: 'Failed to read like.', context: { replyId } });
 
 	let liked: boolean;
 	if (existing) {
@@ -44,13 +45,13 @@ export const POST: APIRoute = async ({ params, locals }) => {
 			.delete()
 			.eq('reply_id', replyId)
 			.eq('user_id', locals.user.id);
-		if (error) return new Response(`Failed to remove like: ${error.message}`, { status: 500 });
+		if (error) return errorResponse({ request, userId: locals.user.id, privateMessage: error.message, action: 'Failed to remove like.', context: { replyId } });
 		liked = false;
 	} else {
 		const { error } = await locals.supabase
 			.from('forum_reply_likes')
 			.insert({ reply_id: replyId, user_id: locals.user.id });
-		if (error) return new Response(`Failed to add like: ${error.message}`, { status: 500 });
+		if (error) return errorResponse({ request, userId: locals.user.id, privateMessage: error.message, action: 'Failed to add like.', context: { replyId } });
 		liked = true;
 	}
 
@@ -58,6 +59,6 @@ export const POST: APIRoute = async ({ params, locals }) => {
 		.from('forum_reply_likes')
 		.select('reply_id', { count: 'exact', head: true })
 		.eq('reply_id', replyId);
-	if (countError) return new Response(`Failed to count likes: ${countError.message}`, { status: 500 });
+	if (countError) return errorResponse({ request, userId: locals.user.id, privateMessage: countError.message, action: 'Failed to count likes.', context: { replyId } });
 	return Response.json({ liked, likeCount: count ?? 0 });
 };

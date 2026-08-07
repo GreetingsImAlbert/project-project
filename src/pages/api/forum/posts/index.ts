@@ -1,4 +1,5 @@
 import type { APIRoute } from 'astro';
+import { errorResponse } from '../../../../lib/error-report';
 import { forumBodyProblem, normalizeForumBody, readForumJson } from '../../../../lib/forum';
 
 export const prerender = false;
@@ -18,6 +19,6 @@ export const POST: APIRoute = async ({ request, locals }) => {
 		.select('id, created_at')
 		.single();
 
-	if (error || !data) return new Response(`Failed to create post: ${error?.message ?? 'unknown error'}`, { status: 500 });
+	if (error || !data) return errorResponse({ request, userId: locals.user.id, privateMessage: error?.message ?? 'unknown error', action: 'Failed to create post.' });
 	return Response.json({ id: data.id, createdAt: data.created_at }, { status: 201 });
 };

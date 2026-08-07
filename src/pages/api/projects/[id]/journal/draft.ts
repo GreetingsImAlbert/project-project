@@ -1,4 +1,5 @@
 import type { APIRoute } from 'astro';
+import { errorResponse } from '../../../../../lib/error-report';
 import { MAX_DRAFT_CHARS } from '../../../../../lib/journal';
 
 export const prerender = false;
@@ -51,7 +52,7 @@ export const PUT: APIRoute = async ({ params, request, locals }) => {
 		.single();
 
 	if (error) {
-		return new Response(`Failed to save draft: ${error.message}`, { status: 500 });
+		return errorResponse({ request, userId: locals.user.id, privateMessage: error.message, action: 'Failed to save draft.', context: { projectId: projectId ?? null } });
 	}
 
 	return Response.json(updated);

@@ -1,10 +1,11 @@
 export const prerender = false;
 
 import { env } from 'cloudflare:workers';
-import { appNowTime, appToday } from '../../lib/today';
+import { errorResponse } from '../../lib/error-report';
 import { getSupabaseAdmin } from '../../lib/supabase/admin';
+import { appNowTime, appToday } from '../../lib/today';
 
-export async function GET({ locals }: { locals: App.Locals }) {
+export async function GET({ request, locals }: { request: Request; locals: App.Locals }) {
 	const user = locals.user;
 	if (!user) {
 		const { data: publicProjectRows, error } = await getSupabaseAdmin(env)
@@ -13,7 +14,7 @@ export async function GET({ locals }: { locals: App.Locals }) {
 			.or('is_public.eq.true,public_files_enabled.eq.true')
 			.order('created_at', { ascending: false });
 
-		if (error) return new Response('Could not load navigation', { status: 500 });
+		if (error) return errorResponse({ request, privateMessage: error.message, action: 'Could not load navigation.' });
 
 		return Response.json(
 			{ projects: [], publicProjects: (publicProjectRows ?? []).map((project) => ({ id: project.id, name: project.name })) },
@@ -65,7 +66,12 @@ export async function GET({ locals }: { locals: App.Locals }) {
 	]);
 
 	if (projectsError || tasksError || publicProjectsError) {
-		return new Response('Could not load navigation', { status: 500 });
+		return errorResponse({
+			request,
+			userId: user.id,
+			privateMessage: projectsError?.message ?? tasksError?.message ?? publicProjectsError?.message ?? 'unknown error',
+			action: 'Could not load navigation.',
+		});
 	}
 
 	// The same deadline rule displayStatus applies on the tasks page: overdue is never
