@@ -80,16 +80,16 @@
 
 <div class="visibility-picker">
 	<div class="visibility-row">
-		<strong>Project</strong>
+		<strong>Overview</strong>
 		<button
 			type="button"
 			class="visibility-switch"
 			class:active={projectValue}
 			role="switch"
 			aria-checked={projectValue}
-			aria-label="Project visibility"
+			aria-label="Overview visibility"
 			disabled={saving !== null}
-			title={projectValue ? 'Make project private' : 'Make project public'}
+			title={projectValue ? 'Make overview private' : 'Make overview public'}
 			onclick={() => setVisibility('project', !projectValue)}
 		>
 			<span class="visibility-switch-track" aria-hidden="true"><span class="visibility-switch-thumb"></span></span>
