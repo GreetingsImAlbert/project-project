@@ -125,6 +125,7 @@ export type Database = {
           folder_id: string | null
           id: string
           is_journal: boolean
+          is_public: boolean
           mime_type: string | null
           project_id: string
           r2_key: string
@@ -140,6 +141,7 @@ export type Database = {
           folder_id?: string | null
           id?: string
           is_journal?: boolean
+          is_public?: boolean
           mime_type?: string | null
           project_id: string
           r2_key: string
@@ -155,6 +157,7 @@ export type Database = {
           folder_id?: string | null
           id?: string
           is_journal?: boolean
+          is_public?: boolean
           mime_type?: string | null
           project_id?: string
           r2_key?: string
@@ -537,6 +540,7 @@ export type Database = {
           is_public: boolean
           name: string
           owner_id: string
+          public_files_enabled: boolean
           updated_at: string | null
         }
         Insert: {
@@ -547,6 +551,7 @@ export type Database = {
           is_public?: boolean
           name: string
           owner_id: string
+          public_files_enabled?: boolean
           updated_at?: string | null
         }
         Update: {
@@ -557,6 +562,7 @@ export type Database = {
           is_public?: boolean
           name?: string
           owner_id?: string
+          public_files_enabled?: boolean
           updated_at?: string | null
         }
         Relationships: [

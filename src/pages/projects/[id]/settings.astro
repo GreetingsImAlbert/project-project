@@ -21,7 +21,7 @@ if (!user) {
 const { id } = Astro.params;
 
 const [{ data: project, error }, { data: members }, ghostMembers] = await Promise.all([
-	Astro.locals.supabase.from('projects').select('id, name, description, owner_id, currency, is_public').eq('id', id).single(),
+	Astro.locals.supabase.from('projects').select('id, name, description, owner_id, currency, is_public, public_files_enabled').eq('id', id).single(),
 	Astro.locals.supabase
 		.from('project_members')
 		.select('role, is_auditor, user_id, profiles(display_name, email, avatar)')
@@ -74,7 +74,12 @@ const returnTo = `/projects/${id}/settings`;
 
 	<section>
 		<h3>Visibility</h3>
-		<ProjectVisibilityPicker client:idle projectId={project.id} isPublic={project.is_public} />
+		<ProjectVisibilityPicker
+			client:idle
+			projectId={project.id}
+			isPublic={project.is_public}
+			publicFilesEnabled={project.public_files_enabled}
+		/>
 	</section>
 
 	<section>

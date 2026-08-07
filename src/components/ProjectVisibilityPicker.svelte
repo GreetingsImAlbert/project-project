@@ -4,88 +4,116 @@
 	let {
 		projectId,
 		isPublic,
+		publicFilesEnabled,
 	}: {
 		projectId: string;
 		isPublic: boolean;
+		publicFilesEnabled: boolean;
 	} = $props();
 
-	let value = $state(isPublic);
-	let saving = $state(false);
-	let saved = $state(false);
-	let error = $state<string | null>(null);
-	let savedTimer: ReturnType<typeof setTimeout> | undefined;
+	type VisibilityScope = 'project' | 'files';
 
-	function setValue(next: boolean) {
-		value = next;
-		saving = false;
-		saved = false;
+	let projectValue = $state(isPublic);
+	let filesValue = $state(publicFilesEnabled);
+	let saving = $state<VisibilityScope | null>(null);
+	let saved = $state<VisibilityScope | null>(null);
+	let error = $state<{ scope: VisibilityScope; message: string } | null>(null);
+	let savedTimers: Partial<Record<VisibilityScope, ReturnType<typeof setTimeout>>> = {};
+
+	function setValue(scope: VisibilityScope, next: boolean) {
+		if (scope === 'project') projectValue = next;
+		else filesValue = next;
+		saved = null;
 		error = null;
 	}
 
-	async function setVisibility(next: boolean) {
-		if (next === value || saving) return;
-		const previous = value;
-		setValue(next);
-		saving = true;
+	function restoreValue(scope: VisibilityScope, previous: boolean) {
+		if (scope === 'project') projectValue = previous;
+		else filesValue = previous;
+	}
+
+	async function setVisibility(scope: VisibilityScope, next: boolean) {
+		const current = scope === 'project' ? projectValue : filesValue;
+		if (next === current || saving) return;
+		const previous = current;
+		setValue(scope, next);
+		saving = scope;
 
 		try {
-			const res = await fetch(`/api/projects/${projectId}/visibility`, {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ isPublic: next }),
-			});
+			const isProject = scope === 'project';
+			const res = await fetch(
+				isProject
+					? `/api/projects/${projectId}/visibility`
+					: `/api/projects/${projectId}/files-visibility`,
+				{
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify(isProject ? { isPublic: next } : { publicFilesEnabled: next }),
+				},
+			);
 			if (!res.ok) {
-				error = await res.text();
-				setValue(previous);
+				restoreValue(scope, previous);
+				error = { scope, message: await res.text() };
 				return;
 			}
-			clearTimeout(savedTimer);
-			saved = true;
-			savedTimer = setTimeout(() => {
-				saved = false;
+			clearTimeout(savedTimers[scope]);
+			saved = scope;
+			savedTimers[scope] = setTimeout(() => {
+				if (saved === scope) saved = null;
 			}, 2500);
 		} catch (cause) {
-			error = cause instanceof Error ? cause.message : 'Could not save visibility';
-			setValue(previous);
+			error = {
+				scope,
+				message: cause instanceof Error ? cause.message : 'Could not save visibility',
+			};
+			restoreValue(scope, previous);
 		} finally {
-			saving = false;
+			saving = null;
 		}
 	}
 
 	onSwapOrDestroy(() => {
-		clearTimeout(savedTimer);
+		clearTimeout(savedTimers.project);
+		clearTimeout(savedTimers.files);
 	});
 </script>
 
 <div class="visibility-picker">
-	<div class="visibility-options" role="group" aria-label="Project visibility">
-		<button
-			type="button"
-			class:active={value === true}
-			disabled={saving}
-			onclick={() => setVisibility(true)}
-		>
-			Public
-		</button>
-		<button
-			type="button"
-			class:active={value === false}
-			disabled={saving}
-			onclick={() => setVisibility(false)}
-		>
-			Private
-		</button>
+	<div class="visibility-row">
+		<strong>Project</strong>
+		<div class="visibility-options" role="group" aria-label="Project visibility">
+			<button type="button" class:active={projectValue} disabled={saving !== null} onclick={() => setVisibility('project', true)}>
+				Public
+			</button>
+			<button type="button" class:active={!projectValue} disabled={saving !== null} onclick={() => setVisibility('project', false)}>
+				Private
+			</button>
+		</div>
+		{#if saving === 'project'}
+			<p class="visibility-status muted" role="status">Saving…</p>
+		{:else if saved === 'project'}
+			<p class="visibility-status muted" role="status">Saved</p>
+		{/if}
+		{#if error?.scope === 'project'}<p class="row-error">{error.message}</p>{/if}
 	</div>
-	<p class="visibility-hint muted">
-		Public projects show their name and description to anyone, even without an account.
-		Everything else stays member-only.
-	</p>
-	{#if saving}
-		<p class="visibility-status muted" role="status">Saving…</p>
-	{:else if saved}
-		<p class="visibility-status muted" role="status">Saved</p>
-	{/if}
-	{#if error}<p class="row-error">{error}</p>{/if}
+
+	<div class="visibility-row">
+		<strong>Files</strong>
+		<div class="visibility-options" role="group" aria-label="File visibility">
+			<button type="button" class:active={filesValue} disabled={saving !== null} onclick={() => setVisibility('files', true)}>
+				Enabled
+			</button>
+			<button type="button" class:active={!filesValue} disabled={saving !== null} onclick={() => setVisibility('files', false)}>
+				Disabled
+			</button>
+		</div>
+		{#if saving === 'files'}
+			<p class="visibility-status muted" role="status">Saving…</p>
+		{:else if saved === 'files'}
+			<p class="visibility-status muted" role="status">Saved</p>
+		{/if}
+		{#if error?.scope === 'files'}<p class="row-error">{error.message}</p>{/if}
+	</div>
 </div>
 
 <style>
@@ -94,6 +122,17 @@
 		flex-direction: column;
 		align-items: flex-start;
 		gap: var(--space-2);
+	}
+
+	.visibility-row {
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: var(--space-2);
+	}
+
+	.visibility-row strong {
+		min-width: 4rem;
 	}
 
 	.visibility-options {
@@ -108,11 +147,6 @@
 
 	.visibility-options button.active {
 		background: var(--color-highlight-strong);
-	}
-
-	.visibility-hint {
-		font-size: 0.8rem;
-		margin: 0;
 	}
 
 	.visibility-status {
