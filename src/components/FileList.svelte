@@ -9,9 +9,11 @@
 		id: string;
 		filename: string;
 		size_bytes: number | null;
-		uploaded_by: string | null;
+		// Optional: the flat outsider list omits uploader identity entirely, so its
+		// rows carry neither uploaded_by nor the embed that names it.
+		uploaded_by?: string | null;
 		uploader_deleted_at?: string | null;
-		profiles: { display_name: string } | null;
+		profiles?: { display_name: string } | null;
 		is_journal?: boolean;
 		is_public: boolean;
 	}
@@ -39,6 +41,7 @@
 
 	let {
 		canEdit,
+		readOnly = false,
 		currentFolderId,
 		allFolders,
 		files,
@@ -55,6 +58,9 @@
 		onFileVisibilityChanged,
 	}: {
 		canEdit: boolean;
+		// Outsider mode: the flat public list — no uploader identity in the meta
+		// column and no purge warnings that would hint at a deleted account.
+		readOnly?: boolean;
 		currentFolderId: string | null;
 		allFolders: Folder[];
 		files: FileRow[];
@@ -316,7 +322,7 @@
 					<span class="grid-icon">📄</span>
 					<span class="grid-name">
 						<span class="grid-name-text">{parts.base}</span>
-						{#if purgeWarning(file)}<span class="purge-warning-icon" data-tooltip={purgeWarning(file)}>⚠</span>{/if}
+						{#if !readOnly && purgeWarning(file)}<span class="purge-warning-icon" data-tooltip={purgeWarning(file)}>⚠</span>{/if}
 					</span>
 					{#if parts.ext}<span class="grid-ext muted">{parts.ext}</span>{/if}
 				</button>
@@ -342,12 +348,14 @@
 						<span class="file-icon">📄</span>
 						<span class="file-name-text">{parts.base}</span>
 						{#if parts.ext}<span class="file-ext muted">{parts.ext}</span>{/if}
-						{#if purgeWarning(file)}<span class="purge-warning-icon" data-tooltip={purgeWarning(file)}>⚠</span>{/if}
+						{#if !readOnly && purgeWarning(file)}<span class="purge-warning-icon" data-tooltip={purgeWarning(file)}>⚠</span>{/if}
 					</div>
 
 					<div class="cell cell-meta muted">
 						{file.size_bytes != null ? `${Math.round(file.size_bytes).toLocaleString()} B` : ''}
-						— uploaded by {file.profiles?.display_name ?? 'a deleted account'}
+						{#if !readOnly}
+							— uploaded by {file.profiles?.display_name ?? 'a deleted account'}
+						{/if}
 					</div>
 
 					{#if canEdit && !file.is_journal}

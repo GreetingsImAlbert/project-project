@@ -8,87 +8,152 @@ import { getUserStorageBytes, getProjectStorageBytes, MAX_USER_STORAGE_BYTES } f
 export const prerender = false;
 
 const user = Astro.locals.user;
-if (!user) {
-	return Astro.redirect('/login');
-}
-
 const { id } = Astro.params;
 const currentFolderId = Astro.url.searchParams.get('folder');
 
-let filesQuery = Astro.locals.supabase
-	.from('files')
-	.select('id, filename, size_bytes, mime_type, created_at, uploaded_by, uploader_deleted_at, is_journal, is_public, profiles(display_name)')
-	.eq('project_id', id)
-	.is('deleted_at', null)
-	.order('created_at', { ascending: false });
+interface FileRow {
+	id: string;
+	filename: string;
+	size_bytes: number | null;
+	mime_type: string | null;
+	created_at: string;
+	// Optional: the flat outsider list omits uploader identity entirely, so its
+	// rows carry neither uploaded_by nor the embed that names it.
+	uploaded_by?: string | null;
+	uploader_deleted_at?: string | null;
+	is_journal?: boolean;
+	is_public: boolean;
+	profiles?: { display_name: string } | null;
+}
 
-filesQuery = currentFolderId ? filesQuery.eq('folder_id', currentFolderId) : filesQuery.is('folder_id', null);
+// Outsiders (guests and authenticated non-members) share the same page shell and
+// file-browser UI as members; only the data and the edit controls differ.
+let project: { id: string; name: string; public_files_enabled: boolean } | null = null;
+let readOnly = false;
+let userRole: string | undefined;
+let allFolders: { id: string; name: string; parent_folder_id: string | null }[] | null = null;
+let files: FileRow[] = [];
+let availableBytes: number | null = null;
+let projectStorageBytes = 0;
+let projectStorageFailed = false;
 
 const admin = getSupabaseAdmin(env);
 
-// The Worker sits far from Postgres, so every sequential query costs a full
-// round trip and the browser sees nothing until the last one lands. None of
-// these actually depend on each other — RLS scopes each one to the caller on
-// its own, and the two 404 checks below only need the results, not the ordering
-// (a bogus project/folder id just makes the other queries come back empty).
-const [
-	{ data: project, error },
-	{ data: members },
-	{ data: allFolders },
-	{ data: files },
-	{ totalBytes, failed: userStorageFailed },
-	{ totalBytes: projectStorageBytes, failed: projectStorageFailed },
-] = await Promise.all([
-	Astro.locals.supabase
+if (user) {
+	// First, the membership test — the mirror of the overview page: an authenticated
+	// non-member's RLS view has no project row, so this one query decides which
+	// branch below runs. Members keep it cheap (one extra round trip); outsiders
+	// never fire the member-only data queries at all.
+	const { data: projectData, error } = await Astro.locals.supabase
 		.from('projects')
-		.select('id, name, description, owner_id, public_files_enabled')
+		.select('id, name, public_files_enabled')
 		.eq('id', id)
-		.single(),
-	Astro.locals.supabase
-		.from('project_members')
-		.select('role, is_auditor, user_id, profiles(display_name, email)')
-		.eq('project_id', id)
-		.overrideTypes<{ role: string; is_auditor: boolean; user_id: string; profiles: { display_name: string; email: string } }[]>(),
-	Astro.locals.supabase
-		.from('folders')
-		.select('id, name, parent_folder_id')
-		.eq('project_id', id)
-		.is('deleted_at', null),
-	filesQuery
-		.overrideTypes<{ id: string; filename: string; size_bytes: number | null; mime_type: string | null; created_at: string; uploaded_by: string | null; uploader_deleted_at: string | null; is_journal: boolean; is_public: boolean; profiles: { display_name: string } | null }[]>(),
-	getUserStorageBytes(admin, user.id),
-	getProjectStorageBytes(Astro.locals.supabase, id!),
-]);
+		.single();
 
-if (error || !project) {
-	return new Response('Project not found', { status: 404 });
+	if (!error && projectData) {
+		project = projectData;
+
+		// The Worker sits far from Postgres, so every sequential query costs a full
+		// round trip and the browser sees nothing until the last one lands. None of
+		// these actually depend on each other — RLS scopes each one to the caller on
+		// its own, and the 404 checks below only need the results, not the ordering.
+		let filesQuery = Astro.locals.supabase
+			.from('files')
+			.select('id, filename, size_bytes, mime_type, created_at, uploaded_by, uploader_deleted_at, is_journal, is_public, profiles(display_name)')
+			.eq('project_id', id)
+			.is('deleted_at', null)
+			.order('created_at', { ascending: false });
+
+		filesQuery = currentFolderId ? filesQuery.eq('folder_id', currentFolderId) : filesQuery.is('folder_id', null);
+
+		const [
+			{ data: membersData },
+			{ data: allFoldersData },
+			{ data: filesData },
+			{ totalBytes, failed: userStorageFailed },
+			{ totalBytes: projectStorageBytesData, failed: projectStorageFailedData },
+		] = await Promise.all([
+			Astro.locals.supabase
+				.from('project_members')
+				.select('role, is_auditor, user_id')
+				.eq('project_id', id),
+			Astro.locals.supabase
+				.from('folders')
+				.select('id, name, parent_folder_id')
+				.eq('project_id', id)
+				.is('deleted_at', null),
+			filesQuery.overrideTypes<FileRow[]>(),
+			getUserStorageBytes(admin, user.id),
+			getProjectStorageBytes(Astro.locals.supabase, id!),
+		]);
+
+		allFolders = allFoldersData;
+		files = filesData ?? [];
+		userRole = membersData?.find((member) => member.user_id === user.id)?.role;
+		availableBytes = userStorageFailed ? null : MAX_USER_STORAGE_BYTES - totalBytes;
+		projectStorageBytes = projectStorageBytesData;
+		projectStorageFailed = projectStorageFailedData;
+
+		const folderById = new Map((allFolders ?? []).map((f) => [f.id, f]));
+		if (currentFolderId && !folderById.has(currentFolderId)) {
+			return new Response('Folder not found', { status: 404 });
+		}
+	}
 }
 
-const folderById = new Map((allFolders ?? []).map((f) => [f.id, f]));
+if (!project) {
+	// Outsider branch. The Files gate lives on projects, which RLS keeps out of the
+	// caller's view, so both the gate and the list are read with the service-role
+	// client — reached only when the gate is on, which keeps a Files-off project an
+	// indistinguishable 404 even when its Overview is public.
+	const { data: gate, error: gateError } = await admin
+		.from('projects')
+		.select('id, name, public_files_enabled')
+		.eq('id', id!)
+		.single();
 
-if (currentFolderId && !folderById.has(currentFolderId)) {
-	return new Response('Folder not found', { status: 404 });
+	if (gateError || !gate || !gate.public_files_enabled) {
+		return new Response('Project not found', { status: 404 });
+	}
+
+	// Flat list: only opted-in, non-deleted, non-Journal files, with nothing that
+	// names folders or uploaders, so private structure stays private.
+	const { data: publicFiles, error: filesError } = await admin
+		.from('files')
+		.select('id, filename, size_bytes, mime_type, created_at, is_public')
+		.eq('project_id', id!)
+		.eq('is_public', true)
+		.is('deleted_at', null)
+		.eq('is_journal', false)
+		.order('created_at', { ascending: false })
+		.overrideTypes<FileRow[]>();
+
+	if (filesError) {
+		return new Response(`Failed to load files: ${filesError.message}`, { status: 500 });
+	}
+
+	project = { id: gate.id, name: gate.name, public_files_enabled: true };
+	readOnly = true;
+	files = publicFiles ?? [];
 }
 
-const userRole = members?.find(member => member.user_id === user.id)?.role;
 // Files edit rights stay with the base role (owner/editor); auditor is Money-only.
-const canEdit = userRole === 'owner' || userRole === 'editor';
-
-const availableBytes = userStorageFailed ? null : MAX_USER_STORAGE_BYTES - totalBytes;
+const canEdit = !readOnly && (userRole === 'owner' || userRole === 'editor');
 
 const storedViewMode = Astro.cookies.get('p2-file-view-mode')?.value;
 const initialViewMode = storedViewMode === 'list' ? 'list' : 'grid';
 ---
-<BaseLayout title={`${project.name} — Files`} projectNav={{ projectId: project.id, userRole: userRole ?? '' }}>
+<BaseLayout title={`${project.name} — Files`} projectNav={{ projectId: project.id, userRole: userRole ?? '', readOnly, publicFilesEnabled: project.public_files_enabled }}>
 	<FileBrowser
 		client:load
 		projectId={project.id}
-		currentUserId={user.id}
+		currentUserId={user?.id ?? ''}
 		canEdit={canEdit}
+		readOnly={readOnly}
 		publicFilesEnabled={project.public_files_enabled}
 		initialAllFolders={allFolders ?? []}
-		initialFolderId={currentFolderId}
-		initialFiles={files ?? []}
+		initialFolderId={readOnly ? null : currentFolderId}
+		initialFiles={files}
 		initialAvailableBytes={availableBytes}
 		initialViewMode={initialViewMode}
 		initialStorageBytes={projectStorageBytes}

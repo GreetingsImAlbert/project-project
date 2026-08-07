@@ -30,12 +30,14 @@
 		id: string;
 		filename: string;
 		size_bytes: number | null;
-		uploaded_by: string | null;
+		// Optional: the flat outsider list omits uploader identity entirely, so its
+		// rows carry neither uploaded_by nor the embed that names it.
+		uploaded_by?: string | null;
 		// Set once the uploader's account is hard-deleted (uploaded_by goes null at
 		// the same moment) — the grace period before the purge cron removes the file
 		// is measured from this, not from created_at.
 		uploader_deleted_at?: string | null;
-		profiles: { display_name: string } | null;
+		profiles?: { display_name: string } | null;
 		// Absent (rather than false) on rows this component creates itself — an upload
 		// or a copy is never the project's Journal file, so there's nothing to select.
 		is_journal?: boolean;
@@ -46,6 +48,7 @@
 		projectId,
 		currentUserId,
 		canEdit,
+		readOnly = false,
 		publicFilesEnabled,
 		initialAllFolders,
 		initialFolderId,
@@ -58,6 +61,10 @@
 		projectId: string;
 		currentUserId: string;
 		canEdit: boolean;
+		// Outsider mode: flat file list, no folders, no storage figure, no
+		// uploader identity — everything canEdit already hides, plus the data
+		// that is member-only even for a plain viewer.
+		readOnly?: boolean;
 		publicFilesEnabled: boolean;
 		initialAllFolders: Folder[];
 		initialFolderId: string | null;
@@ -529,7 +536,9 @@
 	     full-width row of 'label ......... icons' instead of the four parts wrapping
 	     independently into a staircase. -->
 	<div class="view-meta">
-		<ProjectStorageUsed initialUsedBytes={initialStorageBytes} initialFailed={initialStorageFailed} />
+		{#if !readOnly}
+			<ProjectStorageUsed initialUsedBytes={initialStorageBytes} initialFailed={initialStorageFailed} />
+		{/if}
 
 		<div class="view-toggle">
 			<button
@@ -754,6 +763,7 @@
 
 <FileList
 	canEdit={canEdit}
+	readOnly={readOnly}
 	publicFilesEnabled={publicFilesEnabled}
 	currentFolderId={currentFolderId}
 	paginationKey={currentFolderId ?? 'root'}
