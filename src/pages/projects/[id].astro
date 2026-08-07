@@ -51,49 +51,15 @@ let userRole: string | undefined;
 let isOwner = false;
 
 if (user) {
-	const [
-		{ data: projectData, error },
-		{ data: membersData },
-		ghostMembersData,
-		{ data: bomItems },
-		{ totalBytes, failed },
-		{ data: taskRows },
-		{ data: categoryRows },
-	] = await Promise.all([
-		Astro.locals.supabase
-			.from('projects')
-			.select('id, name, description, owner_id, currency')
-			.eq('id', id)
-			.single(),
-		Astro.locals.supabase
-			.from('project_members')
-			.select('role, is_auditor, user_id, profiles(display_name, email, avatar)')
-			.eq('project_id', id)
-			.overrideTypes<{ role: string; is_auditor: boolean; user_id: string; profiles: { display_name: string; email: string; avatar: string | null } }[]>(),
-		listGhostMembers(Astro.locals.supabase, id!),
-		Astro.locals.supabase
-			.from('bom_items')
-			.select('total_cost')
-			.eq('project_id', id)
-			.is('deleted_at', null),
-		getProjectStorageBytes(Astro.locals.supabase, id!),
-		Astro.locals.supabase
-			.from('tasks')
-			.select(TASK_COLUMNS)
-			.eq('project_id', id)
-			.is('deleted_at', null)
-			.neq('status', 'done')
-			.not('deadline', 'is', null)
-			.order('deadline', { ascending: true })
-			.order('deadline_time', { ascending: true })
-			.order('name', { ascending: true })
-			.overrideTypes<RawTaskRow[]>(),
-		Astro.locals.supabase
-			.from('task_categories')
-			.select('name, color_index')
-			.eq('project_id', id)
-			.overrideTypes<{ name: string; color_index: number }[]>(),
-	]);
+	// First, the membership test: an authenticated non-member's RLS view has no
+	// project row, so this one query decides which branch below runs. Members
+	// keep it cheap (one extra round trip); outsiders never fire the
+	// member-only data queries at all.
+	const { data: projectData, error } = await Astro.locals.supabase
+		.from('projects')
+		.select('id, name, description, owner_id, currency')
+		.eq('id', id)
+		.single();
 
 	if (error || !projectData) {
 		// Authenticated non-member: RLS shows no project row. Try the public
@@ -105,6 +71,45 @@ if (user) {
 		}
 	} else {
 		project = projectData;
+
+		const [
+			{ data: membersData },
+			ghostMembersData,
+			{ data: bomItems },
+			{ totalBytes, failed },
+			{ data: taskRows },
+			{ data: categoryRows },
+		] = await Promise.all([
+			Astro.locals.supabase
+				.from('project_members')
+				.select('role, is_auditor, user_id, profiles(display_name, email, avatar)')
+				.eq('project_id', id)
+				.overrideTypes<{ role: string; is_auditor: boolean; user_id: string; profiles: { display_name: string; email: string; avatar: string | null } }[]>(),
+			listGhostMembers(Astro.locals.supabase, id!),
+			Astro.locals.supabase
+				.from('bom_items')
+				.select('total_cost')
+				.eq('project_id', id)
+				.is('deleted_at', null),
+			getProjectStorageBytes(Astro.locals.supabase, id!),
+			Astro.locals.supabase
+				.from('tasks')
+				.select(TASK_COLUMNS)
+				.eq('project_id', id)
+				.is('deleted_at', null)
+				.neq('status', 'done')
+				.not('deadline', 'is', null)
+				.order('deadline', { ascending: true })
+				.order('deadline_time', { ascending: true })
+				.order('name', { ascending: true })
+				.overrideTypes<RawTaskRow[]>(),
+			Astro.locals.supabase
+				.from('task_categories')
+				.select('name, color_index')
+				.eq('project_id', id)
+				.overrideTypes<{ name: string; color_index: number }[]>(),
+		]);
+
 		members = membersData;
 		ghostMembers = ghostMembersData;
 		projectStorageBytes = totalBytes;
