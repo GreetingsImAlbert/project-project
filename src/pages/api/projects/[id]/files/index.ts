@@ -12,14 +12,14 @@ export const GET: APIRoute = async ({ params, url, locals }) => {
 
 	let query = locals.supabase
 		.from('files')
-		.select('id, filename, size_bytes, mime_type, created_at, uploaded_by, is_journal, profiles(display_name)')
+		.select('id, filename, size_bytes, mime_type, created_at, uploaded_by, is_journal, is_public, profiles(display_name)')
 		.eq('project_id', projectId)
 		.order('created_at', { ascending: false });
 
 	query = folderId ? query.eq('folder_id', folderId) : query.is('folder_id', null);
 
 	const { data: files, error } = await query
-		.overrideTypes<{ id: string; filename: string; size_bytes: number | null; mime_type: string | null; created_at: string; uploaded_by: string; is_journal: boolean; profiles: { display_name: string } }[]>();
+		.overrideTypes<{ id: string; filename: string; size_bytes: number | null; mime_type: string | null; created_at: string; uploaded_by: string; is_journal: boolean; is_public: boolean; profiles: { display_name: string } }[]>();
 
 	if (error) {
 		return new Response(`Failed to load files: ${error.message}`, { status: 500 });

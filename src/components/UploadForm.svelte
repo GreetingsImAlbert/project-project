@@ -7,6 +7,7 @@
 		size_bytes: number | null;
 		uploaded_by: string;
 		profiles: { display_name: string } | null;
+		is_public: boolean;
 	}
 
 	let {

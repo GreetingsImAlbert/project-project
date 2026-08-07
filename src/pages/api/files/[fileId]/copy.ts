@@ -92,8 +92,9 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 			r2_key: newR2Key,
 			mime_type: file.mime_type,
 			size_bytes: file.size_bytes,
+			is_public: false,
 		})
-		.select('id, filename, size_bytes, mime_type, created_at, uploaded_by, profiles(display_name)')
+		.select('id, filename, size_bytes, mime_type, created_at, uploaded_by, is_public, profiles(display_name)')
 		.single();
 
 	if (insertError) {

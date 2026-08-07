@@ -39,6 +39,7 @@
 		// Absent (rather than false) on rows this component creates itself — an upload
 		// or a copy is never the project's Journal file, so there's nothing to select.
 		is_journal?: boolean;
+		is_public: boolean;
 	}
 
 	let {

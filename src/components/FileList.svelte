@@ -12,6 +12,7 @@
 		uploader_deleted_at?: string | null;
 		profiles: { display_name: string } | null;
 		is_journal?: boolean;
+		is_public: boolean;
 	}
 
 	// Mirrors FILE_GRACE_DAYS in src/lib/account-deletion.ts — kept as a plain number
