@@ -251,25 +251,18 @@
 							</li>
 						{/if}
 						{#if publicProjects.length > 0}
-							<li class="project-section-label row">
-								<span class="row-icon" aria-hidden="true"></span>
-								<span class="row-label">Public</span>
-							</li>
 							{#each publicProjects as project}
 								<li>
 									<a
 										href={projectHref(project.id, true)}
-										class="nav-link project-link public-project-link row"
+										class="nav-link project-link row"
 										class:active={currentProjectId === project.id}
 										title={project.name}
 										data-astro-prefetch
 										onpointerdown={keepExpandedForNavigation}
 									>
-										<span class="row-icon" aria-hidden="true">
-											<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-												<circle cx="12" cy="12" r="9" />
-												<path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" />
-											</svg>
+										<span class="row-icon">
+											<span class="glyph-p" aria-hidden="true">P</span>
 										</span>
 										<span class="row-label project-name">{project.name}</span>
 									</a>
@@ -509,21 +502,6 @@
 
 	.add-project:hover {
 		color: var(--color-fg);
-	}
-
-	.project-section-label {
-		padding-top: var(--space-4);
-		padding-bottom: var(--space-1);
-		color: var(--color-muted);
-		font-size: 0.68rem;
-		font-weight: 700;
-		letter-spacing: 0.05em;
-		text-transform: uppercase;
-		pointer-events: none;
-	}
-
-	.public-project-link .row-icon {
-		color: var(--color-muted);
 	}
 
 	@media (max-width: 768px) {

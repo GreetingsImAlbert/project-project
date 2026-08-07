@@ -2,8 +2,9 @@
 interface Props {
 	projectId: string;
 	userRole: string;
+	readOnly?: boolean;
 }
-const { projectId, userRole } = Astro.props;
+const { projectId, userRole, readOnly = false } = Astro.props;
 const path = Astro.url.pathname;
 
 const isOwner = userRole === 'owner';
@@ -18,14 +19,18 @@ function isActive(page: string) {
 
 <nav class="project-nav">
 	<a href={`/projects/${projectId}`} class={isActive('overview') ? 'active' : ''} data-astro-prefetch>Overview</a>
-	<a href={`/projects/${projectId}/tasks`} class={isActive('tasks') ? 'active' : ''} data-astro-prefetch>Tasks</a>
-	<a href={`/projects/${projectId}/files`} class={isActive('files') ? 'active' : ''} data-astro-prefetch>Files</a>
-	{isEditorOrOwner && (
-		<a href={`/projects/${projectId}/journal`} class={isActive('journal') ? 'active' : ''} data-astro-prefetch>Journal</a>
-	)}
-	<a href={`/projects/${projectId}/money`} class={isActive('money') ? 'active' : ''} data-astro-prefetch>Money</a>
-	{isOwner && (
-		<a href={`/projects/${projectId}/settings`} class={isActive('settings') ? 'active' : ''} data-astro-prefetch>Settings</a>
+	{!readOnly && (
+		<>
+			<a href={`/projects/${projectId}/tasks`} class={isActive('tasks') ? 'active' : ''} data-astro-prefetch>Tasks</a>
+			<a href={`/projects/${projectId}/files`} class={isActive('files') ? 'active' : ''} data-astro-prefetch>Files</a>
+			{isEditorOrOwner && (
+				<a href={`/projects/${projectId}/journal`} class={isActive('journal') ? 'active' : ''} data-astro-prefetch>Journal</a>
+			)}
+			<a href={`/projects/${projectId}/money`} class={isActive('money') ? 'active' : ''} data-astro-prefetch>Money</a>
+			{isOwner && (
+				<a href={`/projects/${projectId}/settings`} class={isActive('settings') ? 'active' : ''} data-astro-prefetch>Settings</a>
+			)}
+		</>
 	)}
 </nav>
 

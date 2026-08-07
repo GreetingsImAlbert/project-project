@@ -28,13 +28,13 @@ if (isGuest) {
 	errorMessage = error?.message ?? null;
 }
 ---
-<BaseLayout title={isGuest ? 'Public Projects' : 'My Projects'}>
-	<h1>{isGuest ? 'Public Projects' : 'My Projects'}</h1>
+<BaseLayout title="Projects">
+	<h1>Projects</h1>
 	{user && <p><a href="/projects/new" data-astro-prefetch>+ New project</a></p>}
 
 	{errorMessage && <p class="muted">Error loading projects: {errorMessage}</p>}
 
-	{projects && projects.length === 0 && <p class="muted">{isGuest ? 'No public projects yet.' : 'No projects yet.'}</p>}
+	{projects && projects.length === 0 && <p class="muted">No projects yet.</p>}
 
 	<ul class="list-plain">
 		{projects?.map((project) => (

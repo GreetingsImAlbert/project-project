@@ -55,12 +55,12 @@
 		currentAvatar: string | null;
 	} = $props();
 
-	// A guest reads the Workshop but writes nothing: no composer, no like or
-	// reply controls, no delete menus. The server enforces the same boundary
+	// A guest reads the Workshop but writes nothing: no composer, like controls,
+	// or delete menus. Reply expansion remains read-only. The server enforces the same boundary
 	// (every mutation endpoint returns 401 without a session) — this only hides
 	// the controls. `author.id === currentUserId` alone can't do it: a guest's
 	// `currentUserId` is null, and a deleted account's post also carries null.
-	const canInteract = currentUserId !== null;
+	let canInteract = $derived(currentUserId !== null);
 
 	let posts = $state<Post[]>([]);
 	let nextCursor = $state<string | null>(null);
@@ -210,7 +210,7 @@
 
 	async function submitPost() {
 		const body = composerBody.trim();
-		if (posting || !body) return;
+		if (!canInteract || posting || !body) return;
 		const pending = {
 			body,
 			createdAt: new Date().toISOString(),
@@ -290,7 +290,7 @@
 
 	async function submitReply(postId: string, parentReplyId: string | null) {
 		const body = getReplyDraft(postId, parentReplyId).trim();
-		if (replying || !body) return;
+		if (!canInteract || replying || !body) return;
 		const pending = {
 			postId,
 			parentReplyId,
@@ -335,7 +335,7 @@
 
 	async function togglePostLike(post: Post) {
 		const actionKey = `post-like-${post.id}`;
-		if (post.deleted || isActionPending(actionKey)) return;
+		if (!canInteract || post.deleted || isActionPending(actionKey)) return;
 		const optimisticLiked = !post.likedByMe;
 		// The label/colour is local feedback and should not wait on the network. Keep
 		// the count untouched until the server confirms the like mutation below.
@@ -356,7 +356,7 @@
 
 	async function toggleReplyLike(post: Post, reply: Reply) {
 		const actionKey = `reply-like-${reply.id}`;
-		if (post.deleted || reply.deleted || isActionPending(actionKey)) return;
+		if (!canInteract || post.deleted || reply.deleted || isActionPending(actionKey)) return;
 		const optimisticLiked = !reply.likedByMe;
 		// The like icon gets the same immediate feedback; only its count waits for
 		// the server response.
@@ -377,7 +377,7 @@
 
 	async function deletePost(post: Post) {
 		const actionKey = `post-delete-${post.id}`;
-		if (post.deleted || isActionPending(actionKey) || !window.confirm('Delete this post?')) return;
+		if (!canInteract || post.deleted || isActionPending(actionKey) || !window.confirm('Delete this post?')) return;
 		setActionPending(actionKey, true);
 		try {
 			const response = await fetch(`/api/forum/posts/${post.id}/delete`, { method: 'POST' });
@@ -392,7 +392,7 @@
 
 	async function deleteReply(post: Post, reply: Reply) {
 		const actionKey = `reply-delete-${reply.id}`;
-		if (reply.deleted || isActionPending(actionKey) || !window.confirm('Delete this reply?')) return;
+		if (!canInteract || reply.deleted || isActionPending(actionKey) || !window.confirm('Delete this reply?')) return;
 		setActionPending(actionKey, true);
 		try {
 			const response = await fetch(`/api/forum/replies/${reply.id}/delete`, { method: 'POST' });
@@ -511,6 +511,11 @@
 						{@render likeIcon()}
 						<span class="action-count" aria-hidden="true">{reply.likeCount}</span>
 					</button>
+				{:else}
+					<span class="icon-action like-count" aria-label={`${reply.likeCount} ${reply.likeCount === 1 ? 'like' : 'likes'}`}>
+						{@render likeIcon()}
+						<span class="action-count" aria-hidden="true">{reply.likeCount}</span>
+					</span>
 				{/if}
 				{#if !post.deleted && !reply.deleted}
 					<button
@@ -597,7 +602,7 @@
 			<button type="button" class="btn-plain" onclick={() => void loadFeed(false)}>Try again</button>
 		</div>
 	{:else if posts.length === 0 && !pendingPost}
-		<p class="state muted">No posts yet. Start the conversation.</p>
+		<p class="state muted">No posts yet.</p>
 	{:else}
 		<div class="feed">
 			{#each posts as post (post.id)}
@@ -652,6 +657,11 @@
 								{@render likeIcon()}
 								<span class="action-count" aria-hidden="true">{post.likeCount}</span>
 							</button>
+						{:else}
+							<span class="icon-action like-count" aria-label={`${post.likeCount} ${post.likeCount === 1 ? 'like' : 'likes'}`}>
+								{@render likeIcon()}
+								<span class="action-count" aria-hidden="true">{post.likeCount}</span>
+							</span>
 						{/if}
 						{#if !post.deleted}
 							<button

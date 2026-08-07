@@ -20,11 +20,8 @@ export const prerender = false;
 const user = Astro.locals.user;
 const { id } = Astro.params;
 
-// Two access paths (see SCHEMA.md, "Public project boundary"). Guests and
-// authenticated non-members only ever read the id/name/description slice
-// through public_project_get, which filters on is_public; a private or
-// nonexistent project is the same 404, so private-project membership never
-// leaks to outsiders. Members keep the full RLS queries and UI below.
+// Outsiders use the same page shell and overview markup as members. The public RPC
+// supplies only the fields that can be rendered in the read-only state.
 let publicProject: { id: string; name: string; description: string | null } | null = null;
 
 if (!user) {
@@ -115,6 +112,13 @@ if (user) {
 	}
 }
 
+const displayedProject = project ?? publicProject;
+if (!displayedProject) {
+	return new Response('Project not found', { status: 404 });
+}
+
+const readOnly = publicProject !== null;
+
 const horizonDays = parseHorizonDays(Astro.cookies.get(HORIZON_COOKIE)?.value);
 
 const serverToday = appToday();
@@ -135,28 +139,20 @@ const memberGroups = roles.map((role) => ({
 	members: (members ?? []).filter((m) => m.role === role),
 }));
 ---
-{publicProject && (
-	<BaseLayout title={publicProject.name}>
-		<h1 class="public-title">{publicProject.name}</h1>
-		<section class="overview-description">
-			<div class="overview-heading">
-				<h2>Description</h2>
-			</div>
-			<p class="muted description-text">{publicProject.description || 'No description yet.'}</p>
-		</section>
-	</BaseLayout>
-)}
-{!publicProject && (
-	<BaseLayout title={project!.name} projectNav={{ projectId: project!.id, userRole: userRole ?? '' }}>
-		<section class="overview-description">
-			<ProjectDescriptionEditor
-				client:load
-				projectId={project!.id}
-				initialDescription={project!.description}
-				canEdit={isOwner}
-			/>
-		</section>
+<BaseLayout
+	title={displayedProject.name}
+	projectNav={{ projectId: displayedProject.id, userRole: userRole ?? '', readOnly }}
+>
+	<section class="overview-description">
+		<ProjectDescriptionEditor
+			client:load
+			projectId={displayedProject.id}
+			initialDescription={displayedProject.description}
+			canEdit={isOwner}
+		/>
+	</section>
 
+	{!readOnly && (
 		<div class="overview-columns">
 			<div class="overview-column-main">
 				<section class="overview-members">
@@ -216,28 +212,10 @@ const memberGroups = roles.map((role) => ({
 				<DownloadProjectButton client:visible projectId={project!.id} />
 			</section>
 		</div>
-	</BaseLayout>
-)}
+	)}
+</BaseLayout>
 
 <style>
-	.public-title {
-		margin-top: 0;
-		margin-bottom: var(--space-4);
-	}
-
-	/* Mirrors the member overview's description block, minus the editor and
-	   the expand/collapse JS — a plain read-only version of the same text. */
-	.overview-heading h2 {
-		margin-top: 0;
-		padding-top: 0;
-		border-top: none;
-	}
-
-	.description-text {
-		white-space: pre-wrap;
-		margin: 0;
-	}
-
 	.overview-description {
 		margin-bottom: var(--space-4);
 	}
