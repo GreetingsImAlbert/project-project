@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from '../../../lib/supabase/admin';
 import { wouldExceedUserLimit } from '../../../lib/user-limit';
 import { displayNameProblem } from '../../../lib/account-validation';
 import { alertSignup } from '../../../lib/signup-alert';
+import { checkAuthRateLimit } from '../../../lib/auth-rate-limit';
 
 export const prerender = false;
 
@@ -12,6 +13,9 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
 	const email = formData.get('email')?.toString();
 	const password = formData.get('password')?.toString();
 	const displayName = formData.get('displayName')?.toString();
+
+	const blocked = await checkAuthRateLimit(env.SIGNUP_RATE_LIMITER, request, email);
+	if (blocked) return blocked;
 
 	if (!email || !password || !displayName) {
 		return new Response('Missing required fields', { status: 400 });

@@ -1,11 +1,16 @@
 import type { APIRoute } from 'astro';
+import { env } from 'cloudflare:workers';
 import { createStatelessSupabaseClient } from '../../../lib/supabase/stateless';
+import { checkAuthRateLimit } from '../../../lib/auth-rate-limit';
 
 export const prerender = false;
 
 export const POST: APIRoute = async ({ request, redirect }) => {
 	const formData = await request.formData();
 	const email = formData.get('email')?.toString().trim().toLowerCase();
+
+	const blocked = await checkAuthRateLimit(env.PASSWORD_RESET_RATE_LIMITER, request, email);
+	if (blocked) return blocked;
 
 	if (!email) {
 		return new Response('Missing email', { status: 400 });

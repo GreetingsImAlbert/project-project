@@ -1,5 +1,7 @@
 import type { APIRoute } from 'astro';
+import { env } from 'cloudflare:workers';
 import { createSupabaseServerClient, REMEMBER_ME_COOKIE, REMEMBER_ME_MAX_AGE } from '../../../lib/supabase/server';
+import { checkAuthRateLimit } from '../../../lib/auth-rate-limit';
 
 export const prerender = false;
 
@@ -8,6 +10,9 @@ export const POST: APIRoute = async ({ request, redirect, cookies }) => {
     const email = formData.get('email')?.toString();
     const password = formData.get('password')?.toString();
     const rememberMe = formData.get('rememberMe') === 'on';
+
+    const blocked = await checkAuthRateLimit(env.LOGIN_RATE_LIMITER, request, email);
+    if (blocked) return blocked;
 
     if (!email || !password) {
         return new Response('Missing email or password', { status: 400 });

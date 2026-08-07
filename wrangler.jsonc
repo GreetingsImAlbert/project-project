@@ -31,6 +31,36 @@
 	"observability": {
 		"enabled": true
 	},
+	// Throttles the three unauthenticated auth endpoints — see src/lib/auth-rate-limit.ts.
+	// namespace_id values are free-form integer strings that must be unique across the
+	// whole Cloudflare account (two bindings sharing one share their counters), so these
+	// three are picked to be unlikely to collide with anything else.
+	"ratelimits": [
+		{
+			"name": "LOGIN_RATE_LIMITER",
+			"namespace_id": "100001",
+			"simple": {
+				"limit": 10,
+				"period": 60
+			}
+		},
+		{
+			"name": "SIGNUP_RATE_LIMITER",
+			"namespace_id": "100002",
+			"simple": {
+				"limit": 3,
+				"period": 60
+			}
+		},
+		{
+			"name": "PASSWORD_RESET_RATE_LIMITER",
+			"namespace_id": "100003",
+			"simple": {
+				"limit": 3,
+				"period": 60
+			}
+		}
+	],
 	"r2_buckets": [
 		{
 			"binding": "R2_BUCKET",
