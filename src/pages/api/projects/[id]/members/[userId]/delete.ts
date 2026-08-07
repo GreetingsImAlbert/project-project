@@ -1,10 +1,11 @@
 import type { APIRoute } from 'astro';
 import { env } from 'cloudflare:workers';
 import { getSupabaseAdmin } from '../../../../../../lib/supabase/admin';
+import { errorResponse } from '../../../../../../lib/error-report';
 
 export const prerender = false;
 
-export const POST: APIRoute = async ({ params, locals }) => {
+export const POST: APIRoute = async ({ params, request, locals }) => {
 	if (!locals.user) {
 		return new Response('Unauthorized', { status: 401 });
 	}
@@ -43,7 +44,13 @@ export const POST: APIRoute = async ({ params, locals }) => {
 		.maybeSingle();
 
 	if (error) {
-		return new Response(`Failed to remove member: ${error.message}`, { status: 500 });
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: `Failed to remove member: ${error.message}`,
+			action: 'Failed to remove member.',
+			context: { projectId: projectId ?? null, memberId: memberId ?? null },
+		});
 	}
 	if (!removed) {
 		return new Response('Member is not in this project', { status: 404 });

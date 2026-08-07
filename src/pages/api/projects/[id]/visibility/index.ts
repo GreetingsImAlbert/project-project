@@ -1,4 +1,5 @@
 import type { APIRoute } from 'astro';
+import { errorResponse } from '../../../../../lib/error-report';
 
 export const prerender = false;
 
@@ -19,7 +20,15 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 		.eq('id', projectId)
 		.maybeSingle();
 
-	if (error) return new Response(`Failed to read project: ${error.message}`, { status: 500 });
+	if (error) {
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: `Failed to read project: ${error.message}`,
+			action: 'Failed to read project.',
+			context: { projectId: projectId ?? null },
+		});
+	}
 	if (!project) return new Response('Project not found', { status: 404 });
 	if (project.owner_id !== locals.user.id) return new Response('Forbidden', { status: 403 });
 
@@ -39,7 +48,15 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 		.update({ is_public: isPublic })
 		.eq('id', projectId);
 
-	if (updateError) return new Response(`Failed to update visibility: ${updateError.message}`, { status: 500 });
+	if (updateError) {
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: `Failed to update visibility: ${updateError.message}`,
+			action: 'Failed to update visibility.',
+			context: { projectId: projectId ?? null },
+		});
+	}
 
 	return Response.json({ isPublic });
 };

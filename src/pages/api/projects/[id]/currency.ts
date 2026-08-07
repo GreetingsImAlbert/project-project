@@ -1,5 +1,6 @@
 import type { APIRoute } from 'astro';
 import { CURRENCIES } from '../../../../lib/currency';
+import { errorResponse } from '../../../../lib/error-report';
 
 export const prerender = false;
 
@@ -34,7 +35,13 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 		.eq('id', projectId);
 
 	if (error) {
-		return new Response(`Failed to update currency: ${error.message}`, { status: 500 });
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: `Failed to update currency: ${error.message}`,
+			action: 'Failed to update currency.',
+			context: { projectId: projectId ?? null },
+		});
 	}
 
 	return new Response(null, { status: 204 });

@@ -1,4 +1,5 @@
 import type { APIRoute } from 'astro';
+import { errorResponse } from '../../../../lib/error-report';
 
 export const prerender = false;
 
@@ -35,7 +36,13 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 		.single();
 
 	if (error) {
-		return new Response(`Failed to update description: ${error.message}`, { status: 500 });
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: `Failed to update description: ${error.message}`,
+			action: 'Failed to update description.',
+			context: { projectId: projectId ?? null },
+		});
 	}
 
 	return Response.json(updated);

@@ -1,10 +1,11 @@
 import type { APIRoute } from 'astro';
 import { AwsClient } from 'aws4fetch';
 import { env } from 'cloudflare:workers';
+import { errorResponse } from '../../../../lib/error-report';
 
 export const prerender = false;
 
-export const POST: APIRoute = async ({ params, locals }) => {
+export const POST: APIRoute = async ({ params, request, locals }) => {
 	if (!locals.user) {
 		return new Response('Unauthorized', { status: 401 });
 	}
@@ -32,7 +33,13 @@ export const POST: APIRoute = async ({ params, locals }) => {
 	const { error } = await locals.supabase.from('projects').delete().eq('id', projectId);
 
 	if (error) {
-		return new Response(`Failed to delete project: ${error.message}`, { status: 500 });
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: `Failed to delete project: ${error.message}`,
+			action: 'Failed to delete project.',
+			context: { projectId: projectId ?? null },
+		});
 	}
 
 	// Best-effort: the DB side is already committed via cascade, so a failed R2

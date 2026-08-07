@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
 import { env } from 'cloudflare:workers';
 import { getSupabaseAdmin } from '../../../../lib/supabase/admin';
+import { errorResponse } from '../../../../lib/error-report';
 
 export const prerender = false;
 
@@ -60,7 +61,13 @@ export const POST: APIRoute = async ({ params, request, locals, redirect }) => {
 			.eq('user_id', existingUserId);
 
 		if (updateError) {
-			return new Response(`Failed to update member: ${updateError.message}`, { status: 500 });
+			return errorResponse({
+				request,
+				userId: locals.user.id,
+				privateMessage: `Failed to update member: ${updateError.message}`,
+				action: 'Failed to update member.',
+				context: { projectId: projectId ?? null, memberId: existingUserId ?? null },
+			});
 		}
 
 		// The role editor is a client island (MemberManager.svelte) that updates its
@@ -96,7 +103,13 @@ export const POST: APIRoute = async ({ params, request, locals, redirect }) => {
 		.insert({ project_id: projectId, user_id: targetUser.id, role, is_auditor: isAuditor });
 
 	if (insertError) {
-		return new Response(`Failed to add member: ${insertError.message}`, { status: 500 });
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: `Failed to add member: ${insertError.message}`,
+			action: 'Failed to add member.',
+			context: { projectId: projectId ?? null },
+		});
 	}
 
 	return redirect(returnTo);

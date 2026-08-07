@@ -1,5 +1,6 @@
 import type { APIRoute } from 'astro';
 import { canEditMoney } from '../../../../../../lib/money-access';
+import { errorResponse } from '../../../../../../lib/error-report';
 
 export const prerender = false;
 
@@ -37,7 +38,13 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 		.single();
 
 	if (error) {
-		return new Response(`Failed to update contribution: ${error.message}`, { status: 500 });
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: `Failed to update contribution: ${error.message}`,
+			action: 'Failed to update contribution.',
+			context: { projectId: projectId ?? null, memberId: memberId ?? null },
+		});
 	}
 
 	return Response.json(updated);
