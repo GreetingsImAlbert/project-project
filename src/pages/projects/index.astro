@@ -6,12 +6,13 @@ export const prerender = false;
 const user = Astro.locals.user;
 const isGuest = !user;
 
-// Members list every project they're part of through RLS. Guests get the
-// public slice instead: same list UI, but only `is_public` projects and only
-// the id/name/description columns the boundary RPC exposes. There is
-// deliberately no anonymous SELECT policy on projects (see SCHEMA.md) — the
-// `public_project_list` RPC is the only anonymous read path, so a guest cannot
-// name a field beyond those three.
+// Members list every project they're part of through RLS, plus discoverable
+// projects (Overview or Files public) they're not a member of — the same
+// composition the sidebar uses. Guests get the discoverable slice only: same
+// list UI, but only the id/name/description columns the boundary RPC exposes.
+// There is deliberately no anonymous SELECT policy on projects (see SCHEMA.md) —
+// the `public_project_list` RPC is the only anonymous read path, so a guest
+// cannot name a field beyond those three.
 let projects: { id: string; name: string; description: string | null }[] | null = null;
 let errorMessage: string | null = null;
 
@@ -20,12 +21,26 @@ if (isGuest) {
 	projects = data;
 	errorMessage = error?.message ?? null;
 } else {
-	const { data, error } = await Astro.locals.supabase
-		.from('projects')
-		.select('id, name, description, created_at')
-		.order('created_at', { ascending: false });
-	projects = data;
-	errorMessage = error?.message ?? null;
+	const [
+		{ data: memberRows, error: memberError },
+		{ data: publicRows, error: publicError },
+	] = await Promise.all([
+		Astro.locals.supabase
+			.from('projects')
+			.select('id, name, description, created_at')
+			.order('created_at', { ascending: false }),
+		Astro.locals.supabase.rpc('public_project_list'),
+	]);
+
+	if (memberError || publicError) {
+		errorMessage = memberError?.message ?? publicError?.message ?? null;
+	} else {
+		const memberIds = new Set((memberRows ?? []).map((project) => project.id));
+		const publicOnly = (publicRows ?? []).filter(
+			(project: { id: string; name: string; description: string | null }) => !memberIds.has(project.id),
+		);
+		projects = [...(memberRows ?? []), ...publicOnly];
+	}
 }
 ---
 <BaseLayout title="Projects">

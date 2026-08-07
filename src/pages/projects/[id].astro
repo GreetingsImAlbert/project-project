@@ -21,8 +21,15 @@ const user = Astro.locals.user;
 const { id } = Astro.params;
 
 // Outsiders use the same page shell and overview markup as members. The public RPC
-// supplies only the fields that can be rendered in the read-only state.
-let publicProject: { id: string; name: string; description: string | null } | null = null;
+// supplies only the fields that can be rendered in the read-only state, plus the
+// visibility booleans the shared read-only navigation needs.
+let publicProject: {
+	id: string;
+	name: string;
+	description: string | null;
+	is_public: boolean;
+	public_files_enabled: boolean;
+} | null = null;
 
 if (!user) {
 	const { data } = await Astro.locals.supabase.rpc('public_project_get', { p_id: id! });

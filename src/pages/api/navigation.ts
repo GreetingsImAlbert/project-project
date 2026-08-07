@@ -10,7 +10,7 @@ export async function GET({ locals }: { locals: App.Locals }) {
 		const { data: publicProjectRows, error } = await getSupabaseAdmin(env)
 			.from('projects')
 			.select('id, name')
-			.eq('is_public', true)
+			.or('is_public.eq.true,public_files_enabled.eq.true')
 			.order('created_at', { ascending: false });
 
 		if (error) return new Response('Could not load navigation', { status: 500 });
@@ -56,10 +56,11 @@ export async function GET({ locals }: { locals: App.Locals }) {
 			}[]>(),
 		// This endpoint is authenticated, but the service-role query keeps the
 		// public sidebar slice independent of the member-only projects policy.
+		// Discoverable = either the Overview or the Files section is public.
 		getSupabaseAdmin(env)
 			.from('projects')
 			.select('id, name')
-			.eq('is_public', true)
+			.or('is_public.eq.true,public_files_enabled.eq.true')
 			.order('created_at', { ascending: false }),
 	]);
 

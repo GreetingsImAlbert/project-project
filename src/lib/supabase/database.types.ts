@@ -860,7 +860,9 @@ export type Database = {
         Returns: {
           description: string
           id: string
+          is_public: boolean
           name: string
+          public_files_enabled: boolean
         }[]
       }
       public_project_list: {
