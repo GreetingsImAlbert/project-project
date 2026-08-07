@@ -2,6 +2,7 @@ import type { APIRoute } from 'astro';
 import { parseTaskForm } from '../../../../lib/task-form';
 import { TASK_COLUMNS, normalizeTask, type RawTaskRow } from '../../../../lib/task-columns';
 import { ghostIdOf } from '../../../../lib/money-parties';
+import { errorResponse } from '../../../../lib/error-report';
 
 export const prerender = false;
 
@@ -64,7 +65,13 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 	});
 
 	if (error) {
-		return new Response(`Failed to update task: ${error.message}`, { status: 500 });
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: `Failed to update task: ${error.message}`,
+			action: 'Failed to update task.',
+			context: { taskId: taskId ?? null, projectId: task.project_id },
+		});
 	}
 
 	const { data: row, error: readError } = await locals.supabase
@@ -75,7 +82,13 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 		.overrideTypes<RawTaskRow>();
 
 	if (readError || !row) {
-		return new Response('Task updated but could not be read back', { status: 500 });
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: `Task updated but could not be read back: ${readError?.message ?? 'unknown error'}`,
+			action: 'Task updated but could not be read back.',
+			context: { taskId: taskId ?? null, projectId: task.project_id },
+		});
 	}
 
 	return Response.json(normalizeTask(row));

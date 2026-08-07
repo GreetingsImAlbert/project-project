@@ -1,10 +1,11 @@
 import type { APIRoute } from 'astro';
+import { errorResponse } from '../../../../lib/error-report';
 
 export const prerender = false;
 
 // Permanent delete — the "delete forever" action from the Trash page.
 // task_assignees cascades on the FK.
-export const POST: APIRoute = async ({ params, locals }) => {
+export const POST: APIRoute = async ({ params, request, locals }) => {
 	if (!locals.user) {
 		return new Response('Unauthorized', { status: 401 });
 	}
@@ -39,7 +40,13 @@ export const POST: APIRoute = async ({ params, locals }) => {
 	const { error } = await locals.supabase.from('tasks').delete().eq('id', taskId!);
 
 	if (error) {
-		return new Response(`Failed to delete task: ${error.message}`, { status: 500 });
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: `Failed to delete task: ${error.message}`,
+			action: 'Failed to delete task.',
+			context: { taskId: taskId ?? null, projectId: task.project_id },
+		});
 	}
 
 	return new Response(null, { status: 204 });

@@ -1,5 +1,6 @@
 import type { APIRoute } from 'astro';
 import { isCategoryColorIndex } from '../../../../../lib/category-color';
+import { errorResponse } from '../../../../../lib/error-report';
 
 export const prerender = false;
 
@@ -52,7 +53,13 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 		.single();
 
 	if (error || !data) {
-		return new Response(`Failed to save category colour: ${error?.message ?? 'unknown error'}`, { status: 500 });
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: `Failed to save category colour: ${error?.message ?? 'unknown error'}`,
+			action: 'Failed to save category colour.',
+			context: { projectId: projectId ?? null },
+		});
 	}
 
 	return Response.json({ name: data.name, color_index: data.color_index });

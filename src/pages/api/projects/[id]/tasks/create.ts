@@ -3,6 +3,7 @@ import { parseTaskForm } from '../../../../../lib/task-form';
 import { TASK_COLUMNS, normalizeTask, type RawTaskRow } from '../../../../../lib/task-columns';
 import { ghostIdOf } from '../../../../../lib/money-parties';
 import { appToday } from '../../../../../lib/today';
+import { errorResponse } from '../../../../../lib/error-report';
 
 export const prerender = false;
 
@@ -60,7 +61,13 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 	});
 
 	if (error || !createdId) {
-		return new Response(`Failed to create task: ${error?.message ?? 'unknown error'}`, { status: 500 });
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: `Failed to create task: ${error?.message ?? 'unknown error'}`,
+			action: 'Failed to create task.',
+			context: { projectId: projectId ?? null },
+		});
 	}
 
 	const { data: row, error: readError } = await locals.supabase
@@ -71,7 +78,13 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 		.overrideTypes<RawTaskRow>();
 
 	if (readError || !row) {
-		return new Response('Task created but could not be read back', { status: 500 });
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: `Task created but could not be read back: ${readError?.message ?? 'unknown error'}`,
+			action: 'Task created but could not be read back.',
+			context: { projectId: projectId ?? null, taskId: createdId ?? null },
+		});
 	}
 
 	return Response.json(normalizeTask(row));
