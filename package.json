@@ -11,7 +11,9 @@
     "preview": "astro preview",
     "astro": "astro",
     "generate-types": "wrangler types",
-    "update-types": "npx --yes supabase gen types typescript --project-id \"egjzxjhpwjrnhrjntqmp\" > src/lib/supabase/database.types.ts"
+    "update-types": "npx --yes supabase gen types typescript --project-id \"egjzxjhpwjrnhrjntqmp\" > src/lib/supabase/database.types.ts",
+    "deploy:staging": "npx wrangler deploy --env staging",
+    "deploy:prod": "npx wrangler deploy --env prod"
   },
   "dependencies": {
     "@astrojs/cloudflare": "^14.1.3",
@@ -32,6 +34,7 @@
     "@astrojs/check": "^0.9.9",
     "@types/node": "^26.1.1",
     "@types/three": "^0.185.1",
+    "supabase": "^2.113.0",
     "svelte-check": "^4.7.4"
   }
 }

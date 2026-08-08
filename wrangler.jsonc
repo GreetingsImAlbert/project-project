@@ -1,75 +1,119 @@
 {
 	"$schema": "./node_modules/wrangler/config-schema.json",
+
+	// Base name. Named environments deploy as separate Workers.
+	"name": "p2",
+
 	"compatibility_date": "2026-07-18",
 	"compatibility_flags": [
 		"global_fetch_strictly_public",
 		"nodejs_compat"
 	],
-	"name": "p2",
+
 	// Wraps the adapter's own entrypoint to also export `scheduled` — see src/worker.ts.
 	"main": "./src/worker.ts",
-	// 16:00 UTC, once a day — midnight in Asia/Manila, the day boundary the Journal
-	// itself uses (journalToday in src/lib/journal.ts). Cron expressions are always
-	// UTC, so the +08:00 offset is baked into the hour here. See finalizeStaleDrafts.
+
+	// 16:00 UTC, once a day — midnight in Asia/Manila.
 	"triggers": {
 		"crons": [
 			"0 16 * * *"
 		]
 	},
-	// Every SSR page load is a chain of Supabase round trips, and Postgres sits in
-	// one fixed region while the Worker would otherwise run at the edge nearest the
-	// user — so each hop pays a full edge->region trip. Smart Placement runs the
-	// Worker near the database instead: N long hops become N short ones plus a
-	// single long user->Worker trip. Production-only, no effect under wrangler dev.
+
 	"placement": {
 		"mode": "smart"
 	},
+
 	"assets": {
 		"directory": "./dist",
 		"binding": "ASSETS"
 	},
+
 	"observability": {
 		"enabled": true
 	},
-	// Throttles the three unauthenticated auth endpoints — see src/lib/auth-rate-limit.ts.
-	// namespace_id values are free-form integer strings that must be unique across the
-	// whole Cloudflare account (two bindings sharing one share their counters), so these
-	// three are picked to be unlikely to collide with anything else.
-	"ratelimits": [
-		{
-			"name": "LOGIN_RATE_LIMITER",
-			"namespace_id": "100001",
-			"simple": {
-				"limit": 10,
-				"period": 60
-			}
+
+	"env": {
+		"staging": {
+			"name": "p2-staging",
+
+			"ratelimits": [
+				{
+					"name": "LOGIN_RATE_LIMITER",
+					"namespace_id": "100011",
+					"simple": {
+						"limit": 10,
+						"period": 60
+					}
+				},
+				{
+					"name": "SIGNUP_RATE_LIMITER",
+					"namespace_id": "100012",
+					"simple": {
+						"limit": 3,
+						"period": 60
+					}
+				},
+				{
+					"name": "PASSWORD_RESET_RATE_LIMITER",
+					"namespace_id": "100013",
+					"simple": {
+						"limit": 3,
+						"period": 60
+					}
+				}
+			],
+
+			"r2_buckets": [
+				{
+					"binding": "R2_BUCKET",
+
+					"bucket_name": "project-project",
+
+					"remote": true
+				}
+			]
 		},
-		{
-			"name": "SIGNUP_RATE_LIMITER",
-			"namespace_id": "100002",
-			"simple": {
-				"limit": 3,
-				"period": 60
-			}
-		},
-		{
-			"name": "PASSWORD_RESET_RATE_LIMITER",
-			"namespace_id": "100003",
-			"simple": {
-				"limit": 3,
-				"period": 60
-			}
+
+		"prod": {
+			"name": "p2-prod",
+
+			"ratelimits": [
+				{
+					"name": "LOGIN_RATE_LIMITER",
+					"namespace_id": "100001",
+					"simple": {
+						"limit": 10,
+						"period": 60
+					}
+				},
+				{
+					"name": "SIGNUP_RATE_LIMITER",
+					"namespace_id": "100002",
+					"simple": {
+						"limit": 3,
+						"period": 60
+					}
+				},
+				{
+					"name": "PASSWORD_RESET_RATE_LIMITER",
+					"namespace_id": "100003",
+					"simple": {
+						"limit": 3,
+						"period": 60
+					}
+				}
+			],
+
+			"r2_buckets": [
+				{
+					"binding": "R2_BUCKET",
+
+					"bucket_name": "project-project-prod",
+
+					"remote": true
+				}
+			]
 		}
-	],
-	"r2_buckets": [
-		{
-			"binding": "R2_BUCKET",
-			"bucket_name": "project-project",
-			// Uploads go straight to the real bucket via a presigned URL from the browser
-			// (see upload-url.ts), bypassing the Worker entirely. Without this flag the
-			// binding reads/writes a separate, empty local simulation in dev, so every
-			// read here would miss regardless of file type.
-			"remote": true
-		}
-	]
+	}
 }
