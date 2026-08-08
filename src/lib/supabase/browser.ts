@@ -13,7 +13,9 @@ import type { Database } from './database.types';
 // Worker. They mirror SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY and need adding to
 // .env (local) and the Cloudflare Pages/Workers build environment (deployed); see
 // CHECKLIST.md. The publishable key is safe to ship to the browser by design —
-// it's what RLS exists to make safe — but this client still carries no session of
+// it's what RLS exists to make safe. Mode-specific builds are enforced by
+// scripts/build.mjs so staging cannot fall back to production's .env values. This
+// client still carries no session of
 // its own (persistSession: false): it only ever speaks for whichever project
 // member handed it a token via realtime.setAuth(), see journal-realtime.ts.
 export function createBrowserSupabaseClient() {

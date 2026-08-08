@@ -1,42 +1,33 @@
 {
 	"$schema": "./node_modules/wrangler/config-schema.json",
-
 	// Base name. Named environments deploy as separate Workers.
 	"name": "p2",
-
 	"compatibility_date": "2026-07-18",
 	"compatibility_flags": [
 		"global_fetch_strictly_public",
 		"nodejs_compat"
 	],
-
 	// Wraps the adapter's own entrypoint to also export `scheduled` — see src/worker.ts.
 	"main": "./src/worker.ts",
-
 	// 16:00 UTC, once a day — midnight in Asia/Manila.
 	"triggers": {
 		"crons": [
 			"0 16 * * *"
 		]
 	},
-
 	"placement": {
 		"mode": "smart"
 	},
-
 	"assets": {
 		"directory": "./dist",
 		"binding": "ASSETS"
 	},
-
 	"observability": {
 		"enabled": true
 	},
-
 	"env": {
 		"staging": {
 			"name": "p2-staging",
-
 			"ratelimits": [
 				{
 					"name": "LOGIN_RATE_LIMITER",
@@ -63,21 +54,16 @@
 					}
 				}
 			],
-
 			"r2_buckets": [
 				{
 					"binding": "R2_BUCKET",
-
 					"bucket_name": "project-project",
-
 					"remote": true
 				}
 			]
 		},
-
 		"prod": {
 			"name": "p2-prod",
-
 			"ratelimits": [
 				{
 					"name": "LOGIN_RATE_LIMITER",
@@ -104,13 +90,10 @@
 					}
 				}
 			],
-
 			"r2_buckets": [
 				{
 					"binding": "R2_BUCKET",
-
 					"bucket_name": "project-project-prod",
-
 					"remote": true
 				}
 			]

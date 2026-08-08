@@ -18,6 +18,7 @@ interface Props {
 const { title = 'P2', projectNav } = Astro.props;
 const user = Astro.locals.user;
 const path = Astro.url.pathname;
+const isStaging = Astro.url.hostname === 'p2testing.albertmendoza.com';
 
 ---
 <html lang="en">
@@ -64,6 +65,7 @@ const path = Astro.url.pathname;
 		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<meta name="generator" content={Astro.generator} />
+		{isStaging && <meta name="robots" content="noindex, nofollow" />}
 		<title>{title} | P2</title>
 		<ClientRouter fallback="swap" />
 	</head>

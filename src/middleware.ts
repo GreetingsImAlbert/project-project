@@ -33,7 +33,7 @@ function isPendingDeletionAllowed(pathname: string) {
 
 // Applied to every response, app path or not — cheap, header-only, and there's no
 // reason a bot-probed 404 should skip them either.
-function withSecurityHeaders(response: Response, pathname: string): Response {
+function withSecurityHeaders(response: Response, pathname: string, hostname: string): Response {
     // PDF previews are embedded by the app's own viewer panel. Keep every other
     // response unframeable, including non-PDF errors returned from the raw route.
     const isPdfPreview = /^\/api\/files\/[^/]+\/raw$/.test(pathname)
@@ -42,6 +42,9 @@ function withSecurityHeaders(response: Response, pathname: string): Response {
     response.headers.set('X-Content-Type-Options', 'nosniff');
     response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
     response.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    if (hostname === 'p2testing.albertmendoza.com') {
+        response.headers.set('X-Robots-Tag', 'noindex, nofollow');
+    }
     return response;
 }
 
@@ -72,7 +75,7 @@ function unexpectedErrorResponse(pathname: string, reportId: string): Response {
 
 export const onRequest = defineMiddleware(async (context, next) => {
     if (!isAppPath(context.url.pathname)) {
-        return withSecurityHeaders(await next(), context.url.pathname);
+        return withSecurityHeaders(await next(), context.url.pathname, context.url.hostname);
     }
 
     try {
@@ -106,10 +109,10 @@ export const onRequest = defineMiddleware(async (context, next) => {
         // to the pending-deletion page while it's set.
         const pendingDeletionAt = data?.claims.app_metadata?.pending_deletion_at;
         if (context.locals.user && pendingDeletionAt && !isPendingDeletionAllowed(context.url.pathname)) {
-            return withSecurityHeaders(context.redirect('/account/pending-deletion'), context.url.pathname);
+            return withSecurityHeaders(context.redirect('/account/pending-deletion'), context.url.pathname, context.url.hostname);
         }
 
-        return withSecurityHeaders(await next(), context.url.pathname);
+        return withSecurityHeaders(await next(), context.url.pathname, context.url.hostname);
     } catch (err) {
         // Catch-all for everything no route or page explicitly handled — see
         // src/lib/error-report.ts. This is the one place in the whole app an
@@ -124,6 +127,6 @@ export const onRequest = defineMiddleware(async (context, next) => {
             userId: context.locals.user?.id ?? null,
         });
 
-        return withSecurityHeaders(unexpectedErrorResponse(context.url.pathname, reportId), context.url.pathname);
+        return withSecurityHeaders(unexpectedErrorResponse(context.url.pathname, reportId), context.url.pathname, context.url.hostname);
     }
 });

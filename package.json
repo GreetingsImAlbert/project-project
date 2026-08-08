@@ -7,13 +7,14 @@
   },
   "scripts": {
     "dev": "astro dev",
-    "build": "astro build",
+    "build": "node scripts/build.mjs production",
+    "build:staging": "node scripts/build.mjs staging",
     "preview": "astro preview",
     "astro": "astro",
     "generate-types": "wrangler types",
     "update-types": "npx --yes supabase gen types typescript --project-id \"egjzxjhpwjrnhrjntqmp\" > src/lib/supabase/database.types.ts",
-    "deploy:staging": "npx wrangler deploy --env staging",
-    "deploy:prod": "npx wrangler deploy --env prod"
+    "deploy:staging": "npm run build:staging && npx wrangler deploy --env staging",
+    "deploy:prod": "npm run build && npx wrangler deploy --env prod"
   },
   "dependencies": {
     "@astrojs/cloudflare": "^14.1.3",
