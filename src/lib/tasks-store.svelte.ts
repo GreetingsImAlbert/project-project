@@ -1,4 +1,4 @@
-import { currentEpoch } from './nav-epoch';
+import { currentEpoch, isServerRuntime } from './nav-epoch';
 import { sortTasks, type Task, type TaskCategoryPosition, type TaskSortMode } from './task-columns';
 import { notifyTasksChanged } from './tasks-changed';
 
@@ -54,7 +54,7 @@ export function initTasks(
 	initialCategoryPositions: TaskCategoryPosition[] = [],
 	initialSortMode: TaskSortMode = 'priority',
 ) {
-	if (initializedEpoch === currentEpoch() && !import.meta.env.SSR) return;
+	if (initializedEpoch === currentEpoch() && !isServerRuntime()) return;
 	tasksState.sortMode = initialSortMode;
 	tasksState.categoryPositions = [...initialCategoryPositions];
 	tasksState.tasks = sortTasks(initial, tasksState.categoryPositions, tasksState.sortMode);

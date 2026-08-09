@@ -5,10 +5,10 @@ import {
 	TASK_CATEGORY_POSITION_COLUMNS,
 	TASK_COLUMNS,
 	normalizeTask,
-	sortTasks,
 	type RawTaskRow,
 	type TaskCategoryPosition,
 } from '../../../../lib/task-columns';
+import { buildTaskExportPayload } from '../../../../lib/task-export';
 import { TRANSACTION_COLUMNS } from '../../../../lib/transaction-columns';
 import { GHOST_COLUMNS } from '../../../../lib/ghost-members';
 
@@ -189,36 +189,15 @@ export const GET: APIRoute = async ({ params, locals }) => {
 	const memberById = new Map((memberRows ?? []).map((m) => [m.user_id, m.profiles?.display_name ?? '']));
 	const ghostById = new Map((ghostRows ?? []).map((g) => [g.id, g.display_name]));
 	const categoryPositions = categoryPositionRows ?? [];
-	const exportedTasks = sortTasks(
+	const tasksPayload = buildTaskExportPayload(
+		project.name,
+		new Date().toISOString(),
 		(taskRows ?? []).map(normalizeTask),
 		categoryPositions,
-		'priority',
 	);
 
 	// Same shape as TasksTable.svelte's downloadTasks — one export format across the
 	// app, so a reader who's seen a per-page export knows what this one holds too.
-	const tasksPayload = {
-		project: project.name,
-		exportedAt: new Date().toISOString(),
-		taskCount: exportedTasks.length,
-		categoryPositions: categoryPositions.map((position) => ({
-			category: position.category_name,
-			priorityPosition: position.priority_position,
-		})),
-		tasks: exportedTasks.map((task) => ({
-			id: task.id,
-			name: task.name,
-			category: task.category,
-			priorityPosition: task.priority_position,
-			description: task.description,
-			startDate: task.start_date,
-			startTime: task.start_time,
-			deadline: task.deadline,
-			deadlineTime: task.deadline_time,
-			status: task.status,
-			assignees: task.assignees.map((a) => a.display_name),
-		})),
-	};
 
 	const membersPayload = {
 		project: project.name,

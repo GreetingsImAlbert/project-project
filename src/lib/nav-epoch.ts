@@ -12,10 +12,14 @@ export function currentEpoch(): number {
 	return epoch;
 }
 
+export function isServerRuntime(): boolean {
+	return import.meta.env?.SSR ?? typeof window === 'undefined';
+}
+
 // `astro:before-swap`, not `astro:after-swap`: an island hydrates when its <astro-island>
 // element is inserted into the document, which happens *during* the swap. Bumping
 // afterwards would land after those islands had already read the stale epoch.
-if (!import.meta.env.SSR) {
+if (!isServerRuntime()) {
 	document.addEventListener('astro:before-swap', () => {
 		epoch += 1;
 	});

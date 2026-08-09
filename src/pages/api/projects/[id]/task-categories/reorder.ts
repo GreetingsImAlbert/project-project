@@ -7,6 +7,7 @@ import {
 	readCanonicalCategoryOrder,
 	readJsonObject,
 } from '../../../../../lib/task-reorder';
+import { canEditTasks } from '../../../../../lib/task-permissions';
 
 export const prerender = false;
 
@@ -31,7 +32,7 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 			context: { projectId },
 		});
 	}
-	if (!membership || !['owner', 'editor'].includes(membership.role)) return new Response('Forbidden', { status: 403 });
+	if (!membership || !canEditTasks(membership.role)) return new Response('Forbidden', { status: 403 });
 
 	const body = await readJsonObject(request);
 	if ('error' in body) return new Response(body.error, { status: 400 });

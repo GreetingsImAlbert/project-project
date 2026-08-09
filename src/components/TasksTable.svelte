@@ -24,7 +24,9 @@
 		categoryStyle,
 		type CategoryColors,
 	} from '../lib/category-color';
-	import { TASK_SORT_MODE_COOKIE, sortTasks, type TaskSortMode } from '../lib/task-columns';
+	import { TASK_SORT_MODE_COOKIE, type TaskSortMode } from '../lib/task-columns';
+	import { canReorderTask } from '../lib/task-ordering';
+	import { buildTaskExportPayload } from '../lib/task-export';
 	import {
 		displayStatus,
 		formatDeadline,
@@ -285,7 +287,12 @@
 	});
 
 	function canShowTaskDragHandle(task: Task): boolean {
-		return canEdit && !onlyMine && tasksState.sortMode === 'priority' && task.status !== 'done' && !taskReorderState.pending;
+		return canReorderTask(task, {
+			canEdit,
+			onlyMine,
+			sortMode: tasksState.sortMode,
+			pending: taskReorderState.pending,
+		});
 	}
 
 	function canShowCategoryDragHandle(group: TaskGroup): boolean {
@@ -348,6 +355,8 @@
 	}
 
 	function stopTaskDragListeners() {
+		if (typeof window === 'undefined') return;
+
 		window.removeEventListener('pointermove', handleTaskDragMove);
 		window.removeEventListener('pointerup', handleTaskDragEnd);
 		window.removeEventListener('pointercancel', handleTaskDragCancel);
@@ -530,6 +539,8 @@
 	}
 
 	function stopCategoryDragListeners() {
+		if (typeof window === 'undefined') return;
+
 		window.removeEventListener('pointermove', handleCategoryDragMove);
 		window.removeEventListener('pointerup', handleCategoryDragEnd);
 		window.removeEventListener('pointercancel', handleCategoryDragCancel);
@@ -1011,31 +1022,12 @@
 	// Exports always use the persisted priority order, regardless of the page's current
 	// reading mode, so the file preserves the user's intentional task ranking.
 	function downloadTasks() {
-		const exportedTasks = sortTasks(tasksState.tasks, tasksState.categoryPositions, 'priority');
-		const payload = {
-			project: projectName,
-			exportedAt: new Date().toISOString(),
-			taskCount: exportedTasks.length,
-			categoryPositions: tasksState.categoryPositions.map((position) => ({
-				category: position.category_name,
-				priorityPosition: position.priority_position,
-			})),
-			tasks: exportedTasks.map((task) => ({
-				id: task.id,
-				name: task.name,
-				category: task.category,
-				priorityPosition: task.priority_position,
-				description: task.description,
-				startDate: task.start_date,
-				startTime: task.start_time,
-				deadline: task.deadline,
-				deadlineTime: task.deadline_time,
-				status: task.status,
-				// Names, not ids: a ghost member and a former member have no user_id to
-				// look up, and the point of the export is to be readable on its own.
-				assignees: task.assignees.map((a) => a.display_name),
-			})),
-		};
+		const payload = buildTaskExportPayload(
+			projectName,
+			new Date().toISOString(),
+			tasksState.tasks,
+			tasksState.categoryPositions,
+		);
 
 		downloadJson(exportFilename(projectName, 'tasks', 'json'), payload);
 	}
@@ -1913,15 +1905,12 @@
 		cursor: pointer;
 	}
 
-	/* align-self, because the head is baseline-aligned and these boxes hold nothing
-	   with a baseline to align on. */
+	/* Keep the original two-option control without a surrounding box. */
 	.sort-toggle {
 		display: flex;
 		gap: 1px;
 		flex: 0 0 auto;
 		align-self: center;
-		padding: 1px;
-		background: var(--color-border);
 	}
 
 	.sort-toggle button {
