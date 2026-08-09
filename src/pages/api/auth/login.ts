@@ -2,6 +2,7 @@ import type { APIRoute } from 'astro';
 import { env } from 'cloudflare:workers';
 import { createSupabaseServerClient, REMEMBER_ME_COOKIE, REMEMBER_ME_MAX_AGE } from '../../../lib/supabase/server';
 import { checkAuthRateLimit } from '../../../lib/auth-rate-limit';
+import { authErrorResponse, wantsJson } from '../../../lib/auth-response';
 
 export const prerender = false;
 
@@ -15,7 +16,7 @@ export const POST: APIRoute = async ({ request, redirect, cookies }) => {
     if (blocked) return blocked;
 
     if (!email || !password) {
-        return new Response('Missing email or password', { status: 400 });
+        return authErrorResponse(request, 'Missing email or password', 400);
     }
 
     // Must be set before signInWithPassword runs, since that's what writes the auth
@@ -40,8 +41,10 @@ export const POST: APIRoute = async ({ request, redirect, cookies }) => {
 
     if (error) {
         cookies.delete(REMEMBER_ME_COOKIE, { path: '/' });
-        return new Response(`Login failed: ${error.message}`, { status: 401 });
+        return authErrorResponse(request, `Login failed: ${error.message}`, 401);
     }
+
+	if (wantsJson(request)) return Response.json({ redirect: '/' });
 
     // 303 so the POST is followed by a GET (see logout.ts).
     return redirect('/', 303);

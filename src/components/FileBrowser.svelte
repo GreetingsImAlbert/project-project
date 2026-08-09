@@ -5,7 +5,6 @@
 	import UploadForm from './UploadForm.svelte';
 	import RenameModal from './RenameModal.svelte';
 	import ProjectStorageUsed from './ProjectStorageUsed.svelte';
-	import Toasts from './Toasts.svelte';
 	import { adjustProjectStorage } from '../lib/project-storage.svelte';
 	import { toastError, toastSuccess } from '../lib/toast.svelte';
 	import { formatBytes } from '../lib/format-bytes';
@@ -803,8 +802,6 @@
 		onCancel={closeRenameFolder}
 	/>
 {/if}
-
-<Toasts />
 
 <style>
 	.browser-header {

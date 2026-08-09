@@ -7,15 +7,15 @@
 	// a cookie-less client (see api/auth/reset-password.ts).
 	import { onMount } from 'svelte';
 	import { MIN_PASSWORD_LENGTH, MAX_PASSWORD_LENGTH, passwordProblem } from '../lib/account-validation';
+	import { authToastError, authToastSuccess } from '../lib/toast.svelte';
 
 	let tokens = $state<{ accessToken: string; refreshToken: string } | null>(null);
-	let linkError = $state<string | null>(null);
+	let linkUnavailable = $state(false);
 	let ready = $state(false);
 
 	let password = $state('');
 	let confirmPassword = $state('');
 	let saving = $state(false);
-	let error = $state<string | null>(null);
 	let done = $state(false);
 
 	onMount(() => {
@@ -34,13 +34,20 @@
 		if (location.hash) {
 			history.replaceState(null, '', location.pathname + location.search);
 		}
+		if (query.has('error_description')) {
+			query.delete('error_description');
+			const cleanSearch = query.toString();
+			history.replaceState(null, '', `${location.pathname}${cleanSearch ? `?${cleanSearch}` : ''}`);
+		}
 
 		if (reported) {
-			linkError = reported;
+			authToastError(reported);
+			linkUnavailable = true;
 		} else if (accessToken && refreshToken) {
 			tokens = { accessToken, refreshToken };
 		} else {
-			linkError = 'This page needs to be opened from the link in the reset email.';
+			authToastError('This page needs to be opened from the link in the reset email.');
+			linkUnavailable = true;
 		}
 
 		ready = true;
@@ -50,16 +57,14 @@
 		event.preventDefault();
 		if (saving || !tokens) return;
 
-		error = null;
-
 		const problem = passwordProblem(password);
 		if (problem) {
-			error = problem;
+			authToastError(problem);
 			return;
 		}
 
 		if (password !== confirmPassword) {
-			error = 'The two passwords do not match';
+			authToastError('The two passwords do not match');
 			return;
 		}
 
@@ -70,32 +75,35 @@
 		formData.set('refreshToken', tokens.refreshToken);
 		formData.set('password', password);
 
-		const res = await fetch('/api/auth/reset-password', { method: 'POST', body: formData });
+		try {
+			const res = await fetch('/api/auth/reset-password', { method: 'POST', body: formData });
 
-		if (!res.ok) {
-			error = await res.text();
+			if (!res.ok) {
+				authToastError(await res.text());
+				return;
+			}
+
+			// The link is spent and every session is revoked — hold on to nothing.
+			tokens = null;
+			password = '';
+			confirmPassword = '';
+			done = true;
+			authToastSuccess('Your password has been changed, and every session signed in with the old one has been revoked.');
+		} catch (error) {
+			authToastError(error instanceof Error ? error.message : 'Could not set the new password');
+		} finally {
 			saving = false;
-			return;
 		}
-
-		// The link is spent and every session is revoked — hold on to nothing.
-		tokens = null;
-		password = '';
-		confirmPassword = '';
-		done = true;
-		saving = false;
 	}
 </script>
 
 {#if !ready}
 	<p class="muted">Checking your reset link…</p>
 {:else if done}
-	<p role="status">Your password has been changed, and every session signed in with the old one has been revoked.</p>
 	<!-- data-astro-reload: an identity change wants a real document load, same reason as
 	     the login and logout forms. -->
 	<p><a href="/login" data-astro-reload>Log in with your new password →</a></p>
-{:else if linkError}
-	<p class="form-note error">{linkError}</p>
+{:else if linkUnavailable}
 	<p><a href="/forgot-password">Request a new reset link →</a></p>
 {:else}
 	<p class="muted">Choose a new password. You are not signed in yet — you will log in with it once it is set.</p>
@@ -131,7 +139,5 @@
 		<div class="form-actions">
 			<button type="submit" disabled={saving}>{saving ? 'Setting…' : 'Set new password'}</button>
 		</div>
-
-		{#if error}<p class="form-note error">{error}</p>{/if}
 	</form>
 {/if}

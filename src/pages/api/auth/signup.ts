@@ -5,6 +5,7 @@ import { wouldExceedUserLimit } from '../../../lib/user-limit';
 import { displayNameProblem } from '../../../lib/account-validation';
 import { alertSignup } from '../../../lib/signup-alert';
 import { checkAuthRateLimit } from '../../../lib/auth-rate-limit';
+import { authErrorResponse, wantsJson } from '../../../lib/auth-response';
 
 export const prerender = false;
 
@@ -18,18 +19,18 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
 	if (blocked) return blocked;
 
 	if (!email || !password || !displayName) {
-		return new Response('Missing required fields', { status: 400 });
+		return authErrorResponse(request, 'Missing required fields', 400);
 	}
 
 	const trimmedDisplayName = displayName.trim();
 	const nameProblem = displayNameProblem(trimmedDisplayName);
 	if (nameProblem) {
-		return new Response(nameProblem, { status: 400 });
+		return authErrorResponse(request, nameProblem, 400);
 	}
 
 	const admin = getSupabaseAdmin(env);
 	if (await wouldExceedUserLimit(admin)) {
-		return new Response('Signups are full', { status: 403 });
+		return authErrorResponse(request, 'Signups are full', 403);
 	}
 
 	const { data, error: signUpError } = await locals.supabase.auth.signUp({
@@ -45,10 +46,10 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
 		// Rare race: two signups pass the count check above in the same instant, and
 		// the DB-level advisory-lock check in the on_auth_user_created trigger (see
 		// SCHEMA.md) is the one that actually catches it.
-		if (signUpError?.message.includes('Signups are full')) {
-			return new Response('Signups are full', { status: 403 });
+		if (signUpError?.message?.includes('Signups are full')) {
+			return authErrorResponse(request, 'Signups are full', 403);
 		}
-		return new Response(`Signup failed: ${signUpError?.message}`, { status: 400 });
+		return authErrorResponse(request, `Signup failed: ${signUpError?.message ?? 'Could not create account'}`, 400);
 	}
 
 	// When email confirmations are on, Supabase deliberately returns a look-alike
@@ -65,8 +66,17 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
 	// is usable — send the user back to login with a message instead of
 	// silently bouncing them there via the auth redirect.
 	if (!data.session) {
+		if (wantsJson(request)) {
+			return Response.json({
+				requiresEmailConfirmation: true,
+				message: 'Account created! Check your email for a confirmation link before logging in.',
+			});
+		}
+
 		return redirect('/login?checkEmail=1', 303);
 	}
+
+	if (wantsJson(request)) return Response.json({ redirect: '/' });
 
 	// 303 so the POST is followed by a GET (see logout.ts).
 	return redirect('/', 303);

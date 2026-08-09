@@ -5,6 +5,7 @@ import Header from '../components/Header.astro';
 import ProjectNav from '../components/ProjectNav.astro';
 import AppSidebar from '../components/AppSidebar.svelte';
 import GlobalFileViewer from '../components/GlobalFileViewer.svelte';
+import Toasts from '../components/Toasts.svelte';
 
 interface Props {
 	title?: string;
@@ -78,6 +79,8 @@ const isStaging = Astro.url.hostname === 'p2testing.albertmendoza.com';
 			<!-- Mounted for guests too: public files open in the same viewer, keyed under a
 			     guest storage key since there is no user id to scope the tabs by. -->
 			<GlobalFileViewer client:load transition:persist userId={user?.id} />
+			<!-- Toasts are global because actions on several pages use the shared toast store. -->
+			<Toasts client:load transition:persist />
 			<AppSidebar
 				client:idle
 				transition:persist

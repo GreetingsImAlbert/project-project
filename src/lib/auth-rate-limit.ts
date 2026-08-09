@@ -1,6 +1,8 @@
 // Rate-limiting for the unauthenticated auth endpoints (login, signup,
 // forgot-password). Each endpoint has its own binding in wrangler.jsonc; the
 // key scheme is what keeps one endpoint's abuse from spilling into another's.
+
+import { wantsJson } from './auth-response';
 //
 // Each request checks two keys against the same limiter:
 //   - `ip:<CF-Connecting-IP>` — caps how many attempts one client can make,
@@ -23,7 +25,15 @@ const RATE_LIMIT_FALLBACK_IP = 'unknown';
 const RATE_LIMIT_MESSAGE = 'Too many requests. Try again in a minute.';
 const RATE_LIMIT_RETRY_AFTER_SECONDS = '60';
 
-export function rateLimitResponse(): Response {
+
+export function rateLimitResponse(request?: Request): Response {
+	if (request && wantsJson(request)) {
+		return Response.json(
+			{ error: RATE_LIMIT_MESSAGE },
+			{ status: 429, headers: { 'Retry-After': RATE_LIMIT_RETRY_AFTER_SECONDS } },
+		);
+	}
+
 	return new Response(RATE_LIMIT_MESSAGE, {
 		status: 429,
 		headers: { 'Retry-After': RATE_LIMIT_RETRY_AFTER_SECONDS },
@@ -50,7 +60,7 @@ export async function checkAuthRateLimit(
 	for (const key of keys) {
 		const { success } = await limiter.limit({ key });
 		if (!success) {
-			return rateLimitResponse();
+			return rateLimitResponse(request);
 		}
 	}
 

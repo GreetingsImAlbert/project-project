@@ -2,6 +2,7 @@ import type { APIRoute } from 'astro';
 import { env } from 'cloudflare:workers';
 import { createStatelessSupabaseClient } from '../../../lib/supabase/stateless';
 import { checkAuthRateLimit } from '../../../lib/auth-rate-limit';
+import { authErrorResponse, wantsJson } from '../../../lib/auth-response';
 
 export const prerender = false;
 
@@ -13,7 +14,7 @@ export const POST: APIRoute = async ({ request, redirect }) => {
 	if (blocked) return blocked;
 
 	if (!email) {
-		return new Response('Missing email', { status: 400 });
+		return authErrorResponse(request, 'Missing email', 400);
 	}
 
 	// Stateless, so the recovery link Supabase mails out is an implicit-flow one:
@@ -30,7 +31,10 @@ export const POST: APIRoute = async ({ request, redirect }) => {
 	}
 
 	// Same answer either way. Whether an address has an account here isn't something
-	// an unauthenticated form should confirm, so a rejected address and a rate-limit
-	// error are both reported as a sent mail rather than handed back as a signal.
+	// an unauthenticated form should confirm, so provider failures are reported as a
+	// sent mail rather than handed back as a signal. Rate-limit responses return above.
+	const message = 'If an account exists for that address, a reset link is on its way. It is single-use and expires shortly — open the newest one if you asked more than once.';
+	if (wantsJson(request)) return Response.json({ message });
+
 	return redirect('/forgot-password?sent=1', 303);
 };

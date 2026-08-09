@@ -15,6 +15,7 @@ export interface Toast {
 }
 
 const DISMISS_AFTER_MS = 3000;
+const AUTH_DISMISS_AFTER_MS = 8000;
 
 let nextId = 0;
 
@@ -24,13 +25,13 @@ export function dismissToast(id: number) {
 	toastState.toasts = toastState.toasts.filter((t) => t.id !== id);
 }
 
-export function pushToast(message: string, kind: ToastKind = 'error') {
+export function pushToast(message: string, kind: ToastKind = 'error', dismissAfterMs = DISMISS_AFTER_MS) {
 	const trimmed = message.trim();
 	if (!trimmed) return;
 
 	const id = ++nextId;
 	toastState.toasts = [...toastState.toasts, { id, kind, message: trimmed }];
-	setTimeout(() => dismissToast(id), DISMISS_AFTER_MS);
+	setTimeout(() => dismissToast(id), dismissAfterMs);
 }
 
 export function toastError(message: string) {
@@ -39,4 +40,12 @@ export function toastError(message: string) {
 
 export function toastSuccess(message: string) {
 	pushToast(message, 'success');
+}
+
+export function authToastError(message: string) {
+	pushToast(message, 'error', AUTH_DISMISS_AFTER_MS);
+}
+
+export function authToastSuccess(message: string) {
+	pushToast(message, 'success', AUTH_DISMISS_AFTER_MS);
 }
