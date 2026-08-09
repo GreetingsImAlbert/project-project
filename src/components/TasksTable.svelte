@@ -3,7 +3,16 @@
 	import { slide } from 'svelte/transition';
 	import TasksCalendar from './TasksCalendar.svelte';
 	import Avatar from './Avatar.svelte';
-	import { tasksState, initTasks, addTask, updateTask, removeTask, type Task, type TaskCategoryPosition } from '../lib/tasks-store.svelte';
+	import {
+		tasksState,
+		taskReorderState,
+		initTasks,
+		addTask,
+		updateTask,
+		removeTask,
+		type Task,
+		type TaskCategoryPosition,
+	} from '../lib/tasks-store.svelte';
 	import {
 		TASK_CATEGORY_COLOR_SLOTS,
 		categoryColorIndex,
@@ -344,6 +353,22 @@
 	function cancelField() {
 		editingField = null;
 		rowError = null;
+	}
+
+	function taskReorderError(taskId: string): string | null {
+		const error = taskReorderState.error;
+		return error?.scope === 'task' && error.taskId === taskId ? error.message : null;
+	}
+
+	function categoryReorderError(category: string): string | null {
+		const error = taskReorderState.error;
+		if (error?.scope !== 'category') return null;
+		const normalized = category === UNCATEGORIZED ? null : category;
+		return (error.category?.trim() || null) === normalized ? error.message : null;
+	}
+
+	function globalCategoryReorderError(): string | null {
+		return taskReorderState.error?.scope === 'categories' ? taskReorderState.error.message : null;
 	}
 
 	// A category's colour belongs to the project, not to the task being edited, so it
@@ -751,6 +776,7 @@
      it's open — the controls are sized to the line height they replace. -->
 {#snippet detailBody(task: Task)}
 	{@const busy = savingId === task.id}
+	{@const reorderMessage = taskReorderError(task.id)}
 	<dl class="detail">
 		<dt>Name</dt>
 		<dd>
@@ -936,6 +962,7 @@
 	</dl>
 
 	{#if rowError?.id === task.id}<p class="panel-error">{rowError.message}</p>{/if}
+	{#if reorderMessage}<p class="panel-error">{reorderMessage}</p>{/if}
 {/snippet}
 
 <!-- Creation uses the same detail panel as an expanded task.
@@ -1143,6 +1170,13 @@
 		{@render addTaskEditor()}
 	{/if}
 
+	{#if globalCategoryReorderError()}
+		<p class="reorder-error" role="alert">{globalCategoryReorderError()}</p>
+	{/if}
+	{#if !showGroupHeaders && taskReorderState.error?.scope === 'category'}
+		<p class="reorder-error" role="alert">{taskReorderState.error.message}</p>
+	{/if}
+
 	{#if viewMode === 'calendar'}
 		<TasksCalendar tasks={visibleTasks} today={today} nowTime={nowTime} colorFor={styleForTask} onSelect={toggleDetail} selectedId={openId} />
 
@@ -1199,10 +1233,14 @@
 						<span class="group-count">{openIn(group.tasks)} of {group.tasks.length} open</span>
 					</button>
 				{/if}
+				{#if categoryReorderError(group.category)}
+					<p class="category-error" role="alert">{categoryReorderError(group.category)}</p>
+				{/if}
 
 				{#if !isCollapsed(group.category)}
 					{#each group.renderedTasks as task (task.id)}
 						{@const status = statusOf(task)}
+						{@const reorderMessage = taskReorderError(task.id)}
 						<!-- The anchor a `#task-<id>` link scrolls to — see openLinkedTask. -->
 						<div class="task-item" id={`task-${task.id}`} class:open={openId === task.id}>
 							<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
@@ -1268,8 +1306,8 @@
 							{/if}
 
 							<!-- A row-level failure (Done, Delete) with no panel open to carry it. -->
-							{#if rowError?.id === task.id && openId !== task.id}
-								<p class="row-error">{rowError.message}</p>
+							{#if (rowError?.id === task.id || reorderMessage) && openId !== task.id}
+								<p class="row-error">{rowError?.id === task.id ? rowError.message : reorderMessage}</p>
 							{/if}
 						</div>
 					{/each}
@@ -1740,6 +1778,21 @@
 		padding: 0 var(--space-2) var(--space-3);
 		color: var(--color-danger);
 		font-size: 0.78rem;
+	}
+
+	.reorder-error,
+	.category-error {
+		margin: var(--space-2) 0;
+		color: var(--color-danger);
+		font-size: 0.78rem;
+	}
+
+	.reorder-error {
+		padding: 0 var(--space-2);
+	}
+
+	.category-error {
+		padding: 0 var(--space-2) var(--space-2);
 	}
 
 	/* Panels */
