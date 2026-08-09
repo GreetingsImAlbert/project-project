@@ -9,12 +9,12 @@
     "build": "node scripts/build.mjs production",
     "build:staging": "node scripts/build.mjs staging",
     "test": "node --test --experimental-strip-types --loader ./scripts/test-loader.mjs tests/task-status.test.ts tests/task-form.test.ts tests/image-viewer.test.ts",
-    "update-types": "dotenv -e .env.staging -- sh -c 'npx --yes supabase gen types typescript --project-id $SUPABASE_STAGING_REF > src/lib/supabase/database.types.ts'",
+    "update-types": "dotenv -e .env.staging -- sh -c \"npx --yes supabase gen types typescript --project-id $SUPABASE_STAGING_REF > src/lib/supabase/database.types.ts\"",
     "dev:staging": "npm run build:staging && npx wrangler dev --env staging",
     "deploy:staging": "npm run build:staging && npx wrangler deploy --env staging",
     "deploy:prod": "npm run build && npx wrangler deploy --env prod",
-    "link:staging": "dotenv -e .env.staging -- sh -c 'supabase link --project-ref $SUPABASE_STAGING_REF'",
-    "link:prod": "dotenv -e .env.production -- sh -c 'supabase link --project-ref $SUPABASE_PROD_REF'"
+    "link:staging": "dotenv -e .env.staging -- sh -c \"supabase link --project-ref $SUPABASE_STAGING_REF\"",
+    "link:prod": "dotenv -e .env.production -- sh -c \"supabase link --project-ref $SUPABASE_PROD_REF\""
   },
   "dependencies": {
     "@astrojs/cloudflare": "^14.1.3",

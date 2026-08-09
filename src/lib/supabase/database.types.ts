@@ -672,6 +672,38 @@ export type Database = {
           },
         ]
       }
+      task_category_positions: {
+        Row: {
+          category_name: string | null
+          created_at: string
+          id: string
+          priority_position: number
+          project_id: string
+        }
+        Insert: {
+          category_name?: string | null
+          created_at?: string
+          id?: string
+          priority_position?: number
+          project_id: string
+        }
+        Update: {
+          category_name?: string | null
+          created_at?: string
+          id?: string
+          priority_position?: number
+          project_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_category_positions_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tasks: {
         Row: {
           category: string | null
@@ -682,6 +714,7 @@ export type Database = {
           description: string | null
           id: string
           name: string
+          priority_position: number
           project_id: string
           start_date: string | null
           start_time: string
@@ -696,6 +729,7 @@ export type Database = {
           description?: string | null
           id?: string
           name: string
+          priority_position?: number
           project_id: string
           start_date?: string | null
           start_time?: string
@@ -710,6 +744,7 @@ export type Database = {
           description?: string | null
           id?: string
           name?: string
+          priority_position?: number
           project_id?: string
           start_date?: string | null
           start_time?: string
