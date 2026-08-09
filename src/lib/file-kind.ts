@@ -2,7 +2,15 @@
 // unsupported file never even fires a request) and by the content endpoint (so the
 // server doesn't stream arbitrary binaries back as text just because a client asked).
 
-export type FileKind = 'markdown' | 'text' | 'model' | 'pdf' | 'unsupported';
+export type FileKind = 'markdown' | 'text' | 'model' | 'pdf' | 'image' | 'unsupported';
+export type BinaryPreviewKind = Extract<FileKind, 'model' | 'pdf' | 'image'>;
+
+export interface BinaryPreviewInfo {
+	kind: BinaryPreviewKind;
+	maxBytes: number;
+	label: string;
+	contentType: string;
+}
 
 // Text small enough to hand to the browser in one go. Decimal bytes, matching the rest
 // of the project's byte math (see r2-quota.ts).
@@ -18,12 +26,28 @@ export const MAX_MODEL_BYTES = 50_000_000;
 // built-in viewer to handle arbitrarily large uploads inside the panel.
 export const MAX_PDF_BYTES = 50_000_000;
 
+// Browser-native image previews stay behind an explicit extension allowlist. Storage's
+// `image/*` MIME family is broader than the formats every browser can decode, and the
+// stored MIME value is user-provided metadata rather than a safe response type.
+export const MAX_IMAGE_BYTES = 50_000_000;
+
 // R2 keys top out at 1024 bytes and already carry `${projectId}/${uuid}-`, so this
 // leaves comfortable room while still ruling out a filename absurd enough to break
 // the key or the file list's layout.
 export const MAX_FILENAME_LENGTH = 255;
 
 const MARKDOWN_EXTENSIONS = new Set(['md', 'markdown', 'mdown', 'mkd', 'mdx']);
+
+const IMAGE_MIME_BY_EXTENSION: Record<string, string> = {
+	jpg: 'image/jpeg',
+	jpeg: 'image/jpeg',
+	png: 'image/png',
+	gif: 'image/gif',
+	webp: 'image/webp',
+	avif: 'image/avif',
+	bmp: 'image/bmp',
+	ico: 'image/x-icon',
+};
 
 const TEXT_EXTENSIONS = new Set([
 	// plain / data
@@ -112,6 +136,31 @@ export function languageFor(filename: string): string | null {
 	return lookup(LANGUAGE_BY_BASENAME, name.replace(/^\./, ''));
 }
 
+export function imageMimeType(filename: string): string | null {
+	const name = filename.trim().toLowerCase();
+	const { ext } = splitFilename(name);
+	return ext ? lookup(IMAGE_MIME_BY_EXTENSION, ext.slice(1)) : null;
+}
+
+// The raw endpoint and the viewer share one policy for binary previews. Keeping the
+// response type and size ceiling beside fileKind prevents an extension being accepted by
+// the UI but rejected (or served with the wrong MIME) by the server.
+export function binaryPreviewInfo(filename: string): BinaryPreviewInfo | null {
+	const kind = fileKind(filename);
+
+	if (kind === 'model') {
+		return { kind, maxBytes: MAX_MODEL_BYTES, label: 'Model', contentType: 'application/octet-stream' };
+	}
+	if (kind === 'pdf') {
+		return { kind, maxBytes: MAX_PDF_BYTES, label: 'PDF', contentType: 'application/pdf' };
+	}
+
+	if (kind !== 'image') return null;
+
+	const contentType = imageMimeType(filename);
+	return contentType ? { kind, maxBytes: MAX_IMAGE_BYTES, label: 'Image', contentType } : null;
+}
+
 // Kinds the text pipeline handles — decoded as UTF-8, shown in the <pre>/Markdown body,
 // and editable. Callers must test this rather than `!== 'unsupported'`: a mesh is a
 // supported file that is emphatically not text, and decoding one would hand the panel a
@@ -130,6 +179,7 @@ export function fileKind(filename: string): FileKind {
 		if (TEXT_EXTENSIONS.has(bare)) return 'text';
 		if (MODEL_EXTENSIONS.has(bare)) return 'model';
 		if (bare === 'pdf') return 'pdf';
+		if (lookup(IMAGE_MIME_BY_EXTENSION, bare)) return 'image';
 		return 'unsupported';
 	}
 

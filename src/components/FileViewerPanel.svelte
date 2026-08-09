@@ -66,6 +66,9 @@
 	let content = $state<string | null>(null);
 	let error = $state<string | null>(null);
 	let loading = $state(false);
+	let imageLoading = $state(false);
+	let imageError = $state(false);
+	let imageRequestKey = $state(0);
 	let downloading = $state(false);
 	// Separate from `error` so a failed download doesn't blank out a preview that loaded.
 	let downloadError = $state<string | null>(null);
@@ -146,11 +149,15 @@
 		contentRequest?.abort();
 		content = null;
 		error = null;
+		loading = false;
+		const currentKind = fileKind(current.filename);
+		imageLoading = currentKind === 'image';
+		imageError = false;
 		downloadError = null;
 
-		// Meshes never come through here: CadViewer streams the raw bytes from its own
-		// endpoint, and decoding an STL as UTF-8 would only produce a 415 anyway.
-		if (!isTextKind(fileKind(current.filename))) return;
+		// Binary previews never come through here: their native viewers stream the raw bytes
+		// from raw.ts, and decoding them as UTF-8 would only produce a 415 anyway.
+		if (!isTextKind(currentKind)) return;
 
 		const seq = ++requestSeq;
 		const controller = new AbortController();
@@ -183,6 +190,25 @@
 				error = 'Could not load this file';
 				loading = false;
 			});
+	}
+
+	function imageLoaded(fileId: string, requestKey: number) {
+		if (file?.id !== fileId || imageRequestKey !== requestKey) return;
+		imageLoading = false;
+		imageError = false;
+	}
+
+	function imageFailed(fileId: string, requestKey: number) {
+		if (file?.id !== fileId || imageRequestKey !== requestKey) return;
+		imageLoading = false;
+		imageError = true;
+	}
+
+	function retryImage() {
+		if (!file || kind !== 'image') return;
+		imageError = false;
+		imageLoading = true;
+		imageRequestKey += 1;
 	}
 
 	$effect(() => {
@@ -621,7 +647,14 @@
 			</p>
 		{/if}
 
-		<div class="viewer-body" class:editing class:model={kind === 'model'} class:pdf={kind === 'pdf'}>
+		<div
+			class="viewer-body"
+			class:editing
+			class:model={kind === 'model'}
+			class:pdf={kind === 'pdf'}
+			class:image={kind === 'image'}
+			aria-busy={kind === 'image' && imageLoading}
+		>
 			{#if kind === 'unsupported'}
 				<p class="viewer-note">Unsupported</p>
 				<p class="viewer-note muted">This file can't be previewed. Download it to open it locally.</p>
@@ -643,6 +676,25 @@
 					src={`/api/files/${file.id}/raw`}
 					title={`PDF preview of ${file.filename}`}
 				></iframe>
+			{:else if kind === 'image'}
+				{#if imageError}
+					<div class="viewer-note error image-error" role="alert">
+						<p>Could not load this image. Download it to open it locally.</p>
+						<button type="button" class="btn-plain" onclick={retryImage}>Try again</button>
+					</div>
+				{:else}
+					{#if imageLoading}<p class="viewer-note muted image-loading" role="status">Loading image…</p>{/if}
+					{#key `${file.id}:${imageRequestKey}`}
+						<img
+							class="image-preview"
+							src={`/api/files/${file.id}/raw?preview=${imageRequestKey}`}
+							alt={file.filename}
+							onload={() => imageLoaded(file.id, imageRequestKey)}
+							onerror={() => imageFailed(file.id, imageRequestKey)}
+							decoding="async"
+						/>
+					{/key}
+				{/if}
 			{:else if loading}
 				<p class="viewer-note muted">Loading…</p>
 			{:else if error}
@@ -695,8 +747,11 @@
 		position: absolute;
 		top: 0;
 		bottom: 0;
-		left: -3px;
-		width: 7px;
+		left: -4px;
+		width: 9px;
+		/* The image body is later in the DOM and can fill the panel edge. Keep the
+		   resize target above every preview layer so it still receives the pointer. */
+		z-index: 2;
 		cursor: col-resize;
 		touch-action: none;
 	}
@@ -874,7 +929,8 @@
 	   bigger on every resize. */
 	.viewer-body.editing,
 	.viewer-body.model,
-	.viewer-body.pdf {
+	.viewer-body.pdf,
+	.viewer-body.image {
 		display: flex;
 		overflow: hidden;
 	}
@@ -888,6 +944,42 @@
 		min-width: 0;
 		border: 0;
 		background: var(--color-surface-raised);
+	}
+
+	.viewer-body.image {
+		position: relative;
+		align-items: center;
+		justify-content: center;
+		padding: var(--space-3);
+		background: var(--color-surface-inset);
+	}
+
+	.image-loading {
+		position: absolute;
+		top: var(--space-3);
+		left: var(--space-3);
+		margin: 0;
+	}
+
+	.image-preview {
+		display: block;
+		max-width: 100%;
+		max-height: 100%;
+		width: auto;
+		height: auto;
+		object-fit: contain;
+	}
+
+	.image-error {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: var(--space-2);
+		text-align: center;
+	}
+
+	.image-error p {
+		margin: 0;
 	}
 
 	/* The viewer fills the body, and its own flex column puts the readout bar at the

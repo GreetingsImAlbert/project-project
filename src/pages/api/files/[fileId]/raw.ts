@@ -1,13 +1,13 @@
 import type { APIRoute } from 'astro';
 import { env } from 'cloudflare:workers';
 import { getSupabaseAdmin } from '../../../../lib/supabase/admin';
-import { fileKind, MAX_MODEL_BYTES, MAX_PDF_BYTES } from '../../../../lib/file-kind';
+import { binaryPreviewInfo } from '../../../../lib/file-kind';
 import { getReadableFile } from '../../../../lib/file-access';
 import { errorResponse } from '../../../../lib/error-report';
 
 export const prerender = false;
 
-// Streams binary preview bytes to the CAD and PDF viewers. Sibling of content.ts and proxied for the
+// Streams binary preview bytes to the CAD, PDF, and image viewers. Sibling of content.ts and proxied for the
 // same reason: a browser fetch of an R2 presigned URL is cross-origin, so it would need
 // CORS opened up on the bucket, whereas this stays same-origin and gives the size check
 // somewhere to run. Unlike content.ts nothing is decoded or buffered — the body is piped
@@ -33,15 +33,13 @@ export const GET: APIRoute = async ({ params, request, locals }) => {
 
 	// Deliberately narrower than "not unsupported": this route must not become a general
 	// same-origin reader for every file type the app happens to store.
-	const kind = fileKind(file.filename);
-	if (kind !== 'model' && kind !== 'pdf') {
+	const preview = binaryPreviewInfo(file.filename);
+	if (!preview) {
 		return new Response('This file type cannot be previewed as binary data', { status: 415 });
 	}
 
-	const maxBytes = kind === 'model' ? MAX_MODEL_BYTES : MAX_PDF_BYTES;
-	const label = kind === 'model' ? 'Model' : 'PDF';
-	if (file.size_bytes !== null && file.size_bytes > maxBytes) {
-		return new Response(`${label} is too large to preview — download it instead`, { status: 413 });
+	if (file.size_bytes !== null && file.size_bytes > preview.maxBytes) {
+		return new Response(`${preview.label} is too large to preview — download it instead`, { status: 413 });
 	}
 
 	// The binding reads the bucket directly — no SigV4 signing, no subrequest to
@@ -60,15 +58,14 @@ export const GET: APIRoute = async ({ params, request, locals }) => {
 	}
 
 	// Second guard, for rows whose size_bytes predates the HEAD-at-upload behaviour.
-	if (object.size > maxBytes) {
-		return new Response(`${label} is too large to preview — download it instead`, { status: 413 });
+	if (object.size > preview.maxBytes) {
+		return new Response(`${preview.label} is too large to preview — download it instead`, { status: 413 });
 	}
 
 	return new Response(object.body, {
 		headers: {
-			// Never the stored mime_type: the extension allowlist above decides whether these
-			// bytes are parsed as a model or handed to the browser's PDF viewer.
-			'content-type': kind === 'pdf' ? 'application/pdf' : 'application/octet-stream',
+			// Never the stored mime_type: the extension allowlist above decides the response type.
+			'content-type': preview.contentType,
 			'content-disposition': 'inline',
 			'x-content-type-options': 'nosniff',
 			// A binary file's r2_key is immutable: the editor's PUT only accepts text kinds, and a
