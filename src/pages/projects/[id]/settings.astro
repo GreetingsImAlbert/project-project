@@ -9,6 +9,7 @@ import ProjectNameEditor from '../../../components/ProjectNameEditor.svelte';
 import CurrencyPicker from '../../../components/CurrencyPicker.svelte';
 import TrashList from '../../../components/TrashList.svelte';
 import ProjectVisibilityPicker from '../../../components/ProjectVisibilityPicker.svelte';
+import DownloadProjectButton from '../../../components/DownloadProjectButton.svelte';
 import { listGhostMembers } from '../../../lib/ghost-members';
 
 export const prerender = false;
@@ -90,6 +91,11 @@ const returnTo = `/projects/${id}/settings`;
 			<AddMemberForm client:idle projectId={project.id} returnTo={returnTo} />
 			<AddGhostMemberForm client:idle projectId={project.id} />
 		</div>
+	</section>
+
+	<section>
+		<h3>Download project</h3>
+		<DownloadProjectButton client:idle projectId={project.id} />
 	</section>
 
 	<section>

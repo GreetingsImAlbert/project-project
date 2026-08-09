@@ -49,6 +49,5 @@
 <style>
 	.download-btn {
 		margin-top: var(--space-2);
-		width: 100%;
 	}
 </style>

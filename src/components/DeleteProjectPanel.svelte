@@ -38,6 +38,10 @@
 		Deleting this project permanently removes its tasks, files, BOM items, transactions, and
 		members. This cannot be undone.
 	</p>
+	<p>
+		Before deleting, <a class="download-link" href={`/api/projects/${projectId}/download-all`}>download this project</a>
+		to keep a copy of its data and files.
+	</p>
 
 	<label class="field">
 		<span>Type <strong>{projectName}</strong> to confirm</span>
@@ -70,5 +74,10 @@
 	.row-error {
 		color: var(--color-danger);
 		margin: 0;
+	}
+
+	.download-link {
+		text-decoration: underline;
+		text-underline-offset: 0.15em;
 	}
 </style>

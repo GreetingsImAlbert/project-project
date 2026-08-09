@@ -3,7 +3,6 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 import TotalCostDisplay from '../../components/TotalCostDisplay.svelte';
 import ProjectDescriptionEditor from '../../components/ProjectDescriptionEditor.svelte';
 import ProjectStorageUsed from '../../components/ProjectStorageUsed.svelte';
-import DownloadProjectButton from '../../components/DownloadProjectButton.svelte';
 import UpcomingTasks from '../../components/UpcomingTasks.svelte';
 import Avatar from '../../components/Avatar.svelte';
 import { getProjectStorageBytes } from '../../lib/r2-quota';
@@ -221,7 +220,6 @@ const memberGroups = roles.map((role) => ({
 				<h2>Quick FAQs</h2>
 				<TotalCostDisplay client:visible totalCost={totalCost} currency={project!.currency as CurrencyCode} />
 				<ProjectStorageUsed client:visible initialUsedBytes={projectStorageBytes} initialFailed={projectStorageFailed} />
-				<DownloadProjectButton client:visible projectId={project!.id} />
 			</section>
 		</div>
 	)}
