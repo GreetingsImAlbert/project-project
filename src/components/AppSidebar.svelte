@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import Avatar from './Avatar.svelte';
+	import { MOBILE_SIDEBAR_EVENT, mobileSidebarIsOpen, setMobileSidebarOpen } from '../lib/sidebar-state';
 	import { TASKS_CHANGED_EVENT } from '../lib/tasks-changed';
 
 	interface SidebarProject {
@@ -85,11 +86,33 @@
 			currentPath = window.location.pathname;
 		}
 
+		const mobileQuery = window.matchMedia('(max-width: 768px)');
+		function updateMobileViewport() {
+			mobileViewport = mobileQuery.matches;
+			if (!mobileViewport && mobileSidebarIsOpen()) setMobileSidebarOpen(false);
+		}
+
+		function handleMobileSidebarChange(event: Event) {
+			const detail = (event as CustomEvent<{ open?: boolean }>).detail;
+			mobileOpen = detail?.open ?? mobileSidebarIsOpen();
+		}
+
+		function closeOnEscape(event: KeyboardEvent) {
+			if (event.key === 'Escape' && mobileViewport && mobileOpen) closeMobileSidebar();
+		}
+
 		window.addEventListener(TASKS_CHANGED_EVENT, refreshProjects);
 		document.addEventListener('astro:after-swap', updateCurrentPath);
+		window.addEventListener(MOBILE_SIDEBAR_EVENT, handleMobileSidebarChange);
+		window.addEventListener('keydown', closeOnEscape);
+		updateMobileViewport();
+		mobileQuery.addEventListener('change', updateMobileViewport);
 		return () => {
 			window.removeEventListener(TASKS_CHANGED_EVENT, refreshProjects);
 			document.removeEventListener('astro:after-swap', updateCurrentPath);
+			window.removeEventListener(MOBILE_SIDEBAR_EVENT, handleMobileSidebarChange);
+			window.removeEventListener('keydown', closeOnEscape);
+			mobileQuery.removeEventListener('change', updateMobileViewport);
 		};
 	});
 
@@ -122,6 +145,8 @@
 	let pinned = $state(
 		typeof document !== 'undefined' && document.documentElement.hasAttribute(PIN_ATTR),
 	);
+	let mobileOpen = $state(mobileSidebarIsOpen());
+	let mobileViewport = $state(false);
 
 	function setPinned(next: boolean) {
 		pinned = next;
@@ -134,6 +159,10 @@
 	}
 
 	function keepExpandedForNavigation() {
+		if (mobileViewport) {
+			setMobileSidebarOpen(false);
+			return;
+		}
 		document.documentElement.setAttribute(NAV_ATTR, '');
 	}
 
@@ -141,9 +170,17 @@
 		document.documentElement.removeAttribute(NAV_ATTR);
 	}
 
-	function togglePinnedFromButton(event: MouseEvent) {
+	function toggleSidebarButton(event: MouseEvent) {
 		event.stopPropagation();
+		if (mobileViewport) {
+			setMobileSidebarOpen(false);
+			return;
+		}
 		setPinned(!pinned);
+	}
+
+	function closeMobileSidebar() {
+		setMobileSidebarOpen(false);
 	}
 
 	// The same click pins and unpins, and it's the same target either way — the panel
@@ -151,6 +188,7 @@
 	// fixture, not a menu, so working in the page shouldn't put it away.
 	// A click on a link is a navigation and leaves the pin alone.
 	function onPanelClick(event: MouseEvent) {
+		if (mobileViewport) return;
 		if (event.target instanceof Element && event.target.closest('a')) return;
 		setPinned(!pinned);
 	}
@@ -164,12 +202,16 @@
 	right edge, so a pointer drifting in from off-screen opens the sidebar before it ever
 	touches a link. The panel outranks it in z-order, so once open every link is clickable.
 -->
-<div class="sidebar-rail" onpointerleave={clearNavigationExpanded}>
+<div class="sidebar-rail" class:mobile-open={mobileOpen} onpointerleave={clearNavigationExpanded}>
 	<div class="hover-zone"></div>
+	{#if mobileOpen}
+		<button type="button" class="mobile-sidebar-backdrop" aria-label="Close navigation" onclick={closeMobileSidebar}></button>
+	{/if}
 
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 	<aside
+		id="app-sidebar"
 		class="sidebar-panel"
 		onclick={onPanelClick}
 	>
@@ -179,13 +221,16 @@
 					class="pin-toggle"
 					class:pinned
 					type="button"
-					aria-label={pinned ? 'Unpin sidebar' : 'Pin sidebar'}
-					aria-pressed={pinned}
-					title={pinned ? 'Unpin sidebar' : 'Pin sidebar'}
-					onclick={togglePinnedFromButton}
+					aria-label={mobileViewport ? 'Close navigation' : pinned ? 'Unpin sidebar' : 'Pin sidebar'}
+					aria-pressed={mobileViewport ? undefined : pinned}
+					title={mobileViewport ? 'Close navigation' : pinned ? 'Unpin sidebar' : 'Pin sidebar'}
+					onclick={toggleSidebarButton}
 				>
-					<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
+					<svg class="pin-glyph" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
 						<path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5v6h2v-6h5v-2l-2-2Z" />
+					</svg>
+					<svg class="close-glyph" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+						<path d="M5 5l14 14M19 5L5 19" />
 					</svg>
 				</button>
 			</div>
@@ -303,6 +348,10 @@
 		z-index: 1;
 	}
 
+	.mobile-sidebar-backdrop {
+		display: none;
+	}
+
 	.sidebar-panel {
 		position: absolute;
 		top: 0;
@@ -360,6 +409,10 @@
 
 	.pin-toggle.pinned {
 		color: var(--color-fg);
+	}
+
+	.close-glyph {
+		display: none;
 	}
 
 	.sidebar-rail:hover .pin-toggle,
@@ -506,7 +559,69 @@
 
 	@media (max-width: 768px) {
 		.sidebar-rail {
+			display: block;
+			position: fixed;
+			inset: 0;
+			z-index: 1200;
+			width: 100%;
+			height: 100%;
+			flex: 0 0 auto;
+			pointer-events: none;
+		}
+
+		.sidebar-rail.mobile-open {
+			pointer-events: auto;
+		}
+
+		.sidebar-rail .hover-zone {
 			display: none;
+		}
+
+		.sidebar-rail .sidebar-panel {
+			width: min(var(--panel-width), calc(100vw - var(--space-6)));
+			transform: translateX(-105%);
+			border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+			box-shadow: 4px 0 18px rgb(0 0 0 / 0.18);
+			transition: width 0.15s ease, transform 0.18s ease;
+		}
+
+		.sidebar-rail.mobile-open .sidebar-panel {
+			width: min(var(--panel-width), calc(100vw - var(--space-6)));
+			transform: translateX(0);
+		}
+
+		.mobile-sidebar-backdrop {
+			display: block;
+			position: fixed;
+			inset: 0;
+			z-index: 1;
+			width: 100%;
+			height: 100%;
+			padding: 0;
+			background: rgb(0 0 0 / 0.32);
+			border: 0;
+			cursor: default;
+		}
+
+		.sidebar-rail.mobile-open .pin-toggle {
+			opacity: 1;
+			pointer-events: auto;
+		}
+
+		.sidebar-rail.mobile-open .pin-glyph {
+			display: none;
+		}
+
+		.sidebar-rail.mobile-open .close-glyph {
+			display: block;
+		}
+
+		.sidebar-rail.mobile-open .row-label {
+			opacity: 1;
+		}
+
+		.sidebar-rail.mobile-open .project-list {
+			padding-left: var(--space-4);
 		}
 	}
 </style>

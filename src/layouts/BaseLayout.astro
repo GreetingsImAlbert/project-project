@@ -56,6 +56,9 @@ const isStaging = Astro.url.hostname === 'p2testing.albertmendoza.com';
 					if (document.documentElement.hasAttribute('data-sidebar-navigating')) {
 						ev.newDocument.documentElement.setAttribute('data-sidebar-navigating', '');
 					}
+					if (document.documentElement.hasAttribute('data-sidebar-mobile-open')) {
+						ev.newDocument.documentElement.setAttribute('data-sidebar-mobile-open', '');
+					}
 					if (document.documentElement.hasAttribute('data-page-loading')) {
 						ev.newDocument.documentElement.setAttribute('data-page-loading', '');
 					}
