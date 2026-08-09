@@ -287,6 +287,17 @@
 	});
 
 	function canShowTaskDragHandle(task: Task): boolean {
+		// Keep the affordance mounted while a reorder is saving. Removing it during
+		// the request changes the row height and makes the whole table jump.
+		return canReorderTask(task, {
+			canEdit,
+			onlyMine,
+			sortMode: tasksState.sortMode,
+			pending: false,
+		});
+	}
+
+	function canStartTaskDrag(task: Task): boolean {
 		return canReorderTask(task, {
 			canEdit,
 			onlyMine,
@@ -296,7 +307,14 @@
 	}
 
 	function canShowCategoryDragHandle(group: TaskGroup): boolean {
-		return canEdit && !onlyMine && tasksState.sortMode === 'priority' && !group.done && activeCategoryNames.length > 1 && !taskReorderState.pending;
+		// As with task handles, keep the category affordance in the layout while a
+		// reorder is saving. The pointer/keyboard guards below still block a second
+		// write until the first one finishes.
+		return canEdit && !onlyMine && tasksState.sortMode === 'priority' && !group.done && activeCategoryNames.length > 1;
+	}
+
+	function canStartCategoryDrag(group: TaskGroup): boolean {
+		return canShowCategoryDragHandle(group) && !taskReorderState.pending;
 	}
 
 	function taskIdsInCategory(category: string | null, withoutId?: string): string[] {
@@ -364,21 +382,37 @@
 		dragScrollFrame = null;
 	}
 
-	function taskDragAutoScroll() {
-		if (!dragState) {
-			dragScrollFrame = null;
-			return;
-		}
+	function dragScrollContainer(): HTMLElement | null {
+		if (typeof document === 'undefined') return null;
+		return document.querySelector<HTMLElement>('.app-main.project-main') ?? (document.scrollingElement as HTMLElement | null);
+	}
 
-		const distanceFromTop = dragState.clientY;
-		const distanceFromBottom = window.innerHeight - dragState.clientY;
+	function scrollDragContainer(clientY: number) {
+		const container = dragScrollContainer();
+		if (!container) return;
+
+		const bounds = container.getBoundingClientRect();
+		const distanceFromTop = clientY - bounds.top;
+		const distanceFromBottom = bounds.bottom - clientY;
 		let step = 0;
 		if (distanceFromTop < DRAG_SCROLL_EDGE) {
 			step = -Math.ceil(((DRAG_SCROLL_EDGE - distanceFromTop) / DRAG_SCROLL_EDGE) * DRAG_SCROLL_MAX_STEP);
 		} else if (distanceFromBottom < DRAG_SCROLL_EDGE) {
 			step = Math.ceil(((DRAG_SCROLL_EDGE - distanceFromBottom) / DRAG_SCROLL_EDGE) * DRAG_SCROLL_MAX_STEP);
 		}
-		if (step !== 0) window.scrollBy(0, step);
+		if (step === 0) return;
+
+		const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
+		container.scrollTop = Math.min(maxScrollTop, Math.max(0, container.scrollTop + step));
+	}
+
+	function taskDragAutoScroll() {
+		if (!dragState) {
+			dragScrollFrame = null;
+			return;
+		}
+
+		scrollDragContainer(dragState.clientY);
 		updateTaskDropTarget(dragState.clientY);
 		dragScrollFrame = requestAnimationFrame(taskDragAutoScroll);
 	}
@@ -395,9 +429,10 @@
 	}
 
 	function startTaskDrag(event: PointerEvent, task: Task) {
-		if (!canShowTaskDragHandle(task) || !event.isPrimary || (event.pointerType === 'mouse' && event.button !== 0)) return;
+		if (!canStartTaskDrag(task) || !event.isPrimary || (event.pointerType === 'mouse' && event.button !== 0)) return;
 		event.preventDefault();
 		event.stopPropagation();
+		if (event.currentTarget instanceof HTMLElement) event.currentTarget.setPointerCapture?.(event.pointerId);
 
 		dragState = {
 			taskId: task.id,
@@ -457,7 +492,7 @@
 	}
 
 	async function moveTaskByKeyboard(task: Task, direction: -1 | 1) {
-		if (!canShowTaskDragHandle(task)) return;
+		if (!canStartTaskDrag(task)) return;
 
 		const sourceCategory = normalizedTaskCategory(task.category);
 		const sourceTaskIds = taskIdsInCategory(sourceCategory, task.id);
@@ -554,15 +589,7 @@
 			return;
 		}
 
-		const distanceFromTop = categoryDragState.clientY;
-		const distanceFromBottom = window.innerHeight - categoryDragState.clientY;
-		let step = 0;
-		if (distanceFromTop < DRAG_SCROLL_EDGE) {
-			step = -Math.ceil(((DRAG_SCROLL_EDGE - distanceFromTop) / DRAG_SCROLL_EDGE) * DRAG_SCROLL_MAX_STEP);
-		} else if (distanceFromBottom < DRAG_SCROLL_EDGE) {
-			step = Math.ceil(((DRAG_SCROLL_EDGE - distanceFromBottom) / DRAG_SCROLL_EDGE) * DRAG_SCROLL_MAX_STEP);
-		}
-		if (step !== 0) window.scrollBy(0, step);
+		scrollDragContainer(categoryDragState.clientY);
 		updateCategoryDropTarget(categoryDragState.clientY);
 		categoryDragScrollFrame = requestAnimationFrame(categoryDragAutoScroll);
 	}
@@ -580,7 +607,7 @@
 
 	function startCategoryDrag(event: PointerEvent, group: TaskGroup) {
 		if (
-			!canShowCategoryDragHandle(group) ||
+			!canStartCategoryDrag(group) ||
 			!event.isPrimary ||
 			(event.pointerType === 'mouse' && event.button !== 0) ||
 			dragState ||
@@ -588,6 +615,7 @@
 		) return;
 		event.preventDefault();
 		event.stopPropagation();
+		if (event.currentTarget instanceof HTMLElement) event.currentTarget.setPointerCapture?.(event.pointerId);
 
 		categoryDragState = {
 			sourceCategory: group.categoryName,
@@ -635,7 +663,7 @@
 	}
 
 	async function moveCategoryByKeyboard(group: TaskGroup, direction: -1 | 1) {
-		if (!canShowCategoryDragHandle(group)) return;
+		if (!canStartCategoryDrag(group)) return;
 
 		const categoryIndex = activeCategoryNames.findIndex((category) => sameCategory(category, group.categoryName));
 		const adjacentIndex = categoryIndex + direction;
@@ -2054,13 +2082,15 @@
 		justify-content: center;
 		flex: 0 0 auto;
 		width: 18px;
-		height: 18px;
+		height: 1.6em;
+		min-height: 0;
 		align-self: center;
 		padding: 0;
 		background: none;
 		border: 0;
 		color: inherit;
 		cursor: grab;
+		line-height: 0;
 		touch-action: none;
 		user-select: none;
 		opacity: 0.7;
@@ -2139,8 +2169,8 @@
 	}
 
 	/* Tight rows: the list is meant to be scanned, and body copy's 1.6 line-height over
-	   a two-line deadline cell was spending most of a row's height on air. The padding
-	   still has to clear the row controls, which set their own line-height. */
+	   a two-line deadline cell was spending most of a row's height on air. Drag controls
+	   are constrained to the same text line so switching sort modes cannot resize rows. */
 	.task-row {
 		position: relative;
 		padding: var(--space-2);
@@ -2226,6 +2256,7 @@
 		align-items: flex-start;
 		gap: var(--space-1);
 		min-width: 0;
+		min-height: 1.35em;
 	}
 
 	.task-drag-handle {
@@ -2234,13 +2265,15 @@
 		justify-content: center;
 		flex: 0 0 auto;
 		width: 18px;
-		height: 20px;
-		margin-top: 1px;
+		height: 1.35em;
+		min-height: 0;
+		margin-top: 0;
 		padding: 0;
 		background: none;
 		border: 0;
 		color: var(--color-muted);
 		cursor: grab;
+		line-height: 0;
 		touch-action: none;
 		user-select: none;
 	}
