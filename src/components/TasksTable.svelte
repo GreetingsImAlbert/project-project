@@ -86,6 +86,10 @@
 	// today.ts and task-status.ts.
 	const nowTime = serverNowTime;
 
+	function isTaskOverdue(task: Task): boolean {
+		return displayStatus(task, today, nowTime) === 'overdue';
+	}
+
 	onMount(() => {
 		openLinkedTask();
 		// A second reminder for a task on a page that's already open only changes the
@@ -108,6 +112,10 @@
 
 		if (onlyMine && !task.assignees.some((a) => a.user_id === currentUserId)) {
 			onlyMine = false;
+			renderedTaskCount = TASK_PAGE_SIZE;
+		}
+		if (onlyOverdue && !isTaskOverdue(task)) {
+			onlyOverdue = false;
 			renderedTaskCount = TASK_PAGE_SIZE;
 		}
 		const filteredIndex = visibleTasks.findIndex((candidate) => candidate.id === id);
@@ -246,12 +254,15 @@
 	let editCategoryEffective = $derived(editCategorySelect === NEW_CATEGORY_VALUE ? editCategoryNew : editCategorySelect);
 
 	let onlyMine = $state(false);
+	let onlyOverdue = $state(false);
 	let renderedTaskCount = $state(TASK_PAGE_SIZE);
 
 	let visibleTasks = $derived(
-		onlyMine
-			? tasksState.tasks.filter((task) => task.assignees.some((a) => a.user_id === currentUserId))
-			: tasksState.tasks,
+		tasksState.tasks.filter(
+			(task) =>
+				(!onlyMine || task.assignees.some((a) => a.user_id === currentUserId)) &&
+				(!onlyOverdue || isTaskOverdue(task)),
+		),
 	);
 
 	let pagedTasks = $derived(visibleTasks.slice(0, renderedTaskCount));
@@ -291,7 +302,7 @@
 		// the request changes the row height and makes the whole table jump.
 		return canReorderTask(task, {
 			canEdit,
-			onlyMine,
+			onlyMine: onlyMine || onlyOverdue,
 			sortMode: tasksState.sortMode,
 			pending: false,
 		});
@@ -300,7 +311,7 @@
 	function canStartTaskDrag(task: Task): boolean {
 		return canReorderTask(task, {
 			canEdit,
-			onlyMine,
+			onlyMine: onlyMine || onlyOverdue,
 			sortMode: tasksState.sortMode,
 			pending: taskReorderState.pending,
 		});
@@ -310,7 +321,7 @@
 		// As with task handles, keep the category affordance in the layout while a
 		// reorder is saving. The pointer/keyboard guards below still block a second
 		// write until the first one finishes.
-		return canEdit && !onlyMine && tasksState.sortMode === 'priority' && !group.done && activeCategoryNames.length > 1;
+		return canEdit && !onlyMine && !onlyOverdue && tasksState.sortMode === 'priority' && !group.done && activeCategoryNames.length > 1;
 	}
 
 	function canStartCategoryDrag(group: TaskGroup): boolean {
@@ -1569,7 +1580,7 @@
 		<!-- Counts follow the filter: a meta line reading the project total over a list
 		     showing a subset of it would just look wrong. -->
 		<span class="tasks-meta">
-			{#if onlyMine}
+			{#if onlyMine || onlyOverdue}
 				{visibleTasks.length} of {tasksState.tasks.length} task{tasksState.tasks.length === 1 ? '' : 's'}
 			{:else}
 				{visibleTasks.length} task{visibleTasks.length === 1 ? '' : 's'}
@@ -1577,10 +1588,25 @@
 			· <strong>{openCount}</strong> open
 		</span>
 
-		<label class="mine-toggle">
-			<input type="checkbox" bind:checked={onlyMine} />
-			<span>Just my tasks</span>
-		</label>
+		<button
+			type="button"
+			class="btn-plain mine-toggle"
+			class:active={onlyMine}
+			aria-pressed={onlyMine}
+			onclick={() => (onlyMine = !onlyMine)}
+		>
+			Just my tasks
+		</button>
+
+		<button
+			type="button"
+			class="btn-plain overdue-toggle"
+			class:active={onlyOverdue}
+			aria-pressed={onlyOverdue}
+			onclick={() => (onlyOverdue = !onlyOverdue)}
+		>
+			Overdue only
+		</button>
 
 		<div class="sort-toggle" role="group" aria-label="Task sort order">
 			<button
@@ -1692,7 +1718,13 @@
 	{:else if tasksState.tasks.length === 0 && !showAddForm}
 		<p class="muted empty">No tasks yet.</p>
 	{:else if visibleTasks.length === 0 && !showAddForm}
-		<p class="muted empty">No tasks are appointed to you.</p>
+		<p class="muted empty">
+			{#if onlyOverdue}
+				{onlyMine ? 'No overdue tasks are appointed to you.' : 'No overdue tasks.'}
+			{:else}
+				No tasks are appointed to you.
+			{/if}
+		</p>
 	{:else}
 		<!-- A list, not a table: no outer frame, no vertical rules and no scroller of its
 		     own, so it stays open and grows with the page. The columns are still a grid
@@ -1917,20 +1949,23 @@
 
 	/* The filter, not the Add button, carries the margin that pushes the right-hand
 	   controls over — it's the first one that renders for every role. */
-	.mine-toggle {
-		display: inline-flex;
-		align-items: center;
-		gap: var(--space-1);
-		margin-left: auto;
-		font-size: 0.78rem;
-		color: var(--color-muted);
-		white-space: nowrap;
-		cursor: pointer;
+	.mine-toggle,
+	.overdue-toggle {
+		flex: 0 0 auto;
+		align-self: center;
+		padding: var(--space-1) var(--space-2);
+		font-size: 0.72rem;
+		line-height: 1.2;
 	}
 
-	.mine-toggle input {
-		margin: 0;
-		cursor: pointer;
+	.mine-toggle {
+		margin-left: auto;
+	}
+
+	.mine-toggle.active,
+	.overdue-toggle.active {
+		background: var(--color-fg);
+		color: var(--color-bg);
 	}
 
 	/* Keep the original two-option control without a surrounding box. */

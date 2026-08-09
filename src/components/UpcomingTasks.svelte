@@ -57,18 +57,25 @@
 	// Same filter as the Tasks list's, and deliberately not persisted for the same
 	// reason that one isn't: it's a way to read the list right now, not a setting.
 	let onlyMine = $state(false);
+	let onlyOverdue = $state(false);
 
 	let scoped = $derived(showMineFilter && onlyMine ? reminders.filter((r) => r.mine) : reminders);
+
+	function reminderIsOverdue(reminder: Reminder): boolean {
+		return deadlinePassed(reminder.deadline, reminder.deadlineTime, today, nowTime);
+	}
+
+	let filtered = $derived(onlyOverdue ? scoped.filter(reminderIsOverdue) : scoped);
 
 	// Anything already past due, however long ago. Deliberately not bounded by the
 	// horizon: the setting says how far ahead to look, and a deadline that has already
 	// been missed is the one reminder nobody should be able to shorten their way out of.
-	let overdue = $derived(sortReminders(scoped.filter((r) => deadlinePassed(r.deadline, r.deadlineTime, today, nowTime))));
+	let overdue = $derived(sortReminders(filtered.filter(reminderIsOverdue)));
 
 	let upcoming = $derived(
 		sortReminders(
-			scoped.filter(
-				(r) => !deadlinePassed(r.deadline, r.deadlineTime, today, nowTime) && daysUntil(r.deadline, today) <= horizonDays,
+			filtered.filter(
+				(r) => !reminderIsOverdue(r) && daysUntil(r.deadline, today) <= horizonDays,
 			),
 		),
 	);
@@ -84,17 +91,34 @@
 		<span class="reminders-meta">
 			{#if due.length === 0}
 				nothing due
+			{:else if onlyOverdue}
+				<strong>{due.length}</strong> overdue
 			{:else}
 				<strong>{due.length}</strong> due{overdue.length > 0 ? `, ${overdue.length} overdue` : ''}
 			{/if}
 		</span>
 
 		{#if showMineFilter}
-			<label class="mine-toggle">
-				<input type="checkbox" bind:checked={onlyMine} />
-				<span>Just my tasks</span>
-			</label>
+			<button
+				type="button"
+				class="btn-plain mine-toggle"
+				class:active={onlyMine}
+				aria-pressed={onlyMine}
+				onclick={() => (onlyMine = !onlyMine)}
+			>
+				Just my tasks
+			</button>
 		{/if}
+
+		<button
+			type="button"
+			class="btn-plain overdue-toggle"
+			class:active={onlyOverdue}
+			aria-pressed={onlyOverdue}
+			onclick={() => (onlyOverdue = !onlyOverdue)}
+		>
+			Overdue only
+		</button>
 
 		<label class="horizon">
 			Looking ahead
@@ -107,7 +131,9 @@
 	</div>
 
 	{#if due.length === 0}
-		<p class="muted empty">{emptyLabel} in the {horizonLabel(horizonDays)}.</p>
+		<p class="muted empty">
+			{onlyOverdue ? 'No overdue tasks.' : `${emptyLabel} in the ${horizonLabel(horizonDays)}.`}
+		</p>
 	{:else}
 		<ul class="reminder-list">
 			{#each due as reminder (reminder.id)}
@@ -178,23 +204,30 @@
 		font-variant-numeric: tabular-nums;
 	}
 
-	/* The filter carries the margin that pushes the right-hand controls over, as it does
-	   on the Tasks page — but the horizon has to keep one of its own for the Dashboard,
-	   where there's no filter to do it. */
-	.mine-toggle {
-		display: inline-flex;
-		align-items: center;
-		gap: var(--space-1);
-		margin-left: auto;
-		font-size: 0.78rem;
-		color: var(--color-muted);
-		white-space: nowrap;
-		cursor: pointer;
+	/* The filter or overdue toggle carries the margin that pushes the right-hand controls over,
+	   just as the task page's filter does; the horizon keeps its own margin only when
+	   neither filter is present. */
+	.mine-toggle,
+	.overdue-toggle {
+		flex: 0 0 auto;
+		align-self: center;
+		padding: var(--space-1) var(--space-2);
+		font-size: 0.72rem;
+		line-height: 1.2;
 	}
 
-	.mine-toggle input {
-		margin: 0;
-		cursor: pointer;
+	.mine-toggle {
+		margin-left: auto;
+	}
+
+	.mine-toggle.active,
+	.overdue-toggle.active {
+		background: var(--color-fg);
+		color: var(--color-bg);
+	}
+
+	.overdue-toggle {
+		margin-left: auto;
 	}
 
 	.horizon {
@@ -211,14 +244,12 @@
 		margin-left: 0;
 	}
 
-	/* Both centred in the head rather than baseline-aligned with it. An inline-flex box
-	   takes its baseline from its first item, and the toggle's first item is a checkbox
-	   — which has none, so the box sat on the checkbox's bottom edge and 'Just my tasks'
-	   rode low against 'Looking ahead' beside it. Centring the pair lines the two labels
-	   up with each other, which is the alignment that's actually being read. */
-	.mine-toggle,
-	.horizon {
-		align-self: center;
+	.mine-toggle + .overdue-toggle {
+		margin-left: 0;
+	}
+
+	.overdue-toggle ~ .horizon {
+		margin-left: 0;
 	}
 
 	.horizon select {
