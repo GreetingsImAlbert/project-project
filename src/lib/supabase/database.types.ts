@@ -915,6 +915,17 @@ export type Database = {
         Args: { check_project_id: string }
         Returns: boolean
       }
+      move_task_to_category: {
+        Args: {
+          p_destination_category: string
+          p_destination_task_ids: string[]
+          p_project_id: string
+          p_source_category: string
+          p_source_task_ids: string[]
+          p_task_id: string
+        }
+        Returns: undefined
+      }
       project_role: { Args: { check_project_id: string }; Returns: string }
       project_storage_bytes: {
         Args: { check_project_id: string }
@@ -937,6 +948,18 @@ export type Database = {
           id: string
           name: string
         }[]
+      }
+      reorder_task_categories: {
+        Args: { p_category_names: string[]; p_project_id: string }
+        Returns: undefined
+      }
+      reorder_tasks_in_category: {
+        Args: {
+          p_category_name: string
+          p_project_id: string
+          p_task_ids: string[]
+        }
+        Returns: undefined
       }
       replace_bulk_transaction_with_lines: {
         Args: {

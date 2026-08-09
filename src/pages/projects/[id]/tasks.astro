@@ -2,7 +2,7 @@
 import BaseLayout from '../../../layouts/BaseLayout.astro';
 import TasksSummary from '../../../components/TasksSummary.svelte';
 import TasksTable from '../../../components/TasksTable.svelte';
-import { TASK_COLUMNS, normalizeTask, type RawTaskRow } from '../../../lib/task-columns';
+import { TASK_CATEGORY_POSITION_COLUMNS, TASK_COLUMNS, normalizeTask, type RawTaskRow, type TaskCategoryPosition } from '../../../lib/task-columns';
 import { isCategoryColorIndex, type CategoryColors } from '../../../lib/category-color';
 import { listGhostMembers } from '../../../lib/ghost-members';
 import { appNowTime, appToday } from '../../../lib/today';
@@ -17,10 +17,10 @@ if (!user) {
 
 const { id } = Astro.params;
 
-// All four go out at once: the Worker is a long trip from Postgres and none of
+// All independent queries go out at once: the Worker is a long trip from Postgres and none of
 // them depend on the one before it (RLS scopes each to the caller independently),
 // so the 404 check just moves below the await.
-const [{ data: project, error }, { data: members }, ghostMembers, { data: taskRows }, { data: categoryRows }] = await Promise.all([
+const [{ data: project, error }, { data: members }, ghostMembers, { data: taskRows }, { data: categoryPositionRows }, { data: categoryRows }] = await Promise.all([
 	Astro.locals.supabase.from('projects').select('id, name, description, owner_id').eq('id', id).single(),
 	Astro.locals.supabase
 		.from('project_members')
@@ -47,6 +47,15 @@ const [{ data: project, error }, { data: members }, ghostMembers, { data: taskRo
 		.order('deadline_time', { ascending: true })
 		.order('name', { ascending: true })
 		.overrideTypes<RawTaskRow[]>(),
+	// Category order is project-level rather than part of each task row. Keep the
+	// stable id for the deterministic tie-break used once priority sorting lands.
+	Astro.locals.supabase
+		.from('task_category_positions')
+		.select(TASK_CATEGORY_POSITION_COLUMNS)
+		.eq('project_id', id)
+		.order('priority_position', { ascending: true })
+		.order('id', { ascending: true })
+		.overrideTypes<TaskCategoryPosition[]>(),
 	// Only the categories somebody has picked a colour for. Everything else falls back
 	// to a hash of the category name in category-color.ts, so this coming back empty
 	// still renders a fully coloured page.
@@ -123,6 +132,7 @@ const initialSummary = summarizeTasks(tasks, serverToday, serverNowTime);
 		projectId={project.id}
 		projectName={project.name}
 		initialTasks={tasks}
+		initialCategoryPositions={categoryPositionRows ?? []}
 		initialCategoryColors={categoryColors}
 		initialViewMode={initialViewMode}
 		initialCollapsed={initialCollapsed}

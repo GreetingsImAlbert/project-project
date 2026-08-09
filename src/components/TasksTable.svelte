@@ -3,7 +3,7 @@
 	import { slide } from 'svelte/transition';
 	import TasksCalendar from './TasksCalendar.svelte';
 	import Avatar from './Avatar.svelte';
-	import { tasksState, initTasks, addTask, updateTask, removeTask, type Task } from '../lib/tasks-store.svelte';
+	import { tasksState, initTasks, addTask, updateTask, removeTask, type Task, type TaskCategoryPosition } from '../lib/tasks-store.svelte';
 	import {
 		TASK_CATEGORY_COLOR_SLOTS,
 		categoryColorIndex,
@@ -33,6 +33,7 @@
 		projectId,
 		projectName,
 		initialTasks,
+		initialCategoryPositions,
 		initialCategoryColors,
 		initialViewMode,
 		initialCollapsed,
@@ -46,6 +47,7 @@
 		projectId: string;
 		projectName: string;
 		initialTasks: Task[];
+		initialCategoryPositions: TaskCategoryPosition[];
 		initialCategoryColors: CategoryColors;
 		initialViewMode: 'list' | 'calendar';
 		initialCollapsed: string[];
@@ -57,7 +59,7 @@
 		serverNowTime: string;
 	} = $props();
 
-	initTasks(initialTasks);
+	initTasks(initialTasks, initialCategoryPositions);
 
 	// Rendered on the server and reused as-is: it's an Asia/Manila date either way,
 	// so there's nothing for the client to correct — see today.ts.
@@ -206,9 +208,9 @@
 	// and its panel rendered under the grid.
 	let selectedTask = $derived(visibleTasks.find((task) => task.id === openId) ?? null);
 
-	// Tasks keep their deadline order inside a group, since the store sorts the whole
-	// list and this only partitions it. Done tasks use their own display-only category,
-	// sorted after both named categories and Uncategorized.
+	// The store has already applied category order and the selected within-category
+	// comparator. This pass only partitions that deterministic sequence into bands.
+	// Done tasks use their own display-only category, already placed last by the store.
 	let groups = $derived.by(() => {
 		const map = new Map<string, Task[]>();
 		for (const task of visibleTasks) {
@@ -216,14 +218,7 @@
 			if (!map.has(key)) map.set(key, []);
 			map.get(key)!.push(task);
 		}
-		const keys = [...map.keys()].sort((a, b) => {
-			if (a === DONE_CATEGORY) return 1;
-			if (b === DONE_CATEGORY) return -1;
-			if (a === UNCATEGORIZED) return 1;
-			if (b === UNCATEGORIZED) return -1;
-			return a.localeCompare(b);
-		});
-		return keys.map((category) => ({ category, tasks: map.get(category)! }));
+		return [...map.entries()].map(([category, tasks]) => ({ category, tasks }));
 	});
 
 	// Keep grouping and category counts based on the full filtered list, but only hand
