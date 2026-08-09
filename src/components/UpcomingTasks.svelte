@@ -35,6 +35,7 @@
 			{
 				status: reminder.status,
 				start_date: reminder.startDate,
+				start_time: reminder.startTime,
 				deadline: reminder.deadline,
 				deadline_time: reminder.deadlineTime,
 			},
@@ -112,7 +113,7 @@
 				<!-- Three things per reminder and nothing else: the category's colour, the
 				     task's name, and when it's due — the date and time carrying the status
 				     in the same colours as the Tasks page: green while ongoing, muted before
-				     the start date, and red once overdue.
+				     the start moment, and red once overdue.
 				     The category name, the appointed members and the 'in 3 days' restatement
 				     of the date all moved out: the panel behind the link says every one of
 				     them, and this list is read at a glance. -->

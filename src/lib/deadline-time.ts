@@ -16,12 +16,21 @@
 // End of day. The form pre-fills it, and every task that predates the column has it.
 export const DEFAULT_DEADLINE_TIME = '23:59';
 
+// Start times default to midnight, the same date-only moment that tasks had
+// before start_time existed.
+export const DEFAULT_START_TIME = '00:00';
+
 // Postgres hands a `time` column back as 'HH:MM:SS' while <input type="time"> both
 // emits and expects 'HH:MM'. Everything above this module works in the input's shape,
 // so the seconds are dropped on the way in — they're always :00, since nothing in the
 // app can write anything else.
 export function normalizeDeadlineTime(value: string | null | undefined): string {
 	if (!value) return DEFAULT_DEADLINE_TIME;
+	return value.slice(0, 5);
+}
+
+export function normalizeStartTime(value: string | null | undefined): string {
+	if (!value) return DEFAULT_START_TIME;
 	return value.slice(0, 5);
 }
 

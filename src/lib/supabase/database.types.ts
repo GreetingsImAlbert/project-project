@@ -684,6 +684,7 @@ export type Database = {
           name: string
           project_id: string
           start_date: string | null
+          start_time: string
           status: string
         }
         Insert: {
@@ -697,6 +698,7 @@ export type Database = {
           name: string
           project_id: string
           start_date?: string | null
+          start_time?: string
           status?: string
         }
         Update: {
@@ -710,6 +712,7 @@ export type Database = {
           name?: string
           project_id?: string
           start_date?: string | null
+          start_time?: string
           status?: string
         }
         Relationships: [
@@ -858,6 +861,7 @@ export type Database = {
           p_name: string
           p_project_id: string
           p_start_date: string
+          p_start_time: string
           p_status: string
           p_user_ids: string[]
         }
@@ -940,6 +944,7 @@ export type Database = {
           p_kept_deleted_assignee_ids: string[]
           p_name: string
           p_start_date: string
+          p_start_time: string
           p_status: string
           p_task_id: string
           p_user_ids: string[]

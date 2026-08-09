@@ -1,5 +1,5 @@
 import { calendarDateError } from './calendar-date';
-import { DEFAULT_DEADLINE_TIME, deadlineTimeError, normalizeDeadlineTime } from './deadline-time';
+import { DEFAULT_DEADLINE_TIME, DEFAULT_START_TIME, deadlineTimeError, normalizeDeadlineTime, normalizeStartTime } from './deadline-time';
 import { isTaskStatus, type TaskStatus } from './task-status';
 import { ghostIdOf } from './money-parties';
 
@@ -20,6 +20,9 @@ export interface TaskFormValues {
 	category: string | null;
 	description: string | null;
 	start_date: string | null;
+	// Always set, including when no start date is supplied, so the RPC can write the
+	// non-null column without making older date-only forms special.
+	start_time: string;
 	deadline: string | null;
 	// Always set, even with no deadline to hang it on: the column is not null, and an
 	// empty time field means 'end of day' rather than 'no time' — see deadline-time.ts.
@@ -52,6 +55,7 @@ export function parseTaskForm(formData: FormData, memberIds: Set<string>, ghostI
 	const category = formData.get('category')?.toString().trim() || null;
 	const description = formData.get('description')?.toString().trim() || null;
 	const startDate = formData.get('start_date')?.toString().trim() || null;
+	const startTimeRaw = formData.get('start_time')?.toString().trim() || DEFAULT_START_TIME;
 	const deadline = formData.get('deadline')?.toString().trim() || null;
 	const deadlineTimeRaw = formData.get('deadline_time')?.toString().trim() || DEFAULT_DEADLINE_TIME;
 	const statusRaw = formData.get('status')?.toString().trim() || 'ongoing';
@@ -74,6 +78,11 @@ export function parseTaskForm(formData: FormData, memberIds: Set<string>, ghostI
 		if (dateError) {
 			return { error: `Start date: ${dateError.charAt(0).toLowerCase()}${dateError.slice(1)}` };
 		}
+	}
+
+	const startTimeError = deadlineTimeError(normalizeStartTime(startTimeRaw));
+	if (startTimeError) {
+		return { error: `Start time: ${startTimeError.charAt(0).toLowerCase()}${startTimeError.slice(1)}` };
 	}
 
 	if (deadline) {
@@ -122,5 +131,18 @@ export function parseTaskForm(formData: FormData, memberIds: Set<string>, ghostI
 		assignees.push(token);
 	}
 
-	return { values: { name, category, description, start_date: startDate, deadline, deadline_time: normalizeDeadlineTime(deadlineTimeRaw), status: statusRaw, assignees, keptDeletedAssigneeIds } };
+	return {
+		values: {
+			name,
+			category,
+			description,
+			start_date: startDate,
+			start_time: normalizeStartTime(startTimeRaw),
+			deadline,
+			deadline_time: normalizeDeadlineTime(deadlineTimeRaw),
+			status: statusRaw,
+			assignees,
+			keptDeletedAssigneeIds,
+		},
+	};
 }

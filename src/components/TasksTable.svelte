@@ -18,7 +18,7 @@
 		TASK_STATUS_LABELS,
 		type TaskDisplayStatus,
 	} from '../lib/task-status';
-	import { DEFAULT_DEADLINE_TIME, formatDeadlineTime } from '../lib/deadline-time';
+	import { DEFAULT_DEADLINE_TIME, DEFAULT_START_TIME, formatDeadlineTime } from '../lib/deadline-time';
 	import { DELETED_ASSIGNEE_PREFIX } from '../lib/task-form';
 	import { ghostPartyId } from '../lib/money-parties';
 	import { downloadJson, exportFilename } from '../lib/download';
@@ -137,6 +137,7 @@
 	// swatch clicks that sit next to the category select.
 	let draftName = $state('');
 	let draftStartDate = $state('');
+	let draftStartTime = $state(DEFAULT_START_TIME);
 	let draftDeadline = $state('');
 	let draftDeadlineTime = $state(DEFAULT_DEADLINE_TIME);
 	let draftDescription = $state('');
@@ -154,6 +155,7 @@
 	let addCategoryNew = $state('');
 	let addDescription = $state('');
 	let addStartDate = $state(today);
+	let addStartTime = $state(DEFAULT_START_TIME);
 	let addDeadline = $state('');
 	// Pre-filled rather than left empty: a deadline with no stated time is due at the end
 	// of its day, and showing that up front beats storing it silently — see
@@ -337,7 +339,10 @@
 			draftDeadline = task.deadline ?? '';
 			draftDeadlineTime = task.deadline_time;
 		}
-		if (field === 'startDate') draftStartDate = task.start_date ?? today;
+		if (field === 'startDate') {
+			draftStartDate = task.start_date ?? today;
+			draftStartTime = task.start_time;
+		}
 		if (field === 'description') draftDescription = task.description ?? '';
 	}
 
@@ -390,6 +395,7 @@
 			category: string;
 			description: string;
 			start_date: string;
+			start_time: string;
 			deadline: string;
 			deadline_time: string;
 			status: 'ongoing' | 'done';
@@ -404,6 +410,7 @@
 		body.set('category', changes.category ?? task.category ?? '');
 		body.set('description', changes.description ?? task.description ?? '');
 		body.set('start_date', changes.start_date ?? task.start_date ?? '');
+		body.set('start_time', changes.start_time ?? task.start_time);
 		body.set('deadline', changes.deadline ?? task.deadline ?? '');
 		body.set('deadline_time', changes.deadline_time ?? task.deadline_time);
 		body.set('status', changes.status ?? task.status);
@@ -519,6 +526,7 @@
 			addCategoryNew = '';
 			addDescription = '';
 			addStartDate = today;
+			addStartTime = DEFAULT_START_TIME;
 			addDeadline = '';
 			addDeadlineTime = DEFAULT_DEADLINE_TIME;
 			addAssignees = [];
@@ -546,6 +554,7 @@
 				category: task.category,
 				description: task.description,
 				startDate: task.start_date,
+				startTime: task.start_time,
 				deadline: task.deadline,
 				deadlineTime: task.deadline_time,
 				status: task.status,
@@ -854,20 +863,26 @@
 			{/if}
 		</dd>
 
-		<dt>Start date</dt>
+		<dt>Start</dt>
 		<dd>
 			{#if isEditing(task.id, 'startDate')}
 				<div class="detail-line">
-					<input class="inline-input" type="date" bind:value={draftStartDate} aria-label="Start date" />
-					{@render confirmIcons(() => commitField(task, { start_date: draftStartDate }), busy)}
+					<div class="deadline-inputs">
+						<input class="inline-input" type="date" bind:value={draftStartDate} aria-label="Start date" />
+						<input class="inline-input" type="time" bind:value={draftStartTime} aria-label="Start time" />
+					</div>
+					{@render confirmIcons(
+						() => commitField(task, { start_date: draftStartDate, start_time: draftStartTime }),
+						busy,
+					)}
 				</div>
 			{:else}
 				<div class="detail-line">
 					<span class="date-value">
 						{formatDeadline(task.start_date ?? today, today)}
-						<span class="date-time">{formatDeadlineTime('00:00')}</span>
+						<span class="date-time">{formatDeadlineTime(task.start_time)}</span>
 					</span>
-					{#if canEdit}{@render editIcon('Edit start date', () => startField(task, 'startDate'))}{/if}
+					{#if canEdit}{@render editIcon('Edit start', () => startField(task, 'startDate'))}{/if}
 				</div>
 			{/if}
 		</dd>
@@ -1015,10 +1030,13 @@
 					</div>
 				</dd>
 
-				<dt>Start date</dt>
+				<dt>Start</dt>
 				<dd>
 					<div class="detail-line">
-						<input class="inline-input" type="date" name="start_date" bind:value={addStartDate} aria-label="Start date" />
+						<div class="deadline-inputs">
+							<input class="inline-input" type="date" name="start_date" bind:value={addStartDate} aria-label="Start date" />
+							<input class="inline-input" type="time" name="start_time" bind:value={addStartTime} aria-label="Start time" />
+						</div>
 					</div>
 				</dd>
 
@@ -1210,7 +1228,7 @@
 				<div class="cell cell-start">
 					<span class="date-value">
 						{formatDeadline(task.start_date ?? today, today)}
-						<span class="date-time">{formatDeadlineTime('00:00')}</span>
+						<span class="date-time">{formatDeadlineTime(task.start_time)}</span>
 					</span>
 				</div>
 

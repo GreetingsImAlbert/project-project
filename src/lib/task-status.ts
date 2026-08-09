@@ -4,8 +4,8 @@
 // as overdue when its deadline has passed and it isn't done — computed at render
 // time from the deadline's date and its time of day (see deadline-time.ts), so it
 // flips on the next render past that moment rather than the next time somebody
-// happens to open the edit form. A stored third state would be stale by
-// definition: nothing in this app runs on a schedule to go and update it.
+// happens to open the edit form. The same render-time rule makes a future Start
+// date/time `not-started`; a stored third state would be stale by definition.
 //
 // Everything here takes `today` as an argument rather than calling the clock
 // itself, and that argument always comes from appToday() in today.ts — one fixed
@@ -32,16 +32,26 @@ export function isTaskStatus(value: string | null | undefined): value is TaskSta
 // lexicographically exactly as they do chronologically.
 //
 // `nowTime` is the clock half of the same moment `today` is the date half of — both
-// from today.ts, both in Asia/Manila — and it only decides the boundary day: a task due
-// earlier today is already late, one due later today is not. Everything before or after
-// that day is settled by the date alone.
+// from today.ts, both in Asia/Manila. It decides the boundary day for both moments:
+// a task starting later today is not started yet, and a task due earlier today is
+// already late. Everything before or after that day is settled by the date alone.
 export function displayStatus(
-	task: { status: TaskStatus; start_date: string | null; deadline: string | null; deadline_time: string },
+	task: {
+		status: TaskStatus;
+		start_date: string | null;
+		start_time: string;
+		deadline: string | null;
+		deadline_time: string;
+	},
 	today: string,
 	nowTime: string,
 ): TaskDisplayStatus {
 	if (task.status === 'done') return 'done';
-	if (task.start_date && task.start_date > today) return 'not-started';
+	if (
+		task.start_date &&
+		(task.start_date > today || (task.start_date === today && task.start_time > nowTime))
+	)
+		return 'not-started';
 	if (!task.deadline) return 'ongoing';
 	if (task.deadline < today) return 'overdue';
 	if (task.deadline === today && task.deadline_time < nowTime) return 'overdue';

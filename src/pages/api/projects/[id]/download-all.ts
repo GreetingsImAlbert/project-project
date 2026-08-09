@@ -189,6 +189,7 @@ export const GET: APIRoute = async ({ params, locals }) => {
 			category: task.category,
 			description: task.description,
 			startDate: task.start_date,
+			startTime: task.start_time,
 			deadline: task.deadline,
 			deadlineTime: task.deadline_time,
 			status: task.status,

@@ -3,6 +3,7 @@ export const prerender = false;
 import { env } from 'cloudflare:workers';
 import { errorResponse } from '../../lib/error-report';
 import { getSupabaseAdmin } from '../../lib/supabase/admin';
+import { normalizeDeadlineTime, normalizeStartTime } from '../../lib/deadline-time';
 import { appNowTime, appToday } from '../../lib/today';
 
 export async function GET({ request, locals }: { request: Request; locals: App.Locals }) {
@@ -45,13 +46,14 @@ export async function GET({ request, locals }: { request: Request; locals: App.L
 			>(),
 		locals.supabase
 			.from('tasks')
-			.select('project_id, start_date, deadline, deadline_time, task_assignees!inner(user_id)')
+			.select('project_id, start_date, start_time, deadline, deadline_time, task_assignees!inner(user_id)')
 			.eq('task_assignees.user_id', user.id)
 			.is('deleted_at', null)
 			.neq('status', 'done')
 			.overrideTypes<{
 				project_id: string;
 				start_date: string | null;
+				start_time: string;
 				deadline: string | null;
 				deadline_time: string;
 			}[]>(),
@@ -83,10 +85,12 @@ export async function GET({ request, locals }: { request: Request; locals: App.L
 	const overdueTaskCounts = new Map<string, number>();
 	const ongoingTaskCounts = new Map<string, number>();
 	for (const row of taskRows ?? []) {
-		if (row.start_date && row.start_date > today) continue;
+		const startTime = normalizeStartTime(row.start_time);
+		const deadlineTime = normalizeDeadlineTime(row.deadline_time);
+		if (row.start_date && (row.start_date > today || (row.start_date === today && startTime > nowTime))) continue;
 
 		const overdue = row.deadline
-			? row.deadline < today || (row.deadline === today && row.deadline_time < nowTime)
+			? row.deadline < today || (row.deadline === today && deadlineTime < nowTime)
 			: false;
 		const counts = overdue ? overdueTaskCounts : ongoingTaskCounts;
 		counts.set(row.project_id, (counts.get(row.project_id) ?? 0) + 1);

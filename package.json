@@ -8,6 +8,7 @@
   "scripts": {
     "build": "node scripts/build.mjs production",
     "build:staging": "node scripts/build.mjs staging",
+    "test": "node --test --experimental-strip-types --loader ./scripts/test-loader.mjs tests/task-status.test.ts tests/task-form.test.ts",
     "update-types": "dotenv -e .env.staging -- sh -c 'npx --yes supabase gen types typescript --project-id $SUPABASE_STAGING_REF > src/lib/supabase/database.types.ts'",
     "dev:staging": "npm run build:staging && npx wrangler dev --env staging",
     "deploy:staging": "npm run build:staging && npx wrangler deploy --env staging",

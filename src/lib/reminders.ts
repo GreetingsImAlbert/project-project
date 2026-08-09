@@ -18,6 +18,8 @@ export interface Reminder {
 	id: string;
 	name: string;
 	startDate: string | null;
+	// 'HH:MM', the time of day the task starts; midnight preserves date-only tasks.
+	startTime: string;
 	// Never null: a task with no deadline can't come due, so it never becomes a reminder.
 	deadline: string;
 	// 'HH:MM', the time of day that deadline falls at — see deadline-time.ts.
@@ -41,6 +43,7 @@ export function projectReminders(tasks: Task[], projectId: string, colors: Categ
 			id: task.id,
 			name: task.name,
 			startDate: task.start_date,
+			startTime: task.start_time,
 			deadline: task.deadline!,
 			deadlineTime: task.deadline_time,
 			status: task.status,

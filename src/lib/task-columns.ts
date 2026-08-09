@@ -1,4 +1,4 @@
-import { normalizeDeadlineTime } from './deadline-time';
+import { normalizeDeadlineTime, normalizeStartTime } from './deadline-time';
 import type { TaskStatus } from './task-status';
 
 // The Tasks page's SSR query and every task endpoint hand the same row shape to
@@ -9,7 +9,7 @@ import type { TaskStatus } from './task-status';
 // ghost_members (ghost_member_id), so both bare embeds are unambiguous here — no
 // hint needed the way transactions' two-FKs-to-the-same-table pairs need one.
 export const TASK_COLUMNS =
-	'id, name, category, description, start_date, deadline, deadline_time, status, task_assignees(id, user_id, ghost_member_id, deleted_display_name, profiles(display_name, avatar), ghost_members(display_name))';
+	'id, name, category, description, start_date, start_time, deadline, deadline_time, status, task_assignees(id, user_id, ghost_member_id, deleted_display_name, profiles(display_name, avatar), ghost_members(display_name))';
 
 export interface TaskAssignee {
 	// The task_assignees row's own id — the only stable key once user_id has gone
@@ -30,6 +30,9 @@ export interface Task {
 	category: string | null;
 	description: string | null;
 	start_date: string | null;
+	// Time of day the task starts, always 'HH:MM' and defaulting to midnight. It is
+	// meaningless when `start_date` is null.
+	start_time: string;
 	deadline: string | null;
 	// Time of day the deadline falls at, always 'HH:MM' and never null — a dated task
 	// with no stated time is due at the end of its day. Meaningless (and unread) when
@@ -47,6 +50,7 @@ export interface RawTaskRow {
 	category: string | null;
 	description: string | null;
 	start_date: string | null;
+	start_time: string;
 	deadline: string | null;
 	// 'HH:MM:SS' out of Postgres; normalizeTask trims it to the 'HH:MM' the rest of the
 	// app (and <input type="time">) works in.
@@ -72,6 +76,7 @@ export function normalizeTask(row: RawTaskRow): Task {
 		category: row.category,
 		description: row.description,
 		start_date: row.start_date,
+		start_time: normalizeStartTime(row.start_time),
 		deadline: row.deadline,
 		deadline_time: normalizeDeadlineTime(row.deadline_time),
 		// The check constraint only allows these two, so anything else would mean the

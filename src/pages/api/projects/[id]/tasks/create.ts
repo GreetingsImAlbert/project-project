@@ -41,7 +41,7 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 		return new Response(parsed.error, { status: 400 });
 	}
 
-	const { name, category, description, start_date, deadline, deadline_time, assignees } = parsed.values;
+	const { name, category, description, start_date, start_time, deadline, deadline_time, assignees } = parsed.values;
 	const effectiveStartDate = start_date ?? appToday();
 
 	const { data: createdId, error } = await locals.supabase.rpc('create_task_with_assignees', {
@@ -50,6 +50,7 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 		p_category: category,
 		p_description: description,
 		p_start_date: effectiveStartDate,
+		p_start_time: start_time,
 		p_deadline: deadline,
 		p_deadline_time: deadline_time,
 		p_status: 'ongoing',
