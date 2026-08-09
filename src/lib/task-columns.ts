@@ -131,6 +131,12 @@ void sortTasksLegacy;
 
 export type TaskSortMode = 'priority' | 'deadline';
 
+export const TASK_SORT_MODE_COOKIE = 'p2-task-sort-mode';
+
+export function isTaskSortMode(value: unknown): value is TaskSortMode {
+	return value === 'priority' || value === 'deadline';
+}
+
 function normalizedCategory(category: string | null): string | null {
 	return category?.trim() || null;
 }

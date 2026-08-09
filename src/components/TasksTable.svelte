@@ -8,6 +8,7 @@
 		taskReorderState,
 		initTasks,
 		addTask,
+		setTaskSortMode as setTaskSortModeInStore,
 		updateTask,
 		removeTask,
 		type Task,
@@ -20,6 +21,7 @@
 		categoryStyle,
 		type CategoryColors,
 	} from '../lib/category-color';
+	import { TASK_SORT_MODE_COOKIE, type TaskSortMode } from '../lib/task-columns';
 	import {
 		displayStatus,
 		formatDeadline,
@@ -43,6 +45,7 @@
 		projectName,
 		initialTasks,
 		initialCategoryPositions,
+		initialTaskSortMode,
 		initialCategoryColors,
 		initialViewMode,
 		initialCollapsed,
@@ -57,6 +60,7 @@
 		projectName: string;
 		initialTasks: Task[];
 		initialCategoryPositions: TaskCategoryPosition[];
+		initialTaskSortMode: TaskSortMode;
 		initialCategoryColors: CategoryColors;
 		initialViewMode: 'list' | 'calendar';
 		initialCollapsed: string[];
@@ -68,7 +72,7 @@
 		serverNowTime: string;
 	} = $props();
 
-	initTasks(initialTasks, initialCategoryPositions);
+	initTasks(initialTasks, initialCategoryPositions, initialTaskSortMode);
 
 	// Rendered on the server and reused as-is: it's an Asia/Manila date either way,
 	// so there's nothing for the client to correct — see today.ts.
@@ -353,6 +357,15 @@
 	function cancelField() {
 		editingField = null;
 		rowError = null;
+	}
+
+	function setTaskSortMode(mode: TaskSortMode) {
+		if (tasksState.sortMode === mode) return;
+		// This is a reading preference, so viewers may change it too. Persisted priority
+		// itself is only changed by the reorder endpoints, which enforce editor rights.
+		setTaskSortModeInStore(mode);
+		localStorage.setItem(TASK_SORT_MODE_COOKIE, mode);
+		document.cookie = `${TASK_SORT_MODE_COOKIE}=${mode}; path=/; max-age=31536000; samesite=lax`;
 	}
 
 	function taskReorderError(taskId: string): string | null {
@@ -1109,6 +1122,27 @@
 			<span>Just my tasks</span>
 		</label>
 
+		<div class="sort-toggle" role="group" aria-label="Task sort order">
+			<button
+				type="button"
+				class="btn-plain"
+				class:active={tasksState.sortMode === 'priority'}
+				aria-pressed={tasksState.sortMode === 'priority'}
+				onclick={() => setTaskSortMode('priority')}
+			>
+				Priority
+			</button>
+			<button
+				type="button"
+				class="btn-plain"
+				class:active={tasksState.sortMode === 'deadline'}
+				aria-pressed={tasksState.sortMode === 'deadline'}
+				onclick={() => setTaskSortMode('deadline')}
+			>
+				Deadline
+			</button>
+		</div>
+
 		<!-- Same square icon boxes and inverted active state as the Files page's
 		     Grid/List picker. -->
 		<div class="view-toggle">
@@ -1380,6 +1414,26 @@
 
 	/* align-self, because the head is baseline-aligned and these boxes hold nothing
 	   with a baseline to align on. */
+	.sort-toggle {
+		display: flex;
+		gap: 1px;
+		flex: 0 0 auto;
+		align-self: center;
+		padding: 1px;
+		background: var(--color-border);
+	}
+
+	.sort-toggle button {
+		padding: var(--space-1) var(--space-2);
+		font-size: 0.72rem;
+		line-height: 1.2;
+	}
+
+	.sort-toggle button.active {
+		background: var(--color-fg);
+		color: var(--color-bg);
+	}
+
 	.view-toggle {
 		display: flex;
 		gap: var(--space-2);

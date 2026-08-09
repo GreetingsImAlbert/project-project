@@ -32,7 +32,7 @@ export const tasksState = $state<{
 	sortMode: TaskSortMode;
 	initialized: boolean;
 	epoch: number;
-}>({ tasks: [], categoryPositions: [], sortMode: 'deadline', initialized: false, epoch: -1 });
+}>({ tasks: [], categoryPositions: [], sortMode: 'priority', initialized: false, epoch: -1 });
 
 // Reorders are deliberately separate from tasksState: a failed drag must restore the
 // data snapshot while still leaving a small, visible explanation beside the affected
@@ -49,8 +49,13 @@ let initializedEpoch = -1;
 // See initTransactions in transactions-store.svelte.ts — the once-only guard has to be
 // skipped during SSR or one request's tasks leak into the next request's HTML, and is
 // scoped to a navigation rather than to the module on the client (see nav-epoch.ts).
-export function initTasks(initial: Task[], initialCategoryPositions: TaskCategoryPosition[] = []) {
+export function initTasks(
+	initial: Task[],
+	initialCategoryPositions: TaskCategoryPosition[] = [],
+	initialSortMode: TaskSortMode = 'priority',
+) {
 	if (initializedEpoch === currentEpoch() && !import.meta.env.SSR) return;
+	tasksState.sortMode = initialSortMode;
 	tasksState.categoryPositions = [...initialCategoryPositions];
 	tasksState.tasks = sortTasks(initial, tasksState.categoryPositions, tasksState.sortMode);
 	taskReorderState.pending = false;
@@ -81,8 +86,8 @@ export function updateTask(task: Task) {
 	notifyTasksChanged();
 }
 
-// The segmented control in the next checklist step can switch the order without
-// refetching. Keeping the mode here also makes add/edit responses use the same rule.
+// The segmented control switches the order without refetching. Keeping the mode here
+// also makes add/edit and optimistic reorder responses use the same rule.
 export function setTaskSortMode(mode: TaskSortMode) {
 	tasksState.sortMode = mode;
 	tasksState.tasks = sortTasks(tasksState.tasks, tasksState.categoryPositions, mode);

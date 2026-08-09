@@ -2,7 +2,16 @@
 import BaseLayout from '../../../layouts/BaseLayout.astro';
 import TasksSummary from '../../../components/TasksSummary.svelte';
 import TasksTable from '../../../components/TasksTable.svelte';
-import { TASK_CATEGORY_POSITION_COLUMNS, TASK_COLUMNS, normalizeTask, type RawTaskRow, type TaskCategoryPosition } from '../../../lib/task-columns';
+import {
+	TASK_CATEGORY_POSITION_COLUMNS,
+	TASK_COLUMNS,
+	TASK_SORT_MODE_COOKIE,
+	isTaskSortMode,
+	normalizeTask,
+	type RawTaskRow,
+	type TaskCategoryPosition,
+	type TaskSortMode,
+} from '../../../lib/task-columns';
 import { isCategoryColorIndex, type CategoryColors } from '../../../lib/category-color';
 import { listGhostMembers } from '../../../lib/ghost-members';
 import { appNowTime, appToday } from '../../../lib/today';
@@ -96,9 +105,14 @@ for (const row of categoryRows ?? []) {
 }
 
 // Read from a cookie rather than left to the client: localStorage is only readable
-// after hydration, so the page would render the list and then swap to the calendar.
+// after hydration, so the page would render one order and then swap to another.
 const storedTaskView = Astro.cookies.get('p2-task-view-mode')?.value;
 const initialViewMode = storedTaskView === 'calendar' ? 'calendar' : 'list';
+
+// The sort preference is global rather than project-specific. The cookie is the SSR
+// copy; the browser mirrors it in localStorage when the segmented control changes.
+const storedTaskSortMode = Astro.cookies.get(TASK_SORT_MODE_COOKIE)?.value;
+const initialTaskSortMode: TaskSortMode = isTaskSortMode(storedTaskSortMode) ? storedTaskSortMode : 'priority';
 
 // Which category bands are folded. Done folds by default; once the user has folded
 // or unfolded anything, the whole set is remembered in a per-project cookie instead
@@ -133,6 +147,7 @@ const initialSummary = summarizeTasks(tasks, serverToday, serverNowTime);
 		projectName={project.name}
 		initialTasks={tasks}
 		initialCategoryPositions={categoryPositionRows ?? []}
+		initialTaskSortMode={initialTaskSortMode}
 		initialCategoryColors={categoryColors}
 		initialViewMode={initialViewMode}
 		initialCollapsed={initialCollapsed}
