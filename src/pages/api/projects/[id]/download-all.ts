@@ -1,7 +1,14 @@
 import type { APIRoute } from 'astro';
 import { env } from 'cloudflare:workers';
 import { zip, type ZipEntry } from '../../../../lib/zip';
-import { TASK_COLUMNS, normalizeTask, type RawTaskRow } from '../../../../lib/task-columns';
+import {
+	TASK_CATEGORY_POSITION_COLUMNS,
+	TASK_COLUMNS,
+	normalizeTask,
+	sortTasks,
+	type RawTaskRow,
+	type TaskCategoryPosition,
+} from '../../../../lib/task-columns';
 import { TRANSACTION_COLUMNS } from '../../../../lib/transaction-columns';
 import { GHOST_COLUMNS } from '../../../../lib/ghost-members';
 
@@ -72,6 +79,7 @@ export const GET: APIRoute = async ({ params, locals }) => {
 		{ data: folderRows },
 		{ data: fileRows },
 		{ data: taskRows },
+		{ data: categoryPositionRows },
 		{ data: bomRows },
 		{ data: transactionRows },
 		{ data: memberRows },
@@ -98,10 +106,14 @@ export const GET: APIRoute = async ({ params, locals }) => {
 			.select(TASK_COLUMNS)
 			.eq('project_id', projectId)
 			.is('deleted_at', null)
-			.order('deadline', { ascending: true })
-			.order('deadline_time', { ascending: true })
-			.order('name', { ascending: true })
 			.overrideTypes<RawTaskRow[]>(),
+		locals.supabase
+			.from('task_category_positions')
+			.select(TASK_CATEGORY_POSITION_COLUMNS)
+			.eq('project_id', projectId)
+			.order('priority_position', { ascending: true })
+			.order('id', { ascending: true })
+			.overrideTypes<TaskCategoryPosition[]>(),
 		locals.supabase
 			.from('bom_items')
 			.select('id, part_name, category, description, quantity, unit, unit_cost, supplier, item_url, total_cost')
@@ -176,17 +188,28 @@ export const GET: APIRoute = async ({ params, locals }) => {
 
 	const memberById = new Map((memberRows ?? []).map((m) => [m.user_id, m.profiles?.display_name ?? '']));
 	const ghostById = new Map((ghostRows ?? []).map((g) => [g.id, g.display_name]));
+	const categoryPositions = categoryPositionRows ?? [];
+	const exportedTasks = sortTasks(
+		(taskRows ?? []).map(normalizeTask),
+		categoryPositions,
+		'priority',
+	);
 
 	// Same shape as TasksTable.svelte's downloadTasks — one export format across the
 	// app, so a reader who's seen a per-page export knows what this one holds too.
 	const tasksPayload = {
 		project: project.name,
 		exportedAt: new Date().toISOString(),
-		taskCount: (taskRows ?? []).length,
-		tasks: (taskRows ?? []).map(normalizeTask).map((task) => ({
+		taskCount: exportedTasks.length,
+		categoryPositions: categoryPositions.map((position) => ({
+			category: position.category_name,
+			priorityPosition: position.priority_position,
+		})),
+		tasks: exportedTasks.map((task) => ({
 			id: task.id,
 			name: task.name,
 			category: task.category,
+			priorityPosition: task.priority_position,
 			description: task.description,
 			startDate: task.start_date,
 			startTime: task.start_time,
@@ -275,7 +298,7 @@ export const GET: APIRoute = async ({ params, locals }) => {
 		'Contents:',
 		'  README.txt              — this file',
 		'  files/…                 — project files, mirroring the Files-page folder tree',
-		'  tasks.json              — tasks with categories, deadlines, assignees',
+		'  tasks.json              — tasks with categories, priority, deadlines, assignees',
 		'  bom.json                — bill of materials',
 		'  transactions.json       — money transactions (parent rows and their lines)',
 		'  members.json            — real members and ghost members with contribution %',

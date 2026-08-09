@@ -6,7 +6,7 @@ import ProjectStorageUsed from '../../components/ProjectStorageUsed.svelte';
 import UpcomingTasks from '../../components/UpcomingTasks.svelte';
 import Avatar from '../../components/Avatar.svelte';
 import { getProjectStorageBytes } from '../../lib/r2-quota';
-import { TASK_COLUMNS, normalizeTask, type RawTaskRow } from '../../lib/task-columns';
+import { TASK_CATEGORY_POSITION_COLUMNS, TASK_COLUMNS, normalizeTask, type RawTaskRow, type TaskCategoryPosition } from '../../lib/task-columns';
 import { isCategoryColorIndex, type CategoryColors } from '../../lib/category-color';
 import { HORIZON_COOKIE, parseHorizonDays } from '../../lib/task-horizon';
 import { projectReminders } from '../../lib/reminders';
@@ -43,6 +43,7 @@ let members: { role: string; is_auditor: boolean; user_id: string; profiles: { d
 let ghostMembers: Awaited<ReturnType<typeof listGhostMembers>> = [];
 let totalCost = 0;
 let categoryColors: CategoryColors = {};
+let categoryPositionRows: TaskCategoryPosition[] = [];
 let reminders: ReturnType<typeof projectReminders> = [];
 let projectStorageBytes = 0;
 let projectStorageFailed = false;
@@ -77,6 +78,7 @@ if (user) {
 			{ data: bomItems },
 			{ totalBytes, failed },
 			{ data: taskRows },
+			{ data: categoryPositionData },
 			{ data: categoryRows },
 		] = await Promise.all([
 			Astro.locals.supabase
@@ -103,6 +105,13 @@ if (user) {
 				.order('name', { ascending: true })
 				.overrideTypes<RawTaskRow[]>(),
 			Astro.locals.supabase
+				.from('task_category_positions')
+				.select(TASK_CATEGORY_POSITION_COLUMNS)
+				.eq('project_id', id)
+				.order('priority_position', { ascending: true })
+				.order('id', { ascending: true })
+				.overrideTypes<TaskCategoryPosition[]>(),
+			Astro.locals.supabase
 				.from('task_categories')
 				.select('name, color_index')
 				.eq('project_id', id)
@@ -113,13 +122,14 @@ if (user) {
 		ghostMembers = ghostMembersData;
 		projectStorageBytes = totalBytes;
 		projectStorageFailed = failed;
+		categoryPositionRows = categoryPositionData ?? [];
 		userRole = membersData?.find((member) => member.user_id === user.id)?.role;
 		isOwner = userRole === 'owner';
 		totalCost = (bomItems ?? []).reduce((sum, item) => sum + (item.total_cost ?? 0), 0);
 		for (const row of categoryRows ?? []) {
 			if (isCategoryColorIndex(row.color_index)) categoryColors[row.name] = row.color_index;
 		}
-		reminders = projectReminders((taskRows ?? []).map(normalizeTask), id!, categoryColors, user.id);
+		reminders = projectReminders((taskRows ?? []).map(normalizeTask), id!, categoryColors, user.id, categoryPositionRows);
 	}
 }
 

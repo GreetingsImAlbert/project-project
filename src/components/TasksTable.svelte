@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, tick } from 'svelte';
+	import { onDestroy, onMount, tick } from 'svelte';
 	import { slide } from 'svelte/transition';
 	import TasksCalendar from './TasksCalendar.svelte';
 	import Avatar from './Avatar.svelte';
@@ -8,6 +8,9 @@
 		taskReorderState,
 		initTasks,
 		addTask,
+		moveTaskToCategory,
+		reorderTaskCategories,
+		reorderTasksInCategory,
 		setTaskSortMode as setTaskSortModeInStore,
 		updateTask,
 		removeTask,
@@ -21,7 +24,7 @@
 		categoryStyle,
 		type CategoryColors,
 	} from '../lib/category-color';
-	import { TASK_SORT_MODE_COOKIE, type TaskSortMode } from '../lib/task-columns';
+	import { TASK_SORT_MODE_COOKIE, sortTasks, type TaskSortMode } from '../lib/task-columns';
 	import {
 		displayStatus,
 		formatDeadline,
@@ -184,10 +187,44 @@
 	let savingColor = $state<string | null>(null);
 	let colorError = $state<string | null>(null);
 
+	type TaskDragState = {
+		taskId: string;
+		sourceCategory: string | null;
+		pointerId: number;
+		clientY: number;
+		targetTaskId: string | null;
+		targetCategory: string | null;
+		targetBefore: boolean;
+	};
+
+	type CategoryDragState = {
+		sourceCategory: string | null;
+		pointerId: number;
+		clientY: number;
+		targetCategory: string | null;
+		targetBefore: boolean;
+		hasTarget: boolean;
+	};
+
+	type TaskGroup = {
+		key: string;
+		category: string;
+		categoryName: string | null;
+		done: boolean;
+		tasks: Task[];
+	};
+
+	let dragState = $state<TaskDragState | null>(null);
+	let dragScrollFrame: number | null = null;
+	let categoryDragState = $state<CategoryDragState | null>(null);
+	let categoryDragScrollFrame: number | null = null;
+
 	const NEW_CATEGORY_VALUE = '__new__';
 	const UNCATEGORIZED = 'Uncategorized';
 	const DONE_CATEGORY = 'Done';
 	const TASK_PAGE_SIZE = 50;
+	const DRAG_SCROLL_EDGE = 72;
+	const DRAG_SCROLL_MAX_STEP = 18;
 
 	function taskGroupCategory(task: Task): string {
 		return task.status === 'done' ? DONE_CATEGORY : task.category?.trim() || UNCATEGORIZED;
@@ -217,6 +254,401 @@
 
 	let pagedTasks = $derived(visibleTasks.slice(0, renderedTaskCount));
 
+	function normalizedTaskCategory(category: string | null): string | null {
+		return category?.trim() || null;
+	}
+
+	function categoryKey(category: string | null): string {
+		return category === null ? '\u0000' : category;
+	}
+
+	function sameCategory(a: string | null, b: string | null): boolean {
+		return categoryKey(a) === categoryKey(b);
+	}
+
+	function categoryHandleKey(category: string | null): string {
+		return encodeURIComponent(category ?? '');
+	}
+
+	let activeCategoryNames = $derived.by(() => {
+		const names: (string | null)[] = [];
+		const seen = new Set<string>();
+		for (const task of tasksState.tasks) {
+			if (task.status === 'done') continue;
+			const category = normalizedTaskCategory(task.category);
+			const key = categoryKey(category);
+			if (seen.has(key)) continue;
+			seen.add(key);
+			names.push(category);
+		}
+		return names;
+	});
+
+	function canShowTaskDragHandle(task: Task): boolean {
+		return canEdit && !onlyMine && tasksState.sortMode === 'priority' && task.status !== 'done' && !taskReorderState.pending;
+	}
+
+	function canShowCategoryDragHandle(group: TaskGroup): boolean {
+		return canEdit && !onlyMine && tasksState.sortMode === 'priority' && !group.done && activeCategoryNames.length > 1 && !taskReorderState.pending;
+	}
+
+	function taskIdsInCategory(category: string | null, withoutId?: string): string[] {
+		const normalized = normalizedTaskCategory(category);
+		return tasksState.tasks
+			.filter((task) => task.status !== 'done' && normalizedTaskCategory(task.category) === normalized && task.id !== withoutId)
+			.map((task) => task.id);
+	}
+
+	function arraysEqual(a: string[], b: string[]): boolean {
+		return a.length === b.length && a.every((id, index) => id === b[index]);
+	}
+
+	function updateTaskDropTarget(clientY: number) {
+		if (!dragState) return;
+
+		const rows = [...document.querySelectorAll<HTMLElement>('[data-task-drag-row="true"]')].filter(
+			(row) => row.dataset.taskId && row.dataset.taskId !== dragState?.taskId,
+		);
+		if (rows.length === 0) {
+			dragState = { ...dragState, clientY, targetTaskId: null, targetCategory: null, targetBefore: false };
+			return;
+		}
+
+		let targetRow: HTMLElement | null = null;
+		let targetDistance = Number.POSITIVE_INFINITY;
+		for (const row of rows) {
+			const rect = row.getBoundingClientRect();
+			if (rect.height === 0) continue;
+			const distance = clientY < rect.top ? rect.top - clientY : clientY > rect.bottom ? clientY - rect.bottom : 0;
+			if (distance < targetDistance) {
+				targetDistance = distance;
+				targetRow = row;
+			}
+		}
+
+		if (!targetRow?.dataset.taskId) {
+			dragState = { ...dragState, clientY, targetTaskId: null, targetCategory: null, targetBefore: false };
+			return;
+		}
+
+		const targetTask = tasksState.tasks.find((task) => task.id === targetRow!.dataset.taskId);
+		if (!targetTask || targetTask.status === 'done') {
+			dragState = { ...dragState, clientY, targetTaskId: null, targetCategory: null, targetBefore: false };
+			return;
+		}
+
+		const rect = targetRow.getBoundingClientRect();
+		dragState = {
+			...dragState,
+			clientY,
+			targetTaskId: targetTask.id,
+			targetCategory: normalizedTaskCategory(targetTask.category),
+			targetBefore: clientY < rect.top + rect.height / 2,
+		};
+	}
+
+	function stopTaskDragListeners() {
+		window.removeEventListener('pointermove', handleTaskDragMove);
+		window.removeEventListener('pointerup', handleTaskDragEnd);
+		window.removeEventListener('pointercancel', handleTaskDragCancel);
+		if (dragScrollFrame !== null) cancelAnimationFrame(dragScrollFrame);
+		dragScrollFrame = null;
+	}
+
+	function taskDragAutoScroll() {
+		if (!dragState) {
+			dragScrollFrame = null;
+			return;
+		}
+
+		const distanceFromTop = dragState.clientY;
+		const distanceFromBottom = window.innerHeight - dragState.clientY;
+		let step = 0;
+		if (distanceFromTop < DRAG_SCROLL_EDGE) {
+			step = -Math.ceil(((DRAG_SCROLL_EDGE - distanceFromTop) / DRAG_SCROLL_EDGE) * DRAG_SCROLL_MAX_STEP);
+		} else if (distanceFromBottom < DRAG_SCROLL_EDGE) {
+			step = Math.ceil(((DRAG_SCROLL_EDGE - distanceFromBottom) / DRAG_SCROLL_EDGE) * DRAG_SCROLL_MAX_STEP);
+		}
+		if (step !== 0) window.scrollBy(0, step);
+		updateTaskDropTarget(dragState.clientY);
+		dragScrollFrame = requestAnimationFrame(taskDragAutoScroll);
+	}
+
+	function startTaskDragAutoScroll() {
+		if (dragScrollFrame === null) dragScrollFrame = requestAnimationFrame(taskDragAutoScroll);
+	}
+
+	function handleTaskDragMove(event: PointerEvent) {
+		if (!dragState || event.pointerId !== dragState.pointerId) return;
+		event.preventDefault();
+		dragState = { ...dragState, clientY: event.clientY };
+		updateTaskDropTarget(event.clientY);
+	}
+
+	function startTaskDrag(event: PointerEvent, task: Task) {
+		if (!canShowTaskDragHandle(task) || !event.isPrimary || (event.pointerType === 'mouse' && event.button !== 0)) return;
+		event.preventDefault();
+		event.stopPropagation();
+
+		dragState = {
+			taskId: task.id,
+			sourceCategory: normalizedTaskCategory(task.category),
+			pointerId: event.pointerId,
+			clientY: event.clientY,
+			targetTaskId: null,
+			targetCategory: null,
+			targetBefore: false,
+		};
+		window.addEventListener('pointermove', handleTaskDragMove, { passive: false });
+		window.addEventListener('pointerup', handleTaskDragEnd);
+		window.addEventListener('pointercancel', handleTaskDragCancel);
+		updateTaskDropTarget(event.clientY);
+		startTaskDragAutoScroll();
+	}
+
+	function handleTaskDragCancel(event: PointerEvent) {
+		void finishTaskDrag(event, true);
+	}
+
+	async function finishTaskDrag(event: PointerEvent, cancelled = false) {
+		if (!dragState || event.pointerId !== dragState.pointerId) return;
+		event.preventDefault();
+		if (!cancelled) {
+			dragState = { ...dragState, clientY: event.clientY };
+			updateTaskDropTarget(event.clientY);
+		}
+
+		const drop = dragState ? { ...dragState } : null;
+		stopTaskDragListeners();
+		dragState = null;
+		if (cancelled || !drop?.targetTaskId) return;
+
+		const sourceTaskIds = taskIdsInCategory(drop.sourceCategory, drop.taskId);
+		const destinationCategory = normalizedTaskCategory(drop.targetCategory);
+		if (destinationCategory === drop.sourceCategory) {
+			const targetIndex = sourceTaskIds.indexOf(drop.targetTaskId);
+			if (targetIndex < 0) return;
+			const destinationTaskIds = [...sourceTaskIds];
+			destinationTaskIds.splice(drop.targetBefore ? targetIndex : targetIndex + 1, 0, drop.taskId);
+			const originalTaskIds = taskIdsInCategory(drop.sourceCategory);
+			if (arraysEqual(originalTaskIds, destinationTaskIds)) return;
+			await reorderTasksInCategory(projectId, drop.sourceCategory, destinationTaskIds);
+			return;
+		}
+
+		const destinationTaskIds = taskIdsInCategory(destinationCategory);
+		const targetIndex = destinationTaskIds.indexOf(drop.targetTaskId);
+		if (targetIndex < 0) return;
+		destinationTaskIds.splice(drop.targetBefore ? targetIndex : targetIndex + 1, 0, drop.taskId);
+		await moveTaskToCategory(projectId, drop.taskId, drop.sourceCategory, destinationCategory, sourceTaskIds, destinationTaskIds);
+	}
+
+	function handleTaskDragEnd(event: PointerEvent) {
+		void finishTaskDrag(event);
+	}
+
+	async function moveTaskByKeyboard(task: Task, direction: -1 | 1) {
+		if (!canShowTaskDragHandle(task)) return;
+
+		const sourceCategory = normalizedTaskCategory(task.category);
+		const sourceTaskIds = taskIdsInCategory(sourceCategory, task.id);
+		const currentIndex = taskIdsInCategory(sourceCategory).indexOf(task.id);
+		if (currentIndex < 0) return;
+
+		const adjacentIndex = currentIndex + direction;
+		if (adjacentIndex >= 0 && adjacentIndex < sourceTaskIds.length + 1) {
+			const destinationTaskIds = [...sourceTaskIds];
+			destinationTaskIds.splice(adjacentIndex, 0, task.id);
+			await reorderTasksInCategory(projectId, sourceCategory, destinationTaskIds);
+			await tick();
+			document.querySelector<HTMLButtonElement>(`[data-task-drag-handle="${task.id}"]`)?.focus();
+			return;
+		}
+
+		const categoryIndex = activeCategoryNames.findIndex((category) => sameCategory(category, sourceCategory));
+		if (categoryIndex < 0) return;
+		const destinationCategory = activeCategoryNames[categoryIndex + direction];
+		if (destinationCategory === undefined) return;
+
+		const destinationTaskIds = taskIdsInCategory(destinationCategory);
+		destinationTaskIds.splice(direction < 0 ? destinationTaskIds.length : 0, 0, task.id);
+		await moveTaskToCategory(
+			projectId,
+			task.id,
+			sourceCategory,
+			destinationCategory,
+			sourceTaskIds,
+			destinationTaskIds,
+		);
+		await tick();
+		document.querySelector<HTMLButtonElement>(`[data-task-drag-handle="${task.id}"]`)?.focus();
+	}
+
+	function handleTaskHandleKeydown(event: KeyboardEvent, task: Task) {
+		if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+		event.preventDefault();
+		event.stopPropagation();
+		void moveTaskByKeyboard(task, event.key === 'ArrowUp' ? -1 : 1);
+	}
+
+	function updateCategoryDropTarget(clientY: number) {
+		if (!categoryDragState) return;
+
+		const rows = [...document.querySelectorAll<HTMLElement>('[data-category-drag-row="true"]')].filter(
+			(row) => row.dataset.categoryName !== undefined && !sameCategory(normalizedTaskCategory(row.dataset.categoryName), categoryDragState?.sourceCategory ?? null),
+		);
+		if (rows.length === 0) {
+			categoryDragState = { ...categoryDragState, clientY, targetCategory: null, targetBefore: false, hasTarget: false };
+			return;
+		}
+
+		let targetRow: HTMLElement | null = null;
+		let targetDistance = Number.POSITIVE_INFINITY;
+		for (const row of rows) {
+			const rect = row.getBoundingClientRect();
+			if (rect.height === 0) continue;
+			const distance = clientY < rect.top ? rect.top - clientY : clientY > rect.bottom ? clientY - rect.bottom : 0;
+			if (distance < targetDistance) {
+				targetDistance = distance;
+				targetRow = row;
+			}
+		}
+
+		if (!targetRow || targetRow.dataset.categoryName === undefined) {
+			categoryDragState = { ...categoryDragState, clientY, targetCategory: null, targetBefore: false, hasTarget: false };
+			return;
+		}
+
+		const rect = targetRow.getBoundingClientRect();
+		categoryDragState = {
+			...categoryDragState,
+			clientY,
+			targetCategory: normalizedTaskCategory(targetRow.dataset.categoryName),
+			targetBefore: clientY < rect.top + rect.height / 2,
+			hasTarget: true,
+		};
+	}
+
+	function stopCategoryDragListeners() {
+		window.removeEventListener('pointermove', handleCategoryDragMove);
+		window.removeEventListener('pointerup', handleCategoryDragEnd);
+		window.removeEventListener('pointercancel', handleCategoryDragCancel);
+		if (categoryDragScrollFrame !== null) cancelAnimationFrame(categoryDragScrollFrame);
+		categoryDragScrollFrame = null;
+	}
+
+	function categoryDragAutoScroll() {
+		if (!categoryDragState) {
+			categoryDragScrollFrame = null;
+			return;
+		}
+
+		const distanceFromTop = categoryDragState.clientY;
+		const distanceFromBottom = window.innerHeight - categoryDragState.clientY;
+		let step = 0;
+		if (distanceFromTop < DRAG_SCROLL_EDGE) {
+			step = -Math.ceil(((DRAG_SCROLL_EDGE - distanceFromTop) / DRAG_SCROLL_EDGE) * DRAG_SCROLL_MAX_STEP);
+		} else if (distanceFromBottom < DRAG_SCROLL_EDGE) {
+			step = Math.ceil(((DRAG_SCROLL_EDGE - distanceFromBottom) / DRAG_SCROLL_EDGE) * DRAG_SCROLL_MAX_STEP);
+		}
+		if (step !== 0) window.scrollBy(0, step);
+		updateCategoryDropTarget(categoryDragState.clientY);
+		categoryDragScrollFrame = requestAnimationFrame(categoryDragAutoScroll);
+	}
+
+	function startCategoryDragAutoScroll() {
+		if (categoryDragScrollFrame === null) categoryDragScrollFrame = requestAnimationFrame(categoryDragAutoScroll);
+	}
+
+	function handleCategoryDragMove(event: PointerEvent) {
+		if (!categoryDragState || event.pointerId !== categoryDragState.pointerId) return;
+		event.preventDefault();
+		categoryDragState = { ...categoryDragState, clientY: event.clientY };
+		updateCategoryDropTarget(event.clientY);
+	}
+
+	function startCategoryDrag(event: PointerEvent, group: TaskGroup) {
+		if (
+			!canShowCategoryDragHandle(group) ||
+			!event.isPrimary ||
+			(event.pointerType === 'mouse' && event.button !== 0) ||
+			dragState ||
+			categoryDragState
+		) return;
+		event.preventDefault();
+		event.stopPropagation();
+
+		categoryDragState = {
+			sourceCategory: group.categoryName,
+			pointerId: event.pointerId,
+			clientY: event.clientY,
+			targetCategory: null,
+			targetBefore: false,
+			hasTarget: false,
+		};
+		window.addEventListener('pointermove', handleCategoryDragMove, { passive: false });
+		window.addEventListener('pointerup', handleCategoryDragEnd);
+		window.addEventListener('pointercancel', handleCategoryDragCancel);
+		updateCategoryDropTarget(event.clientY);
+		startCategoryDragAutoScroll();
+	}
+
+	function handleCategoryDragCancel(event: PointerEvent) {
+		void finishCategoryDrag(event, true);
+	}
+
+	async function finishCategoryDrag(event: PointerEvent, cancelled = false) {
+		if (!categoryDragState || event.pointerId !== categoryDragState.pointerId) return;
+		event.preventDefault();
+		if (!cancelled) {
+			categoryDragState = { ...categoryDragState, clientY: event.clientY };
+			updateCategoryDropTarget(event.clientY);
+		}
+
+		const drop = categoryDragState ? { ...categoryDragState } : null;
+		stopCategoryDragListeners();
+		categoryDragState = null;
+		if (cancelled || !drop?.hasTarget) return;
+
+		const sourceKey = categoryKey(drop.sourceCategory);
+		const destinationNames = activeCategoryNames.filter((category) => categoryKey(category) !== sourceKey);
+		const targetIndex = destinationNames.findIndex((category) => sameCategory(category, drop.targetCategory));
+		if (targetIndex < 0) return;
+		destinationNames.splice(drop.targetBefore ? targetIndex : targetIndex + 1, 0, drop.sourceCategory);
+		if (destinationNames.length !== activeCategoryNames.length || destinationNames.every((category, index) => sameCategory(category, activeCategoryNames[index]))) return;
+		await reorderTaskCategories(projectId, destinationNames);
+	}
+
+	function handleCategoryDragEnd(event: PointerEvent) {
+		void finishCategoryDrag(event);
+	}
+
+	async function moveCategoryByKeyboard(group: TaskGroup, direction: -1 | 1) {
+		if (!canShowCategoryDragHandle(group)) return;
+
+		const categoryIndex = activeCategoryNames.findIndex((category) => sameCategory(category, group.categoryName));
+		const adjacentIndex = categoryIndex + direction;
+		if (categoryIndex < 0 || adjacentIndex < 0 || adjacentIndex >= activeCategoryNames.length) return;
+
+		const destinationNames = [...activeCategoryNames];
+		[destinationNames[categoryIndex], destinationNames[adjacentIndex]] = [destinationNames[adjacentIndex], destinationNames[categoryIndex]];
+		await reorderTaskCategories(projectId, destinationNames);
+		await tick();
+		document.querySelector<HTMLButtonElement>(`[data-category-drag-handle="${categoryHandleKey(group.categoryName)}"]`)?.focus();
+	}
+
+	function handleCategoryHandleKeydown(event: KeyboardEvent, group: TaskGroup) {
+		if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+		event.preventDefault();
+		event.stopPropagation();
+		void moveCategoryByKeyboard(group, event.key === 'ArrowUp' ? -1 : 1);
+	}
+
+	onDestroy(() => {
+		stopTaskDragListeners();
+		stopCategoryDragListeners();
+	});
+
 	// The calendar has no rows to hang a panel off, so the open task is looked up here
 	// and its panel rendered under the grid.
 	let selectedTask = $derived(visibleTasks.find((task) => task.id === openId) ?? null);
@@ -225,13 +657,16 @@
 	// comparator. This pass only partitions that deterministic sequence into bands.
 	// Done tasks use their own display-only category, already placed last by the store.
 	let groups = $derived.by(() => {
-		const map = new Map<string, Task[]>();
+		const map = new Map<string, TaskGroup>();
 		for (const task of visibleTasks) {
-			const key = taskGroupCategory(task);
-			if (!map.has(key)) map.set(key, []);
-			map.get(key)!.push(task);
+			const done = task.status === 'done';
+			const categoryName = done ? null : normalizedTaskCategory(task.category);
+			const category = done ? DONE_CATEGORY : categoryName ?? UNCATEGORIZED;
+			const key = done ? 'done' : `category:${categoryKey(categoryName)}`;
+			if (!map.has(key)) map.set(key, { key, category, categoryName, done, tasks: [] });
+			map.get(key)!.tasks.push(task);
 		}
-		return [...map.entries()].map(([category, tasks]) => ({ category, tasks }));
+		return [...map.values()];
 	});
 
 	// Keep grouping and category counts based on the full filtered list, but only hand
@@ -248,7 +683,7 @@
 
 	// Nothing to fold when every task is uncategorized: the one band would say
 	// 'Uncategorized' over the whole list and fold it away entirely.
-	let showGroupHeaders = $derived(groups.length > 1 || groups[0]?.category !== UNCATEGORIZED);
+	let showGroupHeaders = $derived(groups.length > 1 || groups[0]?.done === true || groups[0]?.categoryName !== null);
 
 	// A plain array rather than a Set: $state doesn't proxy Sets, and the category
 	// count here is small enough that includes() is the cheaper thing to reason about.
@@ -373,11 +808,10 @@
 		return error?.scope === 'task' && error.taskId === taskId ? error.message : null;
 	}
 
-	function categoryReorderError(category: string): string | null {
+	function categoryReorderError(category: string | null): string | null {
 		const error = taskReorderState.error;
 		if (error?.scope !== 'category') return null;
-		const normalized = category === UNCATEGORIZED ? null : category;
-		return (error.category?.trim() || null) === normalized ? error.message : null;
+		return (error.category?.trim() || null) === normalizedTaskCategory(category) ? error.message : null;
 	}
 
 	function globalCategoryReorderError(): string | null {
@@ -574,17 +1008,23 @@
 	// The whole project's tasks, not `visibleTasks` — the meta line above follows the
 	// "Just my tasks" filter because it describes the list, but a file called
 	// '<project> - tasks.json' that quietly held a third of them would be a trap.
-	// Sorted the way the page sorts (deadline first), so the file reads in the same
-	// order as the screen.
+	// Exports always use the persisted priority order, regardless of the page's current
+	// reading mode, so the file preserves the user's intentional task ranking.
 	function downloadTasks() {
+		const exportedTasks = sortTasks(tasksState.tasks, tasksState.categoryPositions, 'priority');
 		const payload = {
 			project: projectName,
 			exportedAt: new Date().toISOString(),
-			taskCount: tasksState.tasks.length,
-			tasks: tasksState.tasks.map((task) => ({
+			taskCount: exportedTasks.length,
+			categoryPositions: tasksState.categoryPositions.map((position) => ({
+				category: position.category_name,
+				priorityPosition: position.priority_position,
+			})),
+			tasks: exportedTasks.map((task) => ({
 				id: task.id,
 				name: task.name,
 				category: task.category,
+				priorityPosition: task.priority_position,
 				description: task.description,
 				startDate: task.start_date,
 				startTime: task.start_time,
@@ -1238,7 +1678,7 @@
 		     own, so it stays open and grows with the page. The columns are still a grid
 		     with fixed fractions, so every row lines up even though nothing is drawn
 		     around them. -->
-		<div class="task-list" class:with-actions={canEdit}>
+		<div class="task-list" class:with-actions={canEdit} class:dragging={dragState !== null || categoryDragState !== null}>
 			<div class="list-head">
 				<span>Task</span>
 				<span>Appointed</span>
@@ -1247,28 +1687,57 @@
 				<span class="head-status">Status</span>
 			</div>
 
-			{#each renderedGroups as group (group.category)}
-				<!-- The band is a real button spanning the row, so a category folds from
-				     the keyboard as well as the pointer. It's also where the category's
-				     colour shows in List mode — the same colour its popsicles take in
-				     Calendar mode. -->
+			{#each renderedGroups as group (group.key)}
+				<!-- The band keeps a separate collapse button and drag handle: nested
+				     buttons are invalid, and both actions stay independently keyboardable. -->
 				{#if showGroupHeaders}
-					<button
-						type="button"
+					<div
 						class="group-row"
-						class:group-done={group.category === DONE_CATEGORY}
-						class:group-uncategorized={group.category === UNCATEGORIZED}
-						style={group.category === DONE_CATEGORY || group.category === UNCATEGORIZED ? '' : styleFor(group.category)}
-						aria-expanded={!isCollapsed(group.category)}
-						onclick={() => toggleGroup(group.category)}
+						class:group-done={group.done}
+						class:group-uncategorized={!group.done && group.categoryName === null}
+						class:category-drag-source={!group.done && categoryDragState !== null && sameCategory(categoryDragState.sourceCategory, group.categoryName)}
+						class:category-drag-target-before={!group.done && categoryDragState !== null && categoryDragState.hasTarget && sameCategory(categoryDragState.targetCategory, group.categoryName) && categoryDragState.targetBefore}
+						class:category-drag-target-after={!group.done && categoryDragState !== null && categoryDragState.hasTarget && sameCategory(categoryDragState.targetCategory, group.categoryName) && !categoryDragState.targetBefore}
+						style={group.done || group.categoryName === null ? '' : styleFor(group.categoryName)}
+						data-category-drag-row={canShowCategoryDragHandle(group) ? 'true' : 'false'}
+						data-category-name={group.categoryName ?? ''}
 					>
+						{#if canShowCategoryDragHandle(group)}
+							<button
+								type="button"
+								class="category-drag-handle"
+								data-category-drag-handle={categoryHandleKey(group.categoryName)}
+								aria-label={`Drag ${group.category} category to reorder`}
+								aria-keyshortcuts="ArrowUp ArrowDown"
+								title="Drag category to reorder; use Arrow Up or Arrow Down to move"
+								onpointerdown={(e) => startCategoryDrag(e, group)}
+								onkeydown={(e) => handleCategoryHandleKeydown(e, group)}
+								onclick={(e) => e.stopPropagation()}
+							>
+								<svg viewBox="0 0 16 16" aria-hidden="true">
+									<circle cx="5" cy="3" r="1" />
+									<circle cx="11" cy="3" r="1" />
+									<circle cx="5" cy="8" r="1" />
+									<circle cx="11" cy="8" r="1" />
+									<circle cx="5" cy="13" r="1" />
+									<circle cx="11" cy="13" r="1" />
+								</svg>
+							</button>
+						{/if}
+						<button
+							type="button"
+							class="group-toggle"
+							aria-expanded={!isCollapsed(group.category)}
+							onclick={() => toggleGroup(group.category)}
+						>
 						<span class="group-caret" aria-hidden="true">{isCollapsed(group.category) ? '▸' : '▾'}</span>
 						<span class="group-name">{group.category}</span>
 						<span class="group-count">{openIn(group.tasks)} of {group.tasks.length} open</span>
-					</button>
+						</button>
+					</div>
 				{/if}
-				{#if categoryReorderError(group.category)}
-					<p class="category-error" role="alert">{categoryReorderError(group.category)}</p>
+				{#if !group.done && categoryReorderError(group.categoryName)}
+					<p class="category-error" role="alert">{categoryReorderError(group.categoryName)}</p>
 				{/if}
 
 				{#if !isCollapsed(group.category)}
@@ -1278,13 +1747,45 @@
 						<!-- The anchor a `#task-<id>` link scrolls to — see openLinkedTask. -->
 						<div class="task-item" id={`task-${task.id}`} class:open={openId === task.id}>
 							<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-							<div class="task-row" onclick={(e) => handleRowClick(e, task.id)}>
-				<div class="cell cell-task">
-					<button type="button" class="task-name" class:done={status === 'done'} onclick={(e) => {
-						e.stopPropagation();
-						toggleDetail(task.id);
-					}}>{task.name}</button>
-				</div>
+							<div
+								class="task-row"
+								class:drag-source={dragState?.taskId === task.id}
+								class:drag-target-before={dragState?.targetTaskId === task.id && dragState?.targetBefore}
+								class:drag-target-after={dragState?.targetTaskId === task.id && !dragState?.targetBefore}
+								data-task-drag-row={status === 'done' ? 'false' : 'true'}
+								data-task-id={task.id}
+								onclick={(e) => handleRowClick(e, task.id)}
+							>
+								<div class="cell cell-task">
+									<div class="task-name-line">
+										{#if canShowTaskDragHandle(task)}
+											<button
+												type="button"
+								class="task-drag-handle"
+								data-task-drag-handle={task.id}
+								aria-label={`Drag ${task.name} to reorder`}
+								aria-keyshortcuts="ArrowUp ArrowDown"
+								title="Drag to reorder; use Arrow Up or Arrow Down to move"
+								onpointerdown={(e) => startTaskDrag(e, task)}
+								onkeydown={(e) => handleTaskHandleKeydown(e, task)}
+								onclick={(e) => e.stopPropagation()}
+											>
+												<svg viewBox="0 0 16 16" aria-hidden="true">
+													<circle cx="5" cy="3" r="1" />
+													<circle cx="11" cy="3" r="1" />
+													<circle cx="5" cy="8" r="1" />
+													<circle cx="11" cy="8" r="1" />
+													<circle cx="5" cy="13" r="1" />
+													<circle cx="11" cy="13" r="1" />
+												</svg>
+											</button>
+										{/if}
+										<button type="button" class="task-name" class:done={status === 'done'} onclick={(e) => {
+											e.stopPropagation();
+											toggleDetail(task.id);
+										}}>{task.name}</button>
+									</div>
+								</div>
 
 								<!-- Two faces, then a +N chip that names the rest on hover — the
 								     detail panel below shows every one. -->
@@ -1520,14 +2021,15 @@
 		border-top: 1px solid var(--color-border);
 	}
 
-	/* Banded like the BOM's category rows, but a button — it folds its group. No rule
+	/* Banded like the BOM's category rows; the inner toggle folds its group. No rule
 	   above it: the band's own background is separation enough, and a hard line there
 	   read as a heavy black edge across the list. Named groups use their category colour;
 	   the two special groups use neutral shades so a colour never implies a category that
 	   isn't there. */
 	.group-row {
+		position: relative;
 		display: flex;
-		align-items: baseline;
+		align-items: stretch;
 		gap: var(--space-2);
 		width: 100%;
 		padding: var(--space-2);
@@ -1540,7 +2042,77 @@
 		letter-spacing: 0.05em;
 		text-transform: uppercase;
 		text-align: left;
+	}
+
+	.group-toggle {
+		display: flex;
+		align-items: baseline;
+		flex: 1 1 auto;
+		gap: var(--space-2);
+		min-width: 0;
+		padding: 0;
+		background: none;
+		border: 0;
+		color: inherit;
+		font: inherit;
+		text-align: left;
 		cursor: pointer;
+	}
+
+	.category-drag-handle {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		flex: 0 0 auto;
+		width: 18px;
+		height: 18px;
+		align-self: center;
+		padding: 0;
+		background: none;
+		border: 0;
+		color: inherit;
+		cursor: grab;
+		touch-action: none;
+		user-select: none;
+		opacity: 0.7;
+	}
+
+	.category-drag-handle:hover {
+		opacity: 1;
+	}
+
+	.category-drag-handle svg {
+		width: 12px;
+		height: 14px;
+		fill: currentColor;
+	}
+
+	.task-list.dragging .category-drag-handle {
+		cursor: grabbing;
+	}
+
+	.group-row.category-drag-source {
+		opacity: 0.45;
+	}
+
+	.group-row.category-drag-target-before::before,
+	.group-row.category-drag-target-after::after {
+		content: '';
+		position: absolute;
+		left: var(--space-2);
+		right: var(--space-2);
+		height: 2px;
+		background: var(--color-fg);
+		pointer-events: none;
+		z-index: 2;
+	}
+
+	.group-row.category-drag-target-before::before {
+		top: -1px;
+	}
+
+	.group-row.category-drag-target-after::after {
+		bottom: -1px;
 	}
 
 	.group-row.group-uncategorized {
@@ -1587,6 +2159,38 @@
 		transition: background 0.12s ease, padding-right 0.12s ease;
 	}
 
+	.task-list.dragging {
+		user-select: none;
+	}
+
+	.task-list.dragging .task-row {
+		cursor: grabbing;
+	}
+
+	.task-row.drag-source {
+		opacity: 0.45;
+	}
+
+	.task-row.drag-target-before::before,
+	.task-row.drag-target-after::after {
+		content: '';
+		position: absolute;
+		left: var(--space-2);
+		right: var(--space-2);
+		height: 2px;
+		background: var(--color-fg);
+		pointer-events: none;
+		z-index: 2;
+	}
+
+	.task-row.drag-target-before::before {
+		top: -1px;
+	}
+
+	.task-row.drag-target-after::after {
+		bottom: -1px;
+	}
+
 	.task-row:hover,
 	.task-item.open .task-row {
 		background: var(--color-highlight);
@@ -1626,6 +2230,45 @@
 		display: flex;
 		flex-direction: column;
 		gap: 1px;
+	}
+
+	.task-name-line {
+		display: flex;
+		align-items: flex-start;
+		gap: var(--space-1);
+		min-width: 0;
+	}
+
+	.task-drag-handle {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		flex: 0 0 auto;
+		width: 18px;
+		height: 20px;
+		margin-top: 1px;
+		padding: 0;
+		background: none;
+		border: 0;
+		color: var(--color-muted);
+		cursor: grab;
+		touch-action: none;
+		user-select: none;
+	}
+
+	.task-drag-handle:hover {
+		color: var(--color-fg);
+	}
+
+	.task-drag-handle:active,
+	.task-list.dragging .task-drag-handle {
+		cursor: grabbing;
+	}
+
+	.task-drag-handle svg {
+		width: 12px;
+		height: 14px;
+		fill: currentColor;
 	}
 
 	/* A real button so the panel opens from the keyboard, styled back down to plain

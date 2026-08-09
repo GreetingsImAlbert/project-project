@@ -3,7 +3,7 @@
 	import { daysUntil, deadlinePassed, displayStatus, formatDeadline } from '../lib/task-status';
 	import { formatDeadlineTime } from '../lib/deadline-time';
 	import { HORIZON_COOKIE, HORIZON_OPTIONS, horizonLabel } from '../lib/task-horizon';
-	import type { Reminder } from '../lib/reminders';
+	import { sortReminders, type Reminder } from '../lib/reminders';
 
 	let {
 		reminders,
@@ -63,11 +63,13 @@
 	// Anything already past due, however long ago. Deliberately not bounded by the
 	// horizon: the setting says how far ahead to look, and a deadline that has already
 	// been missed is the one reminder nobody should be able to shorten their way out of.
-	let overdue = $derived(scoped.filter((r) => deadlinePassed(r.deadline, r.deadlineTime, today, nowTime)));
+	let overdue = $derived(sortReminders(scoped.filter((r) => deadlinePassed(r.deadline, r.deadlineTime, today, nowTime))));
 
 	let upcoming = $derived(
-		scoped.filter(
-			(r) => !deadlinePassed(r.deadline, r.deadlineTime, today, nowTime) && daysUntil(r.deadline, today) <= horizonDays,
+		sortReminders(
+			scoped.filter(
+				(r) => !deadlinePassed(r.deadline, r.deadlineTime, today, nowTime) && daysUntil(r.deadline, today) <= horizonDays,
+			),
 		),
 	);
 
