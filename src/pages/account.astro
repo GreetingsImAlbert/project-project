@@ -7,7 +7,7 @@ import AccountAvatarPicker from '../components/AccountAvatarPicker.svelte';
 import AccountPasswordForm from '../components/AccountPasswordForm.svelte';
 import DeleteAccountPanel from '../components/DeleteAccountPanel.svelte';
 import { getSupabaseAdmin } from '../lib/supabase/admin';
-import { getUserStorageBytes, MAX_USER_STORAGE_BYTES } from '../lib/r2-quota';
+import { getStorageUsage } from '../lib/r2-quota';
 import { normalizeAvatar } from '../lib/avatars';
 
 export const prerender = false;
@@ -26,7 +26,7 @@ const [{ data: profile }, { count: projectCount }, { count: ownedProjectCount }]
 ]);
 
 const admin = getSupabaseAdmin(env);
-const { totalBytes, failed } = await getUserStorageBytes(admin, user.id);
+const { totalBytes, maxBytes, scope, failed } = await getStorageUsage(admin, env, user.id);
 
 // The JWT is the fallback rather than the source: profiles is what other members read,
 // including the custom avatar's Supabase Storage path.
@@ -64,7 +64,7 @@ const avatar = normalizeAvatar(profile?.avatar ?? user.avatar);
 	</div>
 
 	<h2>Storage</h2>
-	<StorageUsageBar usedBytes={totalBytes} capBytes={MAX_USER_STORAGE_BYTES} failed={failed} />
+	<StorageUsageBar usedBytes={totalBytes} capBytes={maxBytes} scope={scope} failed={failed} />
 
 	<h2>Change password</h2>
 	<AccountPasswordForm client:visible />

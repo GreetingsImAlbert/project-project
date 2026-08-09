@@ -28,6 +28,10 @@
 	"env": {
 		"staging": {
 			"name": "p2-staging",
+			"vars": {
+				"STORAGE_QUOTA_SCOPE": "global",
+				"STORAGE_QUOTA_BYTES": "200000000"
+			},
 			"ratelimits": [
 				{
 					"name": "LOGIN_RATE_LIMITER",
@@ -64,6 +68,10 @@
 		},
 		"prod": {
 			"name": "p2-prod",
+			"vars": {
+				"STORAGE_QUOTA_SCOPE": "user",
+				"STORAGE_QUOTA_BYTES": "950000000"
+			},
 			"ratelimits": [
 				{
 					"name": "LOGIN_RATE_LIMITER",

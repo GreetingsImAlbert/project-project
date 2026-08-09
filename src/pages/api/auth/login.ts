@@ -11,7 +11,7 @@ export const POST: APIRoute = async ({ request, redirect, cookies }) => {
     const password = formData.get('password')?.toString();
     const rememberMe = formData.get('rememberMe') === 'on';
 
-    const blocked = await checkAuthRateLimit(env.LOGIN_RATE_LIMITER, request, email);
+	const blocked = await checkAuthRateLimit(env.LOGIN_RATE_LIMITER!, request, email);
     if (blocked) return blocked;
 
     if (!email || !password) {

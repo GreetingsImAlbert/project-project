@@ -3,7 +3,7 @@ import { env } from 'cloudflare:workers';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { getSupabaseAdmin } from '../../lib/supabase/admin';
 import { isAdminUser } from '../../lib/admin-guard';
-import { getGlobalStorageBreakdown, MAX_USER_STORAGE_BYTES } from '../../lib/r2-quota';
+import { getGlobalStorageBreakdown, getStorageQuotaConfig } from '../../lib/r2-quota';
 import { MAX_USERS } from '../../lib/user-limit';
 import { formatBytes } from '../../lib/format-bytes';
 
@@ -20,6 +20,7 @@ if (!(await isAdminUser(Astro.locals.supabase, user.id))) {
 }
 
 const admin = getSupabaseAdmin(env);
+const quota = getStorageQuotaConfig(env);
 
 const [
 	{ count: userCount },
@@ -45,12 +46,32 @@ const userRows = (profiles ?? [])
 			displayName: profile.display_name,
 			email: profile.email,
 			bytes,
-			percent: (bytes / MAX_USER_STORAGE_BYTES) * 100,
+			percent: quota.maxBytes > 0 ? (bytes / quota.maxBytes) * 100 : 0,
 		};
 	})
 	.sort((a, b) => b.bytes - a.bytes);
 
-const globalCapBytes = MAX_USERS * MAX_USER_STORAGE_BYTES;
+// A hard-deleted uploader no longer has a profiles row, but the file remains
+// chargeable during its cleanup grace period. Keep that contribution visible in
+// staging so the rows can still reconcile to the site total.
+const deletedAccountBytes = byUser['null'] ?? 0;
+if (quota.scope === 'global' && deletedAccountBytes > 0) {
+	userRows.push({
+		id: 'deleted-accounts',
+		displayName: 'Deleted accounts',
+		email: null,
+		bytes: deletedAccountBytes,
+		percent: quota.maxBytes > 0 ? (deletedAccountBytes / quota.maxBytes) * 100 : 0,
+	});
+	userRows.sort((a, b) => b.bytes - a.bytes);
+}
+
+// The global cap is the shared staging cap, or the sum of the ten production
+// per-user slices. In staging, per-user rows below are contributions to this
+// site total—not separate quotas.
+const globalCapBytes = quota.scope === 'global' ? quota.maxBytes : MAX_USERS * quota.maxBytes;
+const percentageLabel = quota.scope === 'global' ? '% of site' : '% of quota';
+const storageRowsLabel = quota.scope === 'global' ? 'Storage by user' : 'Storage per user';
 ---
 
 <BaseLayout title="Admin · Dashboard">
@@ -88,7 +109,7 @@ const globalCapBytes = MAX_USERS * MAX_USER_STORAGE_BYTES;
 		</div>
 	</div>
 
-	<h2>Storage per user</h2>
+	<h2>{storageRowsLabel}</h2>
 	<div class="table-scroll">
 		<table>
 			<thead>
@@ -96,12 +117,12 @@ const globalCapBytes = MAX_USERS * MAX_USER_STORAGE_BYTES;
 					<th>User</th>
 					<th>Email</th>
 					<th>Storage used</th>
-					<th>% of quota</th>
+					<th>{percentageLabel}</th>
 				</tr>
 			</thead>
 			<tbody>
 				{userRows.map((row) => (
-					<tr class={!failed && row.percent >= 90 ? 'over-quota' : ''}>
+					<tr class={!failed && quota.scope === 'user' && row.percent >= 90 ? 'over-quota' : ''}>
 						<td>{row.displayName}</td>
 						<td>{row.email}</td>
 						<td>{failed ? '—' : formatBytes(row.bytes)}</td>

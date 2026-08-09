@@ -2,7 +2,7 @@ import { AwsClient } from 'aws4fetch';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from './supabase/database.types';
 import { appendJournalEntry } from './journal-entries';
-import { wouldExceedUserStorageQuota } from './r2-quota';
+import { wouldExceedStorageQuota } from './r2-quota';
 import { appToday } from './today';
 
 // Every project gets at most one of these — the unique partial index in
@@ -30,7 +30,7 @@ function objectUrlFor(env: Env, r2Key: string) {
 }
 
 export async function readJournalObject(env: Env, r2Key: string): Promise<string> {
-	const object = await env.R2_BUCKET.get(r2Key);
+	const object = await env.R2_BUCKET!.get(r2Key);
 	if (!object) return '';
 	return new TextDecoder('utf-8').decode(await object.arrayBuffer());
 }
@@ -208,7 +208,7 @@ async function finalizeOneDraft(
 		// same rule as content.ts's PUT. A full quota leaves the draft queued rather than
 		// writing past the cap; it's retried on the next run instead of being dropped.
 		const growth = new TextEncoder().encode(content).byteLength;
-		if (await wouldExceedUserStorageQuota(admin, file.uploaded_by, growth)) {
+		if (await wouldExceedStorageQuota(admin, env, file.uploaded_by, growth)) {
 			console.error(`[journal] project ${projectId}'s owner is over quota — leaving draft queued`);
 			return;
 		}

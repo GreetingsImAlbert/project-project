@@ -9,7 +9,7 @@ export const POST: APIRoute = async ({ request, redirect }) => {
 	const formData = await request.formData();
 	const email = formData.get('email')?.toString().trim().toLowerCase();
 
-	const blocked = await checkAuthRateLimit(env.PASSWORD_RESET_RATE_LIMITER, request, email);
+	const blocked = await checkAuthRateLimit(env.PASSWORD_RESET_RATE_LIMITER!, request, email);
 	if (blocked) return blocked;
 
 	if (!email) {

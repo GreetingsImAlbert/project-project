@@ -3,7 +3,7 @@ import { env } from 'cloudflare:workers';
 import BaseLayout from '../../../layouts/BaseLayout.astro';
 import FileBrowser from '../../../components/FileBrowser.svelte';
 import { getSupabaseAdmin } from '../../../lib/supabase/admin';
-import { getUserStorageBytes, getProjectStorageBytes, MAX_USER_STORAGE_BYTES } from '../../../lib/r2-quota';
+import { getStorageUsage, getProjectStorageBytes } from '../../../lib/r2-quota';
 
 export const prerender = false;
 
@@ -36,6 +36,7 @@ let userRole: string | undefined;
 let allFolders: { id: string; name: string; parent_folder_id: string | null }[] | null = null;
 let files: FileRow[] = [];
 let availableBytes: number | null = null;
+let storageQuotaScope: 'user' | 'global' = 'user';
 let projectStorageBytes = 0;
 let projectStorageFailed = false;
 let initialOpenFile: { id: string; filename: string } | null = null;
@@ -73,7 +74,7 @@ if (user) {
 			{ data: membersData },
 			{ data: allFoldersData },
 			{ data: filesData },
-			{ totalBytes, failed: userStorageFailed },
+			{ totalBytes, maxBytes: storageCapBytes, scope: userStorageScope, failed: userStorageFailed },
 			{ totalBytes: projectStorageBytesData, failed: projectStorageFailedData },
 		] = await Promise.all([
 			Astro.locals.supabase
@@ -86,14 +87,15 @@ if (user) {
 				.eq('project_id', id)
 				.is('deleted_at', null),
 			filesQuery.overrideTypes<FileRow[]>(),
-			getUserStorageBytes(admin, user.id),
+			getStorageUsage(admin, env, user.id),
 			getProjectStorageBytes(Astro.locals.supabase, id!),
 		]);
 
 		allFolders = allFoldersData;
 		files = filesData ?? [];
 		userRole = membersData?.find((member) => member.user_id === user.id)?.role;
-		availableBytes = userStorageFailed ? null : MAX_USER_STORAGE_BYTES - totalBytes;
+		storageQuotaScope = userStorageScope;
+		availableBytes = userStorageFailed ? null : storageCapBytes - totalBytes;
 		projectStorageBytes = projectStorageBytesData;
 		projectStorageFailed = projectStorageFailedData;
 
@@ -176,6 +178,7 @@ const initialViewMode = storedViewMode === 'list' ? 'list' : 'grid';
 		initialFolderId={readOnly ? null : currentFolderId}
 		initialFiles={files}
 		initialAvailableBytes={availableBytes}
+		storageQuotaScope={storageQuotaScope}
 		initialViewMode={initialViewMode}
 		initialStorageBytes={projectStorageBytes}
 		initialStorageFailed={projectStorageFailed}

@@ -163,7 +163,7 @@ export const GET: APIRoute = async ({ params, locals }) => {
 	const takenByFolder = new Map<string, Set<string>>();
 	const fileEntries: (ZipEntry | null)[] = await Promise.all(
 		(fileRows ?? []).map(async (file) => {
-			const object = await env.R2_BUCKET.get(file.r2_key);
+			const object = await env.R2_BUCKET!.get(file.r2_key);
 			if (!object) return null;
 			const bytes = new Uint8Array(await object.arrayBuffer());
 			const dir = folderPath(file.folder_id);

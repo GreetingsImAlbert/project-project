@@ -6,14 +6,16 @@ interface Props {
 	usedBytes: number;
 	capBytes: number;
 	failed?: boolean;
+	scope?: 'user' | 'global';
 }
 
-const { usedBytes, capBytes, failed = false } = Astro.props;
+const { usedBytes, capBytes, failed = false, scope = 'user' } = Astro.props;
+const storageLabel = scope === 'global' ? 'Site storage used' : 'Your storage used';
 ---
 
 <div class="storage-usage">
 	<div class="storage-usage-label">
-		<span class="storage-usage-title">Your storage used <MyFilesModal client:load /></span>
+		<span class="storage-usage-title">{storageLabel} <MyFilesModal client:load /></span>
 	</div>
 	<StorageUsageFill client:load initialUsedBytes={usedBytes} capBytes={capBytes} initialFailed={failed} />
 </div>

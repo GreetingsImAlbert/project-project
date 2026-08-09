@@ -1,13 +1,39 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from './supabase/database.types';
 
-// Each user gets a fixed slice of R2's 10GB/month free tier — R2 has no
-// built-in per-user quota, so this is enforced at the app level before any
-// write that grows a user's storage. Paired with MAX_USERS in user-limit.ts
-// (10 users * 950MB = 9.5GB, a buffer under the free tier). Decimal (SI)
-// units throughout, matching how R2 reports/bills storage — 1 MB = 1,000,000
-// bytes, not 1024*1024 (see format-bytes.ts).
+// R2 has no built-in per-user or per-site quota, so this is enforced at the app
+// level before any write that grows storage. Production keeps the original
+// per-user policy (10 users * 950MB = 9.5GB, a buffer under the free tier),
+// while staging selects a single site-wide cap through wrangler vars. Decimal
+// (SI) units throughout, matching how R2 reports/bills storage — 1 MB =
+// 1,000,000 bytes, not 1024*1024 (see format-bytes.ts).
 export const MAX_USER_STORAGE_BYTES = 950 * 1_000_000;
+
+export type StorageQuotaScope = 'user' | 'global';
+
+export interface StorageQuotaConfig {
+	scope: StorageQuotaScope;
+	maxBytes: number;
+}
+
+export interface StorageQuotaEnv {
+	STORAGE_QUOTA_SCOPE?: string;
+	STORAGE_QUOTA_BYTES?: string | number;
+}
+
+// Local development has historically used the production bucket and does not
+// have named-environment vars, so missing values intentionally preserve the
+// old 950MB-per-user behaviour. Named Workers environments always provide both
+// values from wrangler.jsonc.
+export function getStorageQuotaConfig(env: StorageQuotaEnv): StorageQuotaConfig {
+	const scope: StorageQuotaScope = env.STORAGE_QUOTA_SCOPE === 'global' ? 'global' : 'user';
+	const configuredBytes = asBytes(env.STORAGE_QUOTA_BYTES);
+
+	return {
+		scope,
+		maxBytes: configuredBytes !== null && configuredBytes >= 0 ? configuredBytes : MAX_USER_STORAGE_BYTES,
+	};
+}
 
 // Every storage sum runs as a Postgres aggregate behind an RPC (see SCHEMA.md):
 // one round trip returning the totals, instead of dragging every matching file
@@ -111,22 +137,91 @@ export async function getGlobalStorageBreakdown(admin: SupabaseClient<Database>)
 	return { totalBytes, byUser, byProject, failed: false };
 }
 
-export async function wouldExceedUserStorageQuota(admin: SupabaseClient<Database>, userId: string, additionalBytes: number) {
-	const { totalBytes, rowCount, failed } = await getUserStorageBytes(admin, userId);
+// Site-wide aggregate for the staging quota. The dedicated RPC avoids building
+// the admin dashboard's per-user/per-project maps on every upload check.
+export async function getGlobalStorageBytes(admin: SupabaseClient<Database>) {
+	const { data, error } = await admin.rpc('global_storage_bytes');
 
-	// A failed read reports 0 bytes used, which would let any write through no
-	// matter how full the account already is. Fail closed instead — block the
-	// write and require a clean re-read.
-	if (failed) {
-		console.log(`[storage-quota] user=${userId} usage read FAILED — failing closed, blocking write`);
+	if (error) {
+		console.log(`[storage-quota] failed to read global usage: ${error.message}`);
+		return { totalBytes: 0, failed: true };
+	}
+
+	const totalBytes = asBytes(data);
+
+	if (totalBytes === null) {
+		console.log(`[storage-quota] unusable global usage total: ${JSON.stringify(data)}`);
+		return { totalBytes: 0, failed: true };
+	}
+
+	return { totalBytes, failed: false };
+}
+
+export interface StorageUsage {
+	totalBytes: number;
+	maxBytes: number;
+	scope: StorageQuotaScope;
+	failed: boolean;
+}
+
+// The environment-aware read used by the next quota consumers. The migration
+// adds a single-purpose RPC for staging so a global quota check does not have to
+// build the admin breakdown maps; the caller migration happens with the write
+// path updates in the next step.
+export async function getStorageUsage(
+	admin: SupabaseClient<Database>,
+	env: StorageQuotaEnv,
+	userId: string,
+): Promise<StorageUsage> {
+	const { scope, maxBytes } = getStorageQuotaConfig(env);
+
+	if (scope === 'global') {
+		const { totalBytes, failed } = await getGlobalStorageBytes(admin);
+		return { totalBytes, maxBytes, scope, failed };
+	}
+
+	const { totalBytes, failed } = await getUserStorageBytes(admin, userId);
+	return { totalBytes, maxBytes, scope, failed };
+}
+
+export async function wouldExceedStorageQuota(
+	admin: SupabaseClient<Database>,
+	env: StorageQuotaEnv,
+	userId: string,
+	additionalBytes: number,
+) {
+	if (!Number.isFinite(additionalBytes) || additionalBytes < 0) {
+		console.log(`[storage-quota] unusable additional byte count: ${additionalBytes}`);
 		return true;
 	}
 
-	const wouldExceed = totalBytes + additionalBytes > MAX_USER_STORAGE_BYTES;
+	const { totalBytes, maxBytes, scope, failed } = await getStorageUsage(admin, env, userId);
+
+	// A failed read reports 0 bytes used, which would let any write through no
+	// matter how full the bucket already is. Fail closed instead — block the
+	// write and require a clean re-read.
+	if (failed) {
+		console.log(`[storage-quota] scope=${scope} usage read FAILED — failing closed, blocking write`);
+		return true;
+	}
+
+	const wouldExceed = totalBytes + additionalBytes > maxBytes;
 
 	console.log(
-		`[storage-quota] user=${userId} rows=${rowCount} current=${totalBytes}B additional=${additionalBytes}B cap=${MAX_USER_STORAGE_BYTES}B wouldExceed=${wouldExceed}`
+		`[storage-quota] scope=${scope} user=${userId} current=${totalBytes}B additional=${additionalBytes}B cap=${maxBytes}B wouldExceed=${wouldExceed}`
 	);
 
 	return wouldExceed;
+}
+
+// Compatibility wrapper for any caller that still explicitly needs the legacy
+// production per-user policy. All storage-growing write paths use the
+// environment-aware function above.
+export async function wouldExceedUserStorageQuota(admin: SupabaseClient<Database>, userId: string, additionalBytes: number) {
+	return wouldExceedStorageQuota(
+		admin,
+		{ STORAGE_QUOTA_SCOPE: 'user', STORAGE_QUOTA_BYTES: MAX_USER_STORAGE_BYTES },
+		userId,
+		additionalBytes,
+	);
 }

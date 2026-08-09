@@ -54,6 +54,7 @@
 		initialFolderId,
 		initialFiles,
 		initialAvailableBytes,
+		storageQuotaScope = 'user',
 		initialViewMode,
 		initialStorageBytes,
 		initialStorageFailed,
@@ -71,6 +72,7 @@
 		initialFolderId: string | null;
 		initialFiles: FileRow[];
 		initialAvailableBytes: number | null;
+		storageQuotaScope?: 'user' | 'global';
 		initialViewMode?: 'list' | 'grid';
 		initialStorageBytes: number;
 		initialStorageFailed: boolean;
@@ -302,8 +304,8 @@
 		}
 		adjustProjectStorage(file.size_bytes ?? 0);
 		// copy.ts always attributes the copy to the current user (uploaded_by is
-		// the copier, not the source file's original uploader), so this always
-		// consumes the current viewer's own quota regardless of the destination.
+		// the copier, not the source file's original uploader). That is the current
+		// viewer's user quota in prod, or the shared site quota in staging.
 		// availableBytes stays null (unknown) if the initial read already failed.
 		if (availableBytes !== null) availableBytes -= file.size_bytes ?? 0;
 	}
@@ -315,16 +317,13 @@
 	}
 
 	function handleFileDeleted(fileId: string) {
-		const deletedFile = files.find((f) => f.id === fileId);
 		files = files.filter((f) => f.id !== fileId);
 		// The preview would keep showing a file that no longer exists.
 		closeViewerFile(fileId);
-		adjustProjectStorage(-(deletedFile?.size_bytes ?? 0));
-		// Only give quota back to the current viewer if it was actually their own
-		// file — deleting a project-mate's upload frees their quota, not ours.
-		if (deletedFile?.uploaded_by === currentUserId && availableBytes !== null) {
-			availableBytes += deletedFile?.size_bytes ?? 0;
-		}
+		// Delete is a soft-delete: the row and R2 object remain in the Trash grace
+		// period, so both project and quota aggregates still count these bytes. They
+		// are released only by the permanent purge/cron, after which a reload reflects
+		// the lower total.
 	}
 
 	function handleFileSaved(fileId: string, sizeBytes: number) {
@@ -335,8 +334,11 @@
 		files = files.map((f) => (f.id === fileId ? { ...f, size_bytes: sizeBytes } : f));
 		adjustProjectStorage(delta);
 		// An edit is charged to whoever uploaded the file (that's the column the quota
-		// sums by), so it only moves the current viewer's own headroom when it's theirs.
-		if (saved.uploaded_by === currentUserId && availableBytes !== null) availableBytes -= delta;
+		// sums by). A global quota moves for every edit; a user quota only moves when
+		// the current viewer owns the file.
+		if ((storageQuotaScope === 'global' || saved.uploaded_by === currentUserId) && availableBytes !== null) {
+			availableBytes -= delta;
+		}
 	}
 
 	// The submit buttons stay enabled whether or not their preconditions hold — an
@@ -596,11 +598,11 @@
 				<span class="muted available-space">{uploadStatus}</span>
 			{:else if availableBytes === null}
 				<span class="available-space storage-error">
-					Available: unavailable
+					{storageQuotaScope === 'global' ? 'Site available' : 'Available'}: unavailable
 					<button type="button" class="reload-btn" onclick={() => location.reload()}>⟳ Reload</button>
 				</span>
 			{:else}
-				<span class="muted available-space">Available: {formatBytes(Math.max(availableBytes, 0))}</span>
+				<span class="muted available-space">{storageQuotaScope === 'global' ? 'Site available' : 'Available'}: {formatBytes(Math.max(availableBytes, 0))}</span>
 			{/if}
 
 			<div class="create-toggle">

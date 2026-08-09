@@ -46,7 +46,7 @@ export const GET: APIRoute = async ({ params, request, locals }) => {
 
 	// The binding reads the bucket directly — no SigV4 signing, no subrequest to
 	// r2.cloudflarestorage.com — so a repeat open costs one Worker invocation, not two.
-	const object = await env.R2_BUCKET.get(file.r2_key);
+	const object = await env.R2_BUCKET!.get(file.r2_key);
 
 	if (!object || !object.body) {
 		return errorResponse({

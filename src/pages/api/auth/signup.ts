@@ -14,7 +14,7 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
 	const password = formData.get('password')?.toString();
 	const displayName = formData.get('displayName')?.toString();
 
-	const blocked = await checkAuthRateLimit(env.SIGNUP_RATE_LIMITER, request, email);
+	const blocked = await checkAuthRateLimit(env.SIGNUP_RATE_LIMITER!, request, email);
 	if (blocked) return blocked;
 
 	if (!email || !password || !displayName) {

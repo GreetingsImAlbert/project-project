@@ -2,7 +2,7 @@ import type { APIRoute } from 'astro';
 import { AwsClient } from 'aws4fetch';
 import { env } from 'cloudflare:workers';
 import { getSupabaseAdmin } from '../../../../lib/supabase/admin';
-import { wouldExceedUserStorageQuota } from '../../../../lib/r2-quota';
+import { wouldExceedStorageQuota } from '../../../../lib/r2-quota';
 import { fileKind, isTextKind, MAX_VIEWABLE_BYTES } from '../../../../lib/file-kind';
 import { getReadableFile } from '../../../../lib/file-access';
 import { errorResponse } from '../../../../lib/error-report';
@@ -60,7 +60,7 @@ export const GET: APIRoute = async ({ params, request, locals }) => {
 
 	// Binding read, not the signed S3 API: drops both the SigV4 signing and the
 	// subrequest for the path every file preview goes through.
-	const object = await env.R2_BUCKET.get(file.r2_key);
+	const object = await env.R2_BUCKET!.get(file.r2_key);
 
 	if (!object) {
 		return errorResponse({
@@ -183,14 +183,14 @@ export const PUT: APIRoute = async ({ params, request, locals }) => {
 		return new Response('This file changed since you opened it — reopen it to see the current version', { status: 409 });
 	}
 
-	// Charged to whoever uploaded the file, not whoever is editing it: getUserStorageBytes
-	// sums by `uploaded_by`, so that's the account the extra bytes actually land on.
+	// In prod, charged to whoever uploaded the file, not whoever is editing it:
+	// the user-scoped quota sums by `uploaded_by`. Staging uses the shared site quota.
 	const previousBytes = Number(headRes.headers.get('content-length') ?? file.size_bytes ?? 0);
 	const growth = bytes.byteLength - previousBytes;
 
 	if (growth > 0) {
 		const admin = getSupabaseAdmin(env);
-		if (await wouldExceedUserStorageQuota(admin, file.uploaded_by, growth)) {
+		if (await wouldExceedStorageQuota(admin, env, file.uploaded_by, growth)) {
 			return new Response('Storage quota exceeded', { status: 507 });
 		}
 	}
