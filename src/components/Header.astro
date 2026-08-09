@@ -6,12 +6,16 @@ interface Props {
 	user: { id: string; email: string | undefined; displayName: string | undefined; avatar: string | null } | null;
 }
 const { user } = Astro.props;
+const isStaging = import.meta.env.MODE === 'staging';
 ---
 
 <header class="site-header">
 	<div class="site-header-inner">
 		<a href="/" class="lockup" data-astro-prefetch>
-			<span class="lockup-title">P2</span>
+			<span class="lockup-title-row">
+				<span class="lockup-title">P2</span>
+				{isStaging && <span class="environment-badge">STAGING</span>}
+			</span>
 			<span class="lockup-subtitle muted">Engineering Workspace</span>
 		</a>
 
@@ -54,9 +58,28 @@ const { user } = Astro.props;
 		border-bottom: none;
 	}
 
+	.lockup-title-row {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+	}
+
 	.lockup-title {
 		font-weight: 700;
 		font-size: 1.1rem;
+	}
+
+	.environment-badge {
+		padding: 3px 6px;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-sm);
+		background: var(--color-highlight);
+		color: var(--color-muted);
+		font-size: 0.6rem;
+		font-weight: 600;
+		letter-spacing: 0.08em;
+		line-height: 1;
+		white-space: nowrap;
 	}
 
 	.lockup-subtitle {
