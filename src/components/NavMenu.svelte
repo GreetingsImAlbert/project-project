@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { onSwapOrDestroy } from '../lib/island-teardown';
+	import type { FeedbackKind } from '../lib/feedback';
 	import Avatar from './Avatar.svelte';
 
 	let {
@@ -10,8 +11,7 @@
 	}: { avatar?: string | null; displayName?: string; guest?: boolean } = $props();
 
 	let open = $state(false);
-	type FeedbackMode = 'help' | 'suggest';
-	let feedbackMode = $state<FeedbackMode | null>(null);
+	let feedbackMode = $state<FeedbackKind | null>(null);
 	let message = $state('');
 	let submitting = $state(false);
 	let error = $state<string | null>(null);
@@ -25,16 +25,23 @@
 		open = false;
 	}
 
-	function openReport(mode: FeedbackMode) {
-		feedbackMode = mode;
+	function resetReportState() {
 		message = '';
 		error = null;
 		reportId = null;
+	}
+
+	function openReport(mode: FeedbackKind) {
+		if (submitting) return;
+		feedbackMode = mode;
+		resetReportState();
 		open = false;
 	}
 
 	function closeReport() {
+		if (submitting) return;
 		feedbackMode = null;
+		resetReportState();
 	}
 
 	async function submitReport() {
@@ -44,21 +51,26 @@
 		submitting = true;
 		error = null;
 
-		const res = await fetch('/api/feedback', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ message: trimmed, path: location.pathname }),
-		});
+		try {
+			const res = await fetch('/api/feedback', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ message: trimmed, path: location.pathname, kind: feedbackMode }),
+			});
 
-		submitting = false;
+			if (!res.ok) {
+				error = await res.text();
+				return;
+			}
 
-		if (!res.ok) {
-			error = await res.text();
-			return;
+			const body = await res.json() as { reportId: string };
+			reportId = body.reportId;
+			message = '';
+		} catch {
+			error = 'Could not send feedback.';
+		} finally {
+			submitting = false;
 		}
-
-		const body = await res.json() as { reportId: string };
-		reportId = body.reportId;
 	}
 
 	onMount(() => {
@@ -94,11 +106,11 @@
 				     feedback endpoint accepts reports without a session. -->
 				<a href="/login" class="menu-item" onclick={closeMenu} data-astro-prefetch>Log in / Register</a>
 				<button type="button" class="menu-item" onclick={() => openReport('help')}>Help</button>
-				<button type="button" class="menu-item" onclick={() => openReport('suggest')}>Suggest</button>
+				<button type="button" class="menu-item" onclick={() => openReport('suggestion')}>Suggest</button>
 			{:else}
 				<a href="/account" class="menu-item" onclick={closeMenu} data-astro-prefetch>Account</a>
 				<button type="button" class="menu-item" onclick={() => openReport('help')}>Help</button>
-				<button type="button" class="menu-item" onclick={() => openReport('suggest')}>Suggest</button>
+				<button type="button" class="menu-item" onclick={() => openReport('suggestion')}>Suggest</button>
 				<form method="POST" action="/api/auth/logout" data-astro-reload>
 					<button type="submit" class="menu-item menu-logout">Log out</button>
 				</form>
@@ -117,7 +129,7 @@
 				</div>
 			{:else}
 				<label class="feedback-label">
-					{feedbackMode === 'suggest' ? 'Any feature or improvement suggestions?' : 'What happened?'}
+					{feedbackMode === 'suggestion' ? 'Any feature or improvement suggestions?' : 'What happened?'}
 					<!-- svelte-ignore a11y_autofocus -->
 					<textarea bind:value={message} rows="4" autofocus disabled={submitting}></textarea>
 				</label>

@@ -3,6 +3,7 @@ import { env } from 'cloudflare:workers';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { getSupabaseAdmin } from '../../lib/supabase/admin';
 import { isAdminUser } from '../../lib/admin-guard';
+import { feedbackKindFromContext } from '../../lib/feedback';
 
 export const prerender = false;
 
@@ -20,7 +21,7 @@ const admin = getSupabaseAdmin(env);
 
 const { data: reports, error: reportsError } = await admin
 	.from('error_reports')
-	.select('id, message, stack, source, method, path, url, created_at, profiles(display_name, email)')
+	.select('id, message, stack, source, method, path, url, context, created_at, profiles(display_name, email)')
 	.order('created_at', { ascending: false })
 	.limit(100);
 ---
@@ -51,7 +52,10 @@ const { data: reports, error: reportsError } = await admin
 						<tr>
 							<td><code>{report.id}</code></td>
 							<td>{new Date(report.created_at).toLocaleString()}</td>
-							<td>{report.source}</td>
+							<td>
+								{report.source}
+								{feedbackKindFromContext(report.context) ? ` (${feedbackKindFromContext(report.context)})` : ''}
+							</td>
 							<td>{report.profiles?.display_name ?? '—'}</td>
 							<td>{report.method ? `${report.method} ` : ''}{report.path ?? report.url ?? '—'}</td>
 							<td>
