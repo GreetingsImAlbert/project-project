@@ -5,8 +5,7 @@ name = "project-project"
 [setup]
 script = '''
 npm.cmd ci
-npx.cmd wrangler types
-npx.cmd astro sync'''
+npx.cmd wrangler types'''
 
 [[actions]]
 name = "Dev"

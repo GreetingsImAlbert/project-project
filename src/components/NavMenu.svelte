@@ -10,7 +10,8 @@
 	}: { avatar?: string | null; displayName?: string; guest?: boolean } = $props();
 
 	let open = $state(false);
-	let reportOpen = $state(false);
+	type FeedbackMode = 'help' | 'suggest';
+	let feedbackMode = $state<FeedbackMode | null>(null);
 	let message = $state('');
 	let submitting = $state(false);
 	let error = $state<string | null>(null);
@@ -24,8 +25,8 @@
 		open = false;
 	}
 
-	function openReport() {
-		reportOpen = true;
+	function openReport(mode: FeedbackMode) {
+		feedbackMode = mode;
 		message = '';
 		error = null;
 		reportId = null;
@@ -33,7 +34,7 @@
 	}
 
 	function closeReport() {
-		reportOpen = false;
+		feedbackMode = null;
 	}
 
 	async function submitReport() {
@@ -67,7 +68,7 @@
 		}
 		function onKeydown(e: KeyboardEvent) {
 			if (e.key === 'Escape') {
-				if (reportOpen) closeReport();
+				if (feedbackMode) closeReport();
 				else if (open) closeMenu();
 			}
 		}
@@ -89,13 +90,15 @@
 		<div class="menu-dropdown">
 			{#if guest}
 				<!-- Guests get a single entry point: the login page is the combined
-				     login/signup page, so one item covers both. Help stays — the
+				     login/signup page, so one item covers both. Help and Suggest stay — the
 				     feedback endpoint accepts reports without a session. -->
 				<a href="/login" class="menu-item" onclick={closeMenu} data-astro-prefetch>Log in / Register</a>
-				<button type="button" class="menu-item" onclick={openReport}>Help</button>
+				<button type="button" class="menu-item" onclick={() => openReport('help')}>Help</button>
+				<button type="button" class="menu-item" onclick={() => openReport('suggest')}>Suggest</button>
 			{:else}
 				<a href="/account" class="menu-item" onclick={closeMenu} data-astro-prefetch>Account</a>
-				<button type="button" class="menu-item" onclick={openReport}>Help</button>
+				<button type="button" class="menu-item" onclick={() => openReport('help')}>Help</button>
+				<button type="button" class="menu-item" onclick={() => openReport('suggest')}>Suggest</button>
 				<form method="POST" action="/api/auth/logout" data-astro-reload>
 					<button type="submit" class="menu-item menu-logout">Log out</button>
 				</form>
@@ -104,7 +107,7 @@
 	{/if}
 </div>
 
-{#if reportOpen}
+{#if feedbackMode}
 	<div class="modal-backdrop" onclick={closeReport}>
 		<div class="modal-box" role="dialog" aria-modal="true" onclick={(e) => e.stopPropagation()}>
 			{#if reportId}
@@ -114,7 +117,7 @@
 				</div>
 			{:else}
 				<label class="feedback-label">
-					What happened?
+					{feedbackMode === 'suggest' ? 'Any feature or improvement suggestions?' : 'What happened?'}
 					<!-- svelte-ignore a11y_autofocus -->
 					<textarea bind:value={message} rows="4" autofocus disabled={submitting}></textarea>
 				</label>
