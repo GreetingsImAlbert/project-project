@@ -1,5 +1,6 @@
 // The built-in set of profile pictures a member can pick. Custom pictures are stored
-// unchanged in Supabase Storage; profiles.avatar holds only the built-in id or path.
+// unchanged in Supabase Storage; profiles.avatar and projects.avatar hold only a
+// built-in id or validated object path.
 //
 // To add one: drop `public/avatars/<id>.svg` in and add the id here — nothing else
 // keys off the list. Swapping the art for an existing id needs no code change at all.
@@ -23,8 +24,8 @@ export const CUSTOM_AVATAR_MAX_SOURCE_BYTES = CUSTOM_AVATAR_MAX_BYTES;
 // Kept temporarily for the one-time migration of legacy data URLs.
 export const CUSTOM_AVATAR_MAX_DATA_URL_LENGTH = 7_000_000;
 export const CUSTOM_AVATAR_MAX_REQUEST_BYTES = 7_500_000;
-// These bounds apply only to legacy data URLs that pass through the strict parser
-// during the one-time migration. New Storage uploads are kept unchanged.
+// These bounds apply to every upload, including legacy data URLs during the
+// one-time migration.
 export const CUSTOM_AVATAR_MAX_DIMENSION = 4096;
 export const CUSTOM_AVATAR_MAX_PIXELS = 8 * 1024 * 1024;
 export const CUSTOM_AVATAR_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
@@ -33,22 +34,12 @@ type CustomAvatarMimeType = (typeof CUSTOM_AVATAR_MIME_TYPES)[number];
 
 const CUSTOM_AVATAR_DATA_URL_RE = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/]+={0,2})$/;
 const CUSTOM_AVATAR_STORAGE_PATH_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(?:img|jpg|jpeg|png|webp)$/i;
-const CUSTOM_AVATAR_MIME_RE = /^image\/[a-z0-9][a-z0-9!#$&^_.+-]*$/i;
-const CUSTOM_AVATAR_EXTENSION_MIME_TYPES: Record<string, string> = {
-	avif: 'image/avif',
-	bmp: 'image/bmp',
-	gif: 'image/gif',
-	heic: 'image/heic',
-	heif: 'image/heif',
-	ico: 'image/x-icon',
-	jfif: 'image/jpeg',
+const PROJECT_AVATAR_STORAGE_PATH_RE = /^projects\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.img$/i;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const CUSTOM_AVATAR_EXTENSION_MIME_TYPES: Record<string, CustomAvatarMimeType> = {
 	jpeg: 'image/jpeg',
 	jpg: 'image/jpeg',
-	jxl: 'image/jxl',
 	png: 'image/png',
-	svg: 'image/svg+xml',
-	tif: 'image/tiff',
-	tiff: 'image/tiff',
 	webp: 'image/webp',
 };
 
@@ -168,9 +159,33 @@ export function isStoredAvatarPath(value: unknown): value is string {
 	return typeof value === 'string' && CUSTOM_AVATAR_STORAGE_PATH_RE.test(value);
 }
 
+export function isStoredProjectAvatarPath(value: unknown): value is string {
+	return typeof value === 'string' && PROJECT_AVATAR_STORAGE_PATH_RE.test(value);
+}
+
+export function isUuid(value: unknown): value is string {
+	return typeof value === 'string' && UUID_RE.test(value);
+}
+
+export function isProjectPictureOwner(ownerId: unknown, userId: unknown): boolean {
+	return typeof ownerId === 'string' && typeof userId === 'string' && ownerId === userId;
+}
+
+export function isStoredPicturePath(value: unknown): value is string {
+	return isStoredAvatarPath(value) || isStoredProjectAvatarPath(value);
+}
+
+export function projectAvatarCleanupPath(value: unknown): string | null {
+	return isStoredProjectAvatarPath(value) ? value : null;
+}
+
+export function projectAvatarReplacementPath(previous: unknown, next: unknown): string | null {
+	return previous !== next ? projectAvatarCleanupPath(previous) : null;
+}
+
 export function avatarUploadMimeType(typeValue: unknown, fileNameValue: unknown): string | null {
 	const declaredType = typeof typeValue === 'string' ? typeValue.trim().toLowerCase() : '';
-	if (CUSTOM_AVATAR_MIME_RE.test(declaredType)) return declaredType;
+	if ((CUSTOM_AVATAR_MIME_TYPES as readonly string[]).includes(declaredType)) return declaredType;
 
 	const fileName = typeof fileNameValue === 'string' ? fileNameValue : '';
 	const extension = fileName.split('.').pop()?.toLowerCase() ?? '';
@@ -181,6 +196,11 @@ export function avatarStoragePath(userId: string, _mimeType: string): string {
 	// Supabase serves the object using its stored content type; the extension is
 	// deliberately opaque so every generated path stays within the safe path shape.
 	return `${userId}/${crypto.randomUUID()}.img`;
+}
+
+export function projectAvatarStoragePath(projectId: string): string {
+	if (!isUuid(projectId)) throw new Error('Invalid project id');
+	return `projects/${projectId}/${crypto.randomUUID()}.img`;
 }
 
 export function parseCustomAvatarBytes(value: Uint8Array): { mimeType: CustomAvatarMimeType; bytes: Uint8Array; dimensions: ImageDimensions } | null {
@@ -220,6 +240,20 @@ export function avatarStorageSrc(path: string): string {
 	const baseUrl = import.meta.env.PUBLIC_SUPABASE_URL.replace(/\/$/, '');
 	const encodedPath = path.split('/').map((part) => encodeURIComponent(part)).join('/');
 	return `${baseUrl}/storage/v1/object/public/${CUSTOM_AVATAR_BUCKET}/${encodedPath}`;
+}
+
+export function projectAvatarStorageSrc(path: string): string | null {
+	return isStoredProjectAvatarPath(path) ? avatarStorageSrc(path) : null;
+}
+
+export function normalizeProjectAvatar(value: unknown): AvatarId | string | null {
+	if (isAvatarId(value)) return value;
+	if (isStoredProjectAvatarPath(value)) return value;
+	return null;
+}
+
+export function resolveProjectAvatar(projectAvatar: unknown, ownerAvatar: unknown): AvatarId | string | null {
+	return normalizeProjectAvatar(projectAvatar) ?? normalizeAvatar(ownerAvatar);
 }
 
 // A member who has never picked one shows their initial instead (see Avatar.svelte) —

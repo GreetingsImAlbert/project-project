@@ -4,61 +4,23 @@ import { getSupabaseAdmin } from '../../../lib/supabase/admin';
 import {
 	CUSTOM_AVATAR_BUCKET,
 	CUSTOM_AVATAR_MARKER,
+	CUSTOM_AVATAR_MAX_BYTES,
 	CUSTOM_AVATAR_MAX_REQUEST_BYTES,
 	avatarStoragePath,
-	avatarUploadMimeType,
 	isAvatarId,
 	isCustomAvatarDataUrl,
 	isStoredAvatarPath,
+	parseCustomAvatarBytes,
 	parseCustomAvatarDataUrl,
 } from '../../../lib/avatars';
 import { errorResponse } from '../../../lib/error-report';
+import { isUploadedFile, readBoundedRequestBody } from '../../../lib/upload-body';
 
 export const prerender = false;
-
-async function readRequestBody(request: Request, maxBytes: number): Promise<Uint8Array<ArrayBuffer> | null> {
-	const contentLength = request.headers.get('content-length');
-	if (contentLength !== null) {
-		const parsedLength = Number(contentLength);
-		if (!Number.isSafeInteger(parsedLength) || parsedLength < 0 || parsedLength > maxBytes) return null;
-	}
-
-	if (!request.body) return new Uint8Array(new ArrayBuffer(0));
-
-	const reader = request.body.getReader();
-	const chunks: Uint8Array[] = [];
-	let total = 0;
-	try {
-		while (true) {
-			const { done, value } = await reader.read();
-			if (done) break;
-			total += value.byteLength;
-			if (total > maxBytes) {
-				await reader.cancel();
-				return null;
-			}
-			chunks.push(value);
-		}
-	} finally {
-		reader.releaseLock();
-	}
-
-	const body = new Uint8Array(new ArrayBuffer(total));
-	let offset = 0;
-	for (const chunk of chunks) {
-		body.set(chunk, offset);
-		offset += chunk.byteLength;
-	}
-	return body;
-}
 
 async function removeStoredAvatar(admin: ReturnType<typeof getSupabaseAdmin>, avatar: string | null) {
 	if (!avatar || !isStoredAvatarPath(avatar)) return;
 	await admin.storage.from(CUSTOM_AVATAR_BUCKET).remove([avatar]);
-}
-
-function isUploadedFile(value: FormDataEntryValue | null): value is File {
-	return value !== null && typeof value !== 'string' && typeof value.size === 'number' && typeof value.type === 'string' && typeof value.arrayBuffer === 'function';
 }
 
 export const POST: APIRoute = async ({ request, locals }) => {
@@ -66,7 +28,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
 		return new Response('Unauthorized', { status: 401 });
 	}
 
-	const requestBody = await readRequestBody(request, CUSTOM_AVATAR_MAX_REQUEST_BYTES);
+	const requestBody = await readBoundedRequestBody(request, CUSTOM_AVATAR_MAX_REQUEST_BYTES);
 	if (!requestBody) {
 		return new Response('Request body is too large', { status: 413 });
 	}
@@ -89,14 +51,14 @@ export const POST: APIRoute = async ({ request, locals }) => {
 			}
 		}
 	} else if (isUploadedFile(submitted)) {
-		if (submitted.size > 5 * 1024 * 1024) {
+		if (submitted.size > CUSTOM_AVATAR_MAX_BYTES) {
 			return new Response(`This image is ${(submitted.size / (1024 * 1024)).toFixed(2)} MB. The maximum is 5.00 MB.`, { status: 400 });
 		}
-		const mimeType = avatarUploadMimeType(submitted.type, submitted.name);
-		if (!mimeType) {
-			return new Response('Choose an image file. The maximum size is 5.00 MB.', { status: 400 });
+		const parsedImage = parseCustomAvatarBytes(new Uint8Array(await submitted.arrayBuffer()));
+		if (!parsedImage) {
+			return new Response('Choose a JPEG, PNG, or WebP image no larger than 5 MB.', { status: 400 });
 		}
-		uploadedFile = { bytes: new Uint8Array(await submitted.arrayBuffer()), mimeType };
+		uploadedFile = { bytes: parsedImage.bytes, mimeType: parsedImage.mimeType };
 	} else {
 		return new Response('No image file was received. Choose a JPEG, PNG, or WebP image.', { status: 400 });
 	}

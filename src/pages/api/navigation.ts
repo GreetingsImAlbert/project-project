@@ -5,20 +5,29 @@ import { errorResponse } from '../../lib/error-report';
 import { getSupabaseAdmin } from '../../lib/supabase/admin';
 import { normalizeDeadlineTime, normalizeStartTime } from '../../lib/deadline-time';
 import { appNowTime, appToday } from '../../lib/today';
+import { normalizeProjectAvatar, resolveProjectAvatar } from '../../lib/avatars';
 
 export async function GET({ request, locals }: { request: Request; locals: App.Locals }) {
 	const user = locals.user;
 	if (!user) {
 		const { data: publicProjectRows, error } = await getSupabaseAdmin(env)
 			.from('projects')
-			.select('id, name')
+			.select('id, name, avatar')
 			.or('is_public.eq.true,public_files_enabled.eq.true')
-			.order('created_at', { ascending: false });
+			.order('created_at', { ascending: false })
+			.overrideTypes<{ id: string; name: string; avatar: string | null }[]>();
 
 		if (error) return errorResponse({ request, privateMessage: error.message, action: 'Could not load navigation.' });
 
 		return Response.json(
-			{ projects: [], publicProjects: (publicProjectRows ?? []).map((project) => ({ id: project.id, name: project.name })) },
+			{
+				projects: [],
+				publicProjects: (publicProjectRows ?? []).map((project) => ({
+					id: project.id,
+					name: project.name,
+					avatar: normalizeProjectAvatar(project.avatar),
+				})),
+			},
 			{ headers: { 'cache-control': 'private, no-store' } },
 		);
 	}
@@ -30,13 +39,14 @@ export async function GET({ request, locals }: { request: Request; locals: App.L
 	] = await Promise.all([
 		locals.supabase
 			.from('projects')
-			.select('id, name, owner_id, project_members(user_id, role, profiles(display_name, avatar))')
+			.select('id, name, owner_id, avatar, project_members(user_id, role, profiles(display_name, avatar))')
 			.order('created_at', { ascending: false })
 			.overrideTypes<
 				{
 					id: string;
 					name: string;
 					owner_id: string;
+					avatar: string | null;
 					project_members: {
 						user_id: string;
 						role: string;
@@ -62,9 +72,10 @@ export async function GET({ request, locals }: { request: Request; locals: App.L
 		// Discoverable = either the Overview or the Files section is public.
 		getSupabaseAdmin(env)
 			.from('projects')
-			.select('id, name')
+			.select('id, name, avatar')
 			.or('is_public.eq.true,public_files_enabled.eq.true')
-			.order('created_at', { ascending: false }),
+			.order('created_at', { ascending: false })
+			.overrideTypes<{ id: string; name: string; avatar: string | null }[]>(),
 	]);
 
 	if (projectsError || tasksError || publicProjectsError) {
@@ -103,7 +114,7 @@ export async function GET({ request, locals }: { request: Request; locals: App.L
 			name: project.name,
 			owner: {
 				displayName: owner?.display_name ?? 'Unknown',
-				avatar: owner?.avatar ?? null,
+				avatar: resolveProjectAvatar(project.avatar, owner?.avatar),
 			},
 			overdueTaskCount: overdueTaskCounts.get(project.id) ?? 0,
 			ongoingTaskCount: ongoingTaskCounts.get(project.id) ?? 0,
@@ -113,7 +124,11 @@ export async function GET({ request, locals }: { request: Request; locals: App.L
 	const memberProjectIds = new Set(projects.map((project) => project.id));
 	const publicProjects = (publicProjectRows ?? [])
 		.filter((project) => !memberProjectIds.has(project.id))
-		.map((project) => ({ id: project.id, name: project.name }));
+		.map((project) => ({
+			id: project.id,
+			name: project.name,
+			avatar: normalizeProjectAvatar(project.avatar),
+		}));
 
 	return Response.json({ projects, publicProjects }, { headers: { 'cache-control': 'private, no-store' } });
 }

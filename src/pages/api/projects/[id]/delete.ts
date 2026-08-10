@@ -2,8 +2,15 @@ import type { APIRoute } from 'astro';
 import { AwsClient } from 'aws4fetch';
 import { env } from 'cloudflare:workers';
 import { errorResponse } from '../../../../lib/error-report';
+import { CUSTOM_AVATAR_BUCKET, isProjectPictureOwner, projectAvatarCleanupPath } from '../../../../lib/avatars';
+import { getSupabaseAdmin } from '../../../../lib/supabase/admin';
 
 export const prerender = false;
+
+type ProjectDeleteRow = {
+	owner_id: string;
+	avatar: string | null;
+};
 
 export const POST: APIRoute = async ({ params, request, locals }) => {
 	if (!locals.user) {
@@ -15,11 +22,12 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 	// only the owner can delete the project
 	const { data: project } = await locals.supabase
 		.from('projects')
-		.select('owner_id')
+		.select('owner_id, avatar')
 		.eq('id', projectId)
-		.single();
+		.single()
+		.overrideTypes<ProjectDeleteRow>();
 
-	if (!project || project.owner_id !== locals.user.id) {
+	if (!project || !isProjectPictureOwner(project.owner_id, locals.user.id)) {
 		return new Response('Forbidden', { status: 403 });
 	}
 
@@ -58,6 +66,16 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 				return r2.fetch(objectUrl, { method: 'DELETE' }).catch(() => {});
 			}),
 		);
+	}
+
+	// The project row is already committed, so Storage cleanup is best-effort. The
+	// strict project path check excludes built-in ids and the owner's fallback avatar.
+	const projectAvatarPath = projectAvatarCleanupPath(project.avatar);
+	if (projectAvatarPath) {
+		const { error: avatarError } = await getSupabaseAdmin(env)
+			.storage.from(CUSTOM_AVATAR_BUCKET)
+			.remove([projectAvatarPath]);
+		if (avatarError) console.error(`[project-delete] failed to remove ${projectAvatarPath}: ${avatarError.message}`);
 	}
 
 	return new Response(null, { status: 204 });

@@ -558,6 +558,7 @@ export type Database = {
       }
       projects: {
         Row: {
+          avatar: string | null
           created_at: string | null
           currency: string
           description: string | null
@@ -569,6 +570,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          avatar?: string | null
           created_at?: string | null
           currency?: string
           description?: string | null
@@ -580,6 +582,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          avatar?: string | null
           created_at?: string | null
           currency?: string
           description?: string | null

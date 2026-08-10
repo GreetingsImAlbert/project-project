@@ -10,7 +10,10 @@ import CurrencyPicker from '../../../components/CurrencyPicker.svelte';
 import TrashList from '../../../components/TrashList.svelte';
 import ProjectVisibilityPicker from '../../../components/ProjectVisibilityPicker.svelte';
 import DownloadProjectButton from '../../../components/DownloadProjectButton.svelte';
+import PicturePicker from '../../../components/PicturePicker.svelte';
+import type { CurrencyCode } from '../../../lib/currency.svelte';
 import { listGhostMembers } from '../../../lib/ghost-members';
+import { normalizeAvatar, normalizeProjectAvatar } from '../../../lib/avatars';
 
 export const prerender = false;
 
@@ -22,7 +25,21 @@ if (!user) {
 const { id } = Astro.params;
 
 const [{ data: project, error }, { data: members }, ghostMembers] = await Promise.all([
-	Astro.locals.supabase.from('projects').select('id, name, description, owner_id, currency, is_public, public_files_enabled').eq('id', id).single(),
+	Astro.locals.supabase
+		.from('projects')
+		.select('id, name, description, owner_id, avatar, currency, is_public, public_files_enabled')
+		.eq('id', id)
+		.single()
+		.overrideTypes<{
+			id: string;
+			name: string;
+			description: string | null;
+			owner_id: string;
+			avatar: string | null;
+			currency: CurrencyCode;
+			is_public: boolean;
+			public_files_enabled: boolean;
+		}>(),
 	Astro.locals.supabase
 		.from('project_members')
 		.select('role, is_auditor, user_id, profiles(display_name, email, avatar)')
@@ -59,10 +76,32 @@ const memberData = (members ?? []).map((m) => ({
 	avatar: m.profiles?.avatar ?? null,
 }));
 
+const owner = members?.find((member) => member.user_id === project.owner_id)?.profiles;
+const ownerDisplayName = owner?.display_name ?? project.name;
+const ownerAvatar = normalizeAvatar(owner?.avatar);
+const projectAvatar = normalizeProjectAvatar(project.avatar);
+
 const returnTo = `/projects/${id}/settings`;
 
 ---
 <BaseLayout title={`${project.name} — Settings`} projectNav={{ projectId: project.id, userRole: userRole ?? '' }}>
+	<section>
+		<h3>Project picture</h3>
+		<PicturePicker
+			client:idle
+			initialAvatar={projectAvatar}
+			displayName={project.name}
+			fallbackAvatar={ownerAvatar}
+			fallbackDisplayName={ownerDisplayName}
+			endpoint={`/api/projects/${project.id}/update-picture`}
+			defaultLabel="Default"
+			defaultAriaLabel="Use the owner's picture"
+			selectedNote="Shown next to this project in navigation."
+			defaultNote="Uses the owner's current profile picture."
+			pictureLabel="project picture"
+		/>
+	</section>
+
 	<section>
 		<h3>Project name</h3>
 		<ProjectNameEditor client:idle projectId={project.id} initialName={project.name} />
