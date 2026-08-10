@@ -2,84 +2,122 @@
 import { env } from 'cloudflare:workers';
 import BaseLayout from '../../../layouts/BaseLayout.astro';
 import JournalPage from '../../../components/JournalPage.svelte';
+import JournalHistory from '../../../components/JournalHistory.svelte';
 import { getSupabaseAdmin } from '../../../lib/supabase/admin';
-import { ensureJournalFile, ensureJournalDraft, readJournalObject } from '../../../lib/journal';
-import { parseJournalEntries } from '../../../lib/journal-entries';
-import { toPublicSectionFlags, type PublicProjectFlags } from '../../../lib/project-visibility';
+import { ensureJournalFile, ensureJournalDraft, readJournalObject, type JournalDraftRow } from '../../../lib/journal';
+import { parseJournalEntries, type JournalEntry } from '../../../lib/journal-entries';
+import { getPublicProjectGate, toPublicSectionFlags, type PublicProjectFlags } from '../../../lib/project-visibility';
 
 export const prerender = false;
 
 const user = Astro.locals.user;
-if (!user) {
-	return Astro.redirect('/login');
-}
-
 const { id } = Astro.params;
 
 type JournalProject = {
 	id: string;
 	name: string;
 	description: string | null;
-	owner_id: string;
+	owner_id: string | null;
 } & PublicProjectFlags;
 
-const [{ data: project, error }, { data: members }] = await Promise.all([
-	Astro.locals.supabase
+const admin = getSupabaseAdmin(env);
+let project: JournalProject | null = null;
+let userRole: string | undefined;
+let publicNav = false;
+let readOnly = false;
+let entries: JournalEntry[] = [];
+let draft: JournalDraftRow | null = null;
+
+async function loadPublicEntries(projectId: string): Promise<JournalEntry[] | null> {
+	const { data: journalFile, error } = await admin
+		.from('files')
+		.select('r2_key')
+		.eq('project_id', projectId)
+		.eq('is_journal', true)
+		.is('deleted_at', null)
+		.maybeSingle()
+		.overrideTypes<{ r2_key: string }>();
+
+	if (error) return null;
+	const journalContent = journalFile ? await readJournalObject(env, journalFile.r2_key) : '';
+	return parseJournalEntries(journalContent).reverse();
+}
+
+// A signed-in request gets the normal RLS project row first. Only a member gets
+// the member branch; everyone else falls through to the same public gate as a
+// guest, so a private project is indistinguishable from a missing one.
+if (user) {
+	const { data: projectData, error } = await Astro.locals.supabase
 		.from('projects')
 		.select('id, name, description, owner_id, is_public, public_files_enabled, public_tasks_enabled, public_journal_enabled, public_money_enabled')
 		.eq('id', id)
 		.single()
-		.overrideTypes<JournalProject>(),
-	Astro.locals.supabase
-		.from('project_members')
-		.select('role, is_auditor, user_id, profiles(display_name, email)')
-		.eq('project_id', id)
-		.overrideTypes<
-			{ role: string; is_auditor: boolean; user_id: string; profiles: { display_name: string; email: string } }[]
-		>(),
-]);
+		.overrideTypes<JournalProject>();
 
-if (error || !project) {
-	return new Response('Project not found', { status: 404 });
+	if (!error && projectData) {
+		const { data: membership } = await Astro.locals.supabase
+			.from('project_members')
+			.select('role')
+			.eq('project_id', projectData.id)
+			.eq('user_id', user.id)
+			.maybeSingle()
+			.overrideTypes<{ role: string }>();
+
+		if (membership) {
+			project = projectData;
+			userRole = membership.role;
+
+			if (userRole === 'owner' || userRole === 'editor') {
+				if (!project.owner_id) return new Response('Project not found', { status: 404 });
+				const [journalFile, journalDraft] = await Promise.all([
+					ensureJournalFile(admin, env, project.id, project.owner_id),
+					ensureJournalDraft(Astro.locals.supabase, project.id),
+				]);
+				const journalContent = await readJournalObject(env, journalFile.r2_key);
+				entries = parseJournalEntries(journalContent).reverse();
+				draft = journalDraft;
+			} else if (project.public_journal_enabled) {
+				readOnly = true;
+				const publicEntries = await loadPublicEntries(project.id);
+				if (!publicEntries) return new Response('Could not load journal', { status: 500 });
+				entries = publicEntries;
+			} else {
+				return Astro.redirect(`/projects/${project.id}`);
+			}
+		}
+	}
 }
 
-const userRole = members?.find((member) => member.user_id === user.id)?.role;
+if (!project) {
+	const gate = await getPublicProjectGate(admin, id, 'journal');
+	if (!gate) return new Response('Project not found', { status: 404 });
 
-// "Only owners and editors can use the journal" — a viewer has nothing to see
-// here at all, same as a non-owner on Settings.
-if (userRole !== 'owner' && userRole !== 'editor') {
-	return Astro.redirect(`/projects/${id}`);
+	const publicEntries = await loadPublicEntries(gate.id);
+	if (!publicEntries) return new Response('Could not load journal', { status: 500 });
+
+	project = { ...gate, description: null, owner_id: null };
+	publicNav = true;
+	readOnly = true;
+	entries = publicEntries;
 }
-
-const admin = getSupabaseAdmin(env);
-
-// Both lazily create their row on this project's first-ever Journal visit — the
-// file on the admin client (attributed to the owner regardless of who's visiting,
-// see ensureJournalFile), the draft on the caller's own RLS-scoped one.
-const [journalFile, draft] = await Promise.all([
-	ensureJournalFile(admin, env, id!, project.owner_id),
-	ensureJournalDraft(Astro.locals.supabase, id!),
-]);
-
-const journalContent = await readJournalObject(env, journalFile.r2_key);
-// Newest first — a log reads top-down from "most recent", while the file itself
-// stays a plain append-only tail (see journal-entries.ts).
-const entries = parseJournalEntries(journalContent).reverse();
 ---
 <BaseLayout
 	title={`${project.name} — Journal`}
 	projectNav={{
 		projectId: project.id,
 		userRole: userRole ?? '',
-		publicNav: false,
+		publicNav,
 		publicSections: toPublicSectionFlags(project),
 	}}
 >
-	<JournalPage
-		client:load
-		projectId={project.id}
-		initialDraftDate={draft.draft_date}
-		initialDraftContent={draft.content}
-		initialEntries={entries}
-	/>
+	{readOnly && <JournalHistory entries={entries} />}
+	{!readOnly && draft && (
+		<JournalPage
+			client:load
+			projectId={project.id}
+			initialDraftDate={draft!.draft_date}
+			initialDraftContent={draft!.content}
+			initialEntries={entries}
+		/>
+	)}
 </BaseLayout>

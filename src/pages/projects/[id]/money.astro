@@ -1,4 +1,5 @@
 ---
+import { env } from 'cloudflare:workers';
 import BaseLayout from '../../../layouts/BaseLayout.astro';
 import MoneySummary from '../../../components/MoneySummary.svelte';
 import BomTable from '../../../components/BomTable.svelte';
@@ -7,27 +8,35 @@ import MemberContributionsTable from '../../../components/MemberContributionsTab
 import { TRANSACTION_COLUMNS } from '../../../lib/transaction-columns';
 import { resolveContributionPercents } from '../../../lib/money-math';
 import { ghostPartyId } from '../../../lib/money-parties';
-import { listGhostMembers } from '../../../lib/ghost-members';
+import { listGhostMembers, type GhostMemberRow } from '../../../lib/ghost-members';
 import type { Party } from '../../../lib/parties-store.svelte';
-import { toPublicSectionFlags, type PublicProjectFlags } from '../../../lib/project-visibility';
+import { getPublicProjectGate, toPublicSectionFlags, type PublicProjectFlags } from '../../../lib/project-visibility';
+import { getSupabaseAdmin } from '../../../lib/supabase/admin';
+import type { BomItem } from '../../../lib/bom-store.svelte';
 import type { CurrencyCode } from '../../../lib/currency';
 
 export const prerender = false;
 
 const user = Astro.locals.user;
-if (!user) {
-	return Astro.redirect('/login');
-}
-
 const { id } = Astro.params;
 
 type MoneyProject = {
 	id: string;
 	name: string;
 	description: string | null;
-	owner_id: string;
+	owner_id: string | null;
 	currency: CurrencyCode;
 } & PublicProjectFlags;
+
+type MemberRow = {
+	role: string;
+	is_auditor: boolean;
+	user_id: string;
+	contribution_percent: number | null;
+	profiles: { display_name: string } | null;
+};
+
+type PublicGhostMemberRow = Pick<GhostMemberRow, 'id' | 'display_name' | 'note' | 'contribution_percent'>;
 
 interface TransactionRow {
 	id: string;
@@ -49,60 +58,143 @@ interface TransactionRow {
 	ghost_members: { display_name: string } | null;
 }
 
-// All five go out at once: the Worker is a long trip from Postgres and none of
-// them depend on the one before it (RLS scopes each to the caller independently),
-// so the 404 check just moves below the await.
-const [{ data: project, error }, { data: members }, ghostMembers, { data: bomItems }, { data: transactions }] = await Promise.all([
-	Astro.locals.supabase
+let project: MoneyProject | null = null;
+let publicReader = false;
+let members: MemberRow[] = [];
+let ghostMembers: Array<GhostMemberRow | PublicGhostMemberRow> = [];
+let bomItems: BomItem[] = [];
+let transactionRows: TransactionRow[] = [];
+
+// Members are resolved through the normal RLS view first. An authenticated
+// non-member falls through to the same admin gate as a guest.
+if (user) {
+	const { data: projectData, error } = await Astro.locals.supabase
 		.from('projects')
 		.select('id, name, description, owner_id, currency, is_public, public_files_enabled, public_tasks_enabled, public_journal_enabled, public_money_enabled')
 		.eq('id', id)
 		.single()
-		.overrideTypes<MoneyProject>(),
-	Astro.locals.supabase
-		.from('project_members')
-		.select('role, is_auditor, user_id, contribution_percent, profiles(display_name, email)')
-		.eq('project_id', id)
-		.overrideTypes<
-			{ role: string; is_auditor: boolean; user_id: string; contribution_percent: number | null; profiles: { display_name: string; email: string } }[]
-		>(),
-	listGhostMembers(Astro.locals.supabase, id!),
-	Astro.locals.supabase
-		.from('bom_items')
-		.select('id, part_name, category, description, quantity, unit, unit_cost, supplier, item_url, total_cost')
-		.eq('project_id', id)
-		.is('deleted_at', null)
-		.order('created_at', { ascending: true }),
-	// created_at breaks the tie: every line of a bulk transaction carries its parent's
-	// date, so ordering by date alone leaves a purchase's own breakdown in whatever order
-	// Postgres happens to return it in.
-	Astro.locals.supabase
-		.from('transactions')
-		.select(TRANSACTION_COLUMNS)
-		.eq('project_id', id)
-		.is('deleted_at', null)
-		.order('transaction_date', { ascending: true })
-		.order('created_at', { ascending: true })
-		.overrideTypes<TransactionRow[]>(),
-]);
+		.overrideTypes<MoneyProject>();
 
-const transactionRows = transactions ?? [];
+	if (!error && projectData) {
+		project = projectData;
+		const [
+			{ data: memberRows },
+			memberGhosts,
+			{ data: memberBomItems },
+			{ data: memberTransactions },
+		] = await Promise.all([
+			Astro.locals.supabase
+				.from('project_members')
+				.select('role, is_auditor, user_id, contribution_percent, profiles(display_name)')
+				.eq('project_id', id)
+				.overrideTypes<MemberRow[]>(),
+			listGhostMembers(Astro.locals.supabase, id!),
+			Astro.locals.supabase
+				.from('bom_items')
+				.select('id, part_name, category, description, quantity, unit, unit_cost, supplier, item_url, total_cost')
+				.eq('project_id', id)
+				.is('deleted_at', null)
+				.order('created_at', { ascending: true })
+				.overrideTypes<BomItem[]>(),
+			// created_at breaks the tie: every line of a bulk transaction carries its parent's
+			// date, so ordering by date alone leaves a purchase's own breakdown in whatever order
+			// Postgres happens to return it in.
+			Astro.locals.supabase
+				.from('transactions')
+				.select(TRANSACTION_COLUMNS)
+				.eq('project_id', id)
+				.is('deleted_at', null)
+				.order('transaction_date', { ascending: true })
+				.order('created_at', { ascending: true })
+				.overrideTypes<TransactionRow[]>(),
+		]);
 
-if (error || !project) {
-	return new Response('Project not found', { status: 404 });
+		members = memberRows ?? [];
+		ghostMembers = memberGhosts;
+		bomItems = memberBomItems ?? [];
+		transactionRows = memberTransactions ?? [];
+	}
 }
 
-const currentMember = members?.find(member => member.user_id === user.id);
+if (!project) {
+	const admin = getSupabaseAdmin(env);
+	const gate = await getPublicProjectGate(admin, id, 'money');
+	if (!gate) return new Response('Project not found', { status: 404 });
+
+	// The shared gate deliberately omits project-specific money formatting data;
+	// fetch only the currency needed by the read-only components after it passes.
+	const { data: currencyRow, error: currencyError } = await admin
+		.from('projects')
+		.select('currency')
+		.eq('id', gate.id)
+		.maybeSingle()
+		.overrideTypes<{ currency: CurrencyCode }>();
+	if (currencyError || !currencyRow) return new Response('Project not found', { status: 404 });
+
+	const [
+		{ data: publicMembers, error: membersError },
+		{ data: publicGhosts, error: ghostsError },
+		{ data: publicBomItems, error: bomError },
+		{ data: publicTransactions, error: transactionsError },
+	] = await Promise.all([
+		admin
+			.from('project_members')
+			.select('user_id, contribution_percent, profiles(display_name)')
+			.eq('project_id', gate.id)
+			.overrideTypes<{ user_id: string; contribution_percent: number | null; profiles: { display_name: string } | null }[]>(),
+		admin
+			.from('ghost_members')
+			.select('id, display_name, note, contribution_percent')
+			.eq('project_id', gate.id)
+			.eq('is_deleted_account', false)
+			.order('created_at', { ascending: true })
+			.overrideTypes<PublicGhostMemberRow[]>(),
+		admin
+			.from('bom_items')
+			.select('id, part_name, category, description, quantity, unit, unit_cost, supplier, item_url, total_cost')
+			.eq('project_id', gate.id)
+			.is('deleted_at', null)
+			.order('created_at', { ascending: true })
+			.overrideTypes<BomItem[]>(),
+		admin
+			.from('transactions')
+			.select(TRANSACTION_COLUMNS)
+			.eq('project_id', gate.id)
+			.is('deleted_at', null)
+			.order('transaction_date', { ascending: true })
+			.order('created_at', { ascending: true })
+			.overrideTypes<TransactionRow[]>(),
+	]);
+
+	if (membersError || ghostsError || bomError || transactionsError) {
+		return new Response('Could not load money', { status: 500 });
+	}
+
+	project = { ...gate, description: null, owner_id: null, currency: currencyRow.currency };
+	publicReader = true;
+	members = (publicMembers ?? []).map((member) => ({
+		role: 'viewer',
+		is_auditor: false,
+		user_id: member.user_id,
+		contribution_percent: member.contribution_percent,
+		profiles: member.profiles,
+	}));
+	ghostMembers = publicGhosts ?? [];
+	bomItems = publicBomItems ?? [];
+	transactionRows = publicTransactions ?? [];
+}
+
+const currentMember = members.find((member) => member.user_id === user?.id);
 const userRole = currentMember?.role;
 // Money-page edit rights = owner OR auditor (a plain editor cannot edit Money).
-const canEdit = currentMember?.role === 'owner' || currentMember?.is_auditor === true;
+const canEdit = !publicReader && (currentMember?.role === 'owner' || currentMember?.is_auditor === true);
 
 // Real members first, ghost members after — one list, because every Money-page number
 // is keyed by party id (see money-parties.ts) and the forms offer both as payers.
 const parties: Party[] = [
-	...(members ?? []).map((member) => ({
+	...members.map((member) => ({
 		id: member.user_id,
-		displayName: member.profiles.display_name,
+		displayName: member.profiles?.display_name ?? 'Member',
 		isGhost: false,
 		note: null,
 		contributionPercent: member.contribution_percent,
@@ -125,25 +217,25 @@ const initialPercents = resolveContributionPercents(parties);
 	projectNav={{
 		projectId: project.id,
 		userRole: userRole ?? '',
-		publicNav: false,
+		publicNav: publicReader,
 		publicSections: toPublicSectionFlags(project),
 	}}
 >
 	<MoneySummary
 		client:load
-		currentUserId={user.id}
-		initialItems={bomItems ?? []}
+		currentUserId={publicReader ? null : user?.id ?? null}
+		initialItems={bomItems}
 		initialTransactions={transactionRows}
 		initialPercents={initialPercents}
 		currency={project.currency}
 	/>
-	<BomTable client:visible projectId={project.id} projectName={project.name} initialItems={bomItems ?? []} canEdit={canEdit} currency={project.currency} />
+	<BomTable client:visible projectId={project.id} projectName={project.name} initialItems={bomItems} canEdit={canEdit} currency={project.currency} />
 	<TransactionsTable
 		client:visible
 		projectId={project.id}
 		projectName={project.name}
 		initialTransactions={transactionRows}
-		initialBomItems={bomItems ?? []}
+		initialBomItems={bomItems}
 		initialPercents={initialPercents}
 		initialParties={parties}
 		canEdit={canEdit}

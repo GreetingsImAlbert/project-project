@@ -1,15 +1,11 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { renderMarkdown } from '../lib/markdown';
+	import JournalHistory from './JournalHistory.svelte';
+	import type { JournalEntry } from '../lib/journal-entries';
 	import { createBrowserSupabaseClient } from '../lib/supabase/browser';
 	import { toastError } from '../lib/toast.svelte';
 	import { onSwapOrDestroy } from '../lib/island-teardown';
 	import type { SupabaseClient } from '@supabase/supabase-js';
-
-	interface JournalEntry {
-		date: string;
-		body: string;
-	}
 
 	let {
 		projectId,
@@ -160,19 +156,7 @@
 		</p>
 	</section>
 
-	{#if entries.length > 0}
-		<section class="history">
-			{#each entries as entry (entry.date)}
-				<article class="entry">
-					<h3>{entry.date}</h3>
-					<!-- renderMarkdown escapes the whole source, same as FileViewerPanel's use — an
-					     entry is just this project's own textarea content, but nothing here treats
-					     it as trusted markup on that basis. -->
-					<div class="md-body">{@html renderMarkdown(entry.body)}</div>
-				</article>
-			{/each}
-		</section>
-	{/if}
+	<JournalHistory entries={entries} />
 </div>
 
 <style>
@@ -214,26 +198,4 @@
 		font-size: 0.8rem;
 	}
 
-	.history {
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-5);
-	}
-
-	.entry {
-		padding-top: var(--space-5);
-		border-top: 1px solid var(--color-border);
-	}
-
-	.entry h3 {
-		margin: 0 0 var(--space-2);
-	}
-
-	.md-body :global(> *:first-child) {
-		margin-top: 0;
-	}
-
-	.md-body :global(> *:last-child) {
-		margin-bottom: 0;
-	}
 </style>
