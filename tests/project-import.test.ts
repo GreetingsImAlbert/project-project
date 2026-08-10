@@ -1,0 +1,104 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { parseProjectZip, ProjectImportError, validateP2ProjectArchive } from '../src/lib/project-import.ts';
+import { zip } from '../src/lib/zip.ts';
+import type { ProjectExportManifestV1 } from '../src/lib/project-export.ts';
+
+const encoder = new TextEncoder();
+const text = (value: string) => encoder.encode(value) as Uint8Array<ArrayBuffer>;
+const archive = (entries: { name: string; body?: string }[]) =>
+	zip(entries.map((entry) => ({ name: entry.name, bytes: text(entry.body ?? '') }))) as Uint8Array<ArrayBuffer>;
+
+test('project ZIP reader accepts the stored ZIP shape and validates CRCs', () => {
+	const parsed = parseProjectZip(archive([
+		{ name: 'files/' },
+		{ name: 'files/readme.txt', body: 'P2' },
+	]));
+	assert.equal(parsed.entries.get('files/readme.txt')?.bytes.length, 2);
+	assert.equal(parsed.entries.get('files/')?.isDirectory, true);
+	assert.equal(parsed.totalCompressedBytes, 2);
+});
+
+test('project ZIP reader rejects traversal and duplicate entries', () => {
+	assert.throws(
+		() => parseProjectZip(archive([{ name: '../escape.txt', body: 'bad' }])),
+		(error: unknown) => error instanceof ProjectImportError && /unsafe archive path/.test(error.message),
+	);
+	assert.throws(
+		() => parseProjectZip(archive([{ name: 'files/a.txt', body: 'a' }, { name: 'files/a.txt', body: 'b' }])),
+		(error: unknown) => error instanceof ProjectImportError && /duplicate archive entry/.test(error.message),
+	);
+});
+
+test('P2 manifest validation checks the complete archive contract', async () => {
+	const projectId = '11111111-1111-4111-8111-111111111111';
+	const ownerId = '22222222-2222-4222-8222-222222222222';
+	const manifest: ProjectExportManifestV1 = {
+		format: 'p2-project-export',
+		version: 1,
+		exportedAt: '2026-08-10T00:00:00.000Z',
+		checksumAlgorithm: 'sha256',
+		project: {
+			id: projectId,
+			name: 'Demo project',
+			description: null,
+			owner_id: ownerId,
+			currency: 'PHP',
+			created_at: '2026-08-10T00:00:00.000Z',
+			updated_at: '2026-08-10T00:00:00.000Z',
+			is_public: false,
+			public_files_enabled: false,
+		},
+		people: [{ sourceUserId: ownerId, displayName: 'Owner', email: 'owner@example.test' }],
+		recordCounts: {
+			projectMembers: 1,
+			ghostMembers: 0,
+			folders: 0,
+			files: 0,
+			bomItems: 0,
+			transactions: 0,
+			tasks: 0,
+			taskAssignees: 0,
+			taskCategories: 0,
+			taskCategoryPositions: 0,
+			journalDrafts: 0,
+		},
+		records: {
+			projectMembers: [{ project_id: projectId, user_id: ownerId, role: 'owner', is_auditor: false, contribution_percent: null, joined_at: '2026-08-10T00:00:00.000Z' }],
+			ghostMembers: [],
+			folders: [],
+			files: [],
+			bomItems: [],
+			transactions: [],
+			tasks: [],
+			taskAssignees: [],
+			taskCategories: [],
+			taskCategoryPositions: [],
+			journalDraft: null,
+		},
+	};
+	const valid = await validateP2ProjectArchive(archive([
+		{ name: 'README.txt', body: 'Project: Demo project\n' },
+		{ name: 'manifest.json', body: JSON.stringify(manifest) },
+		{ name: 'tasks.json', body: JSON.stringify({ project: 'Demo project' }) },
+		{ name: 'bom.json', body: JSON.stringify({ project: 'Demo project' }) },
+		{ name: 'transactions.json', body: JSON.stringify({ project: 'Demo project' }) },
+		{ name: 'members.json', body: JSON.stringify({ project: 'Demo project' }) },
+		{ name: 'files/' },
+	]));
+	assert.equal(valid.projectName, 'Demo project');
+
+	const unsupported = { ...manifest, version: 99 };
+	await assert.rejects(
+		() => validateP2ProjectArchive(archive([
+			{ name: 'README.txt', body: 'Project: Demo project\n' },
+			{ name: 'manifest.json', body: JSON.stringify(unsupported) },
+			{ name: 'tasks.json', body: JSON.stringify({ project: 'Demo project' }) },
+			{ name: 'bom.json', body: JSON.stringify({ project: 'Demo project' }) },
+			{ name: 'transactions.json', body: JSON.stringify({ project: 'Demo project' }) },
+			{ name: 'members.json', body: JSON.stringify({ project: 'Demo project' }) },
+			{ name: 'files/' },
+		])),
+		(error: unknown) => error instanceof ProjectImportError && /Unsupported project export format/.test(error.message),
+	);
+});

@@ -1,5 +1,6 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import ImportProjectForm from '../../components/ImportProjectForm.svelte';
 
 export const prerender = false;
 
@@ -16,6 +17,12 @@ if (!Astro.locals.user) {
 		<textarea name="description" placeholder="Description (optional)"></textarea>
 		<button type="submit">Create</button>
 	</form>
+
+	<section class="import-project-section">
+		<h2>Import project</h2>
+		<p class="muted">Restore a project from a ZIP downloaded from P2. The archive’s project name is used automatically.</p>
+		<ImportProjectForm client:load />
+	</section>
 </BaseLayout>
 
 <style>
@@ -23,5 +30,20 @@ if (!Astro.locals.user) {
 		flex-direction: column;
 		align-items: stretch;
 		max-width: 420px;
+	}
+
+	.import-project-section {
+		max-width: 560px;
+		margin-top: var(--space-7);
+		padding-top: var(--space-5);
+		border-top: 1px solid var(--color-border);
+	}
+
+	.import-project-section h2 {
+		margin-top: 0;
+	}
+
+	.import-project-section p {
+		margin-bottom: var(--space-3);
 	}
 </style>
