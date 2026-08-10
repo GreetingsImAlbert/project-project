@@ -3,7 +3,7 @@ import { env } from 'cloudflare:workers';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import StorageUsageBar from '../components/StorageUsageBar.astro';
 import AccountDisplayNameForm from '../components/AccountDisplayNameForm.svelte';
-import AccountAvatarPicker from '../components/AccountAvatarPicker.svelte';
+import PicturePicker from '../components/PicturePicker.svelte';
 import AccountPasswordForm from '../components/AccountPasswordForm.svelte';
 import DeleteAccountPanel from '../components/DeleteAccountPanel.svelte';
 import { getSupabaseAdmin } from '../lib/supabase/admin';
@@ -42,7 +42,7 @@ const avatar = normalizeAvatar(profile?.avatar ?? user.avatar);
 	<h1>Account</h1>
 
 	<h2>Profile picture</h2>
-	<AccountAvatarPicker client:load initialAvatar={avatar} displayName={displayName} />
+	<PicturePicker client:load initialAvatar={avatar} displayName={displayName} />
 
 	<h2>Details</h2>
 	<!-- A plain grid rather than a <dl>: the display-name field is a Svelte island, and

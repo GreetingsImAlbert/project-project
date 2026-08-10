@@ -1,8 +1,7 @@
 <script lang="ts">
-	// Picking is the whole interaction — there's no Save button because there's nothing to
-	// type: a click is the edit. The chosen picture is applied optimistically so the large
-	// preview moves the instant it's clicked, then the page reloads (the navbar avatar is
-	// server-rendered from the JWT, not an island, so nothing else would catch up).
+	// The picture picker is shared by account and project settings. The selected value
+	// is the override stored by the endpoint; a null project value can preview a
+	// separate fallback picture without copying that fallback into the project row.
 	import Avatar from './Avatar.svelte';
 	import {
 		AVATAR_IDS,
@@ -14,11 +13,33 @@
 	let {
 		initialAvatar,
 		displayName,
-	}: { initialAvatar: string | null; displayName: string } = $props();
+		endpoint = '/api/account/update-avatar',
+		fallbackAvatar = null,
+		fallbackDisplayName,
+		defaultLabel = 'None',
+		defaultAriaLabel = 'Use no picture',
+		selectedNote = 'Shown next to your name and in the navbar.',
+		defaultNote = 'No picture yet — your initial is shown instead.',
+		pictureLabel = 'profile picture',
+	}: {
+		initialAvatar: string | null;
+		displayName: string;
+		endpoint?: string;
+		fallbackAvatar?: string | null;
+		fallbackDisplayName?: string;
+		defaultLabel?: string;
+		defaultAriaLabel?: string;
+		selectedNote?: string;
+		defaultNote?: string;
+		pictureLabel?: string;
+	} = $props();
 
 	let selected = $state<string | null>(initialAvatar);
 	let saving = $state(false);
 	let error = $state<string | null>(null);
+
+	const previewAvatar = $derived(selected ?? fallbackAvatar ?? null);
+	const previewDisplayName = $derived(selected === null ? (fallbackDisplayName ?? displayName) : displayName);
 
 	function formatFileSize(bytes: number): string {
 		return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
@@ -39,12 +60,12 @@
 			}
 			const formData = new FormData();
 			formData.set('avatar', file, file.name);
-			const res = await fetch('/api/account/update-avatar', { method: 'POST', body: formData });
+			const res = await fetch(endpoint, { method: 'POST', body: formData });
 			if (!res.ok) throw new Error(await res.text());
 			location.reload();
 		} catch (uploadError) {
 			selected = previous;
-			error = uploadError instanceof Error ? uploadError.message : 'Could not update profile picture';
+			error = uploadError instanceof Error ? uploadError.message : `Could not update ${pictureLabel}`;
 			saving = false;
 		}
 	}
@@ -61,7 +82,7 @@
 		formData.set('avatar', avatar ?? '');
 
 		try {
-			const res = await fetch('/api/account/update-avatar', { method: 'POST', body: formData });
+			const res = await fetch(endpoint, { method: 'POST', body: formData });
 
 			if (!res.ok) {
 				error = await res.text();
@@ -71,7 +92,7 @@
 
 			location.reload();
 		} catch {
-			error = 'Could not update profile picture';
+			error = `Could not update ${pictureLabel}`;
 			selected = previous;
 		} finally {
 			saving = false;
@@ -81,9 +102,9 @@
 
 <div class="avatar-picker">
 	<div class="current">
-		<Avatar avatar={selected} {displayName} size={72} />
+		<Avatar avatar={previewAvatar} displayName={previewDisplayName} size={72} />
 		<p class="muted current-note">
-			{selected ? 'Shown next to your name and in the navbar.' : 'No picture yet — your initial is shown instead.'}
+			{selected ? selectedNote : defaultNote}
 		</p>
 	</div>
 
@@ -108,10 +129,10 @@
 			class:selected={selected === null}
 			disabled={saving}
 			aria-pressed={selected === null}
-			aria-label="Use no picture"
+			aria-label={defaultAriaLabel}
 			onclick={() => choose(null)}
 		>
-			None
+			{defaultLabel}
 		</button>
 
 		<label class="choice choice-upload" class:disabled={saving}>
