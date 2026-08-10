@@ -35,9 +35,9 @@ export function getStorageQuotaConfig(env: StorageQuotaEnv): StorageQuotaConfig 
 	};
 }
 
-// Every storage sum runs as a Postgres aggregate behind an RPC (see SCHEMA.md):
-// one round trip returning the totals, instead of dragging every matching file
-// row across the wire — 1000 at a time — to add them up in JS.
+// Every storage sum runs as a Postgres aggregate behind an RPC defined by the
+// database migrations: one round trip returning the totals, instead of dragging
+// every matching file row across the wire — 1000 at a time — to add them up in JS.
 
 // The generated types call both aggregates `number`, but they're bigint on the
 // wire and the quota math has to fail closed: NaN + additionalBytes > cap is

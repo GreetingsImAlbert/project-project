@@ -7,7 +7,7 @@ import { readForumFeed } from '../../../../lib/forum';
 export const prerender = false;
 
 export const GET: APIRoute = async ({ locals, request, url }) => {
-	// The Workshop is public by design (see SCHEMA.md). Reads go through the
+	// The Workshop is public by design. Reads go through the
 	// service-role client, so a guest sees the same feed a member does; `userId`
 	// only personalizes `likedByMe`, which a guest never has set. The admin
 	// client reads past RLS, which is fine here: forum content is intentionally

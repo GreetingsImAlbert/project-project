@@ -5,8 +5,8 @@ import { CUSTOM_AVATAR_BUCKET, isStoredAvatarPath } from './avatars';
 
 // How long a requested deletion sits reversible before the cron makes it
 // permanent, and how long an orphaned file lingers after that for another
-// member to save a copy. See SCHEMA.md's "Account deletion" section for the
-// full flow these two numbers drive.
+// member to save a copy. The scheduled worker uses these constants to drive
+// both grace periods.
 export const PENDING_DELETION_GRACE_DAYS = 10;
 export const FILE_GRACE_DAYS = 30;
 
@@ -26,8 +26,8 @@ function objectUrlFor(env: Env, r2Key: string) {
 // Moves every transaction a member is a party to onto a fresh ghost member per
 // project, so the money history survives the profile row that's about to be
 // hard-deleted. Has to run before deleteUser, not after — transactions.member_id
-// has no cascade specifically so this gets the chance to run first (see
-// SCHEMA.md's transactions comment).
+// has no cascade specifically so this gets the chance to run first, matching
+// the database foreign-key behavior.
 async function repointTransactionsToGhosts(
 	admin: SupabaseClient<Database>,
 	userId: string,
@@ -115,7 +115,7 @@ export async function hardDeleteAccount(admin: SupabaseClient<Database>, userId:
 	await admin.from('files').update({ uploader_deleted_at: new Date().toISOString() }).eq('uploaded_by', userId);
 
 	// Same idea for task appointments: user_id is about to go null (on delete set
-	// null, not cascade — see SCHEMA.md's task_assignees comment), so the row
+	// null, not cascade, matching the database foreign-key behavior), so the row
 	// survives with a name snapshot instead of the appointment just disappearing.
 	await admin.from('task_assignees').update({ deleted_display_name: `${displayName} [deleted]` }).eq('user_id', userId);
 

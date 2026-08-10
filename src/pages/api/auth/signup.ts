@@ -44,8 +44,8 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
 
 	if (signUpError || !data.user) {
 		// Rare race: two signups pass the count check above in the same instant, and
-		// the DB-level advisory-lock check in the on_auth_user_created trigger (see
-		// SCHEMA.md) is the one that actually catches it.
+		// the DB-level advisory-lock check in the migration-defined
+		// on_auth_user_created trigger is the one that actually catches it.
 		if (signUpError?.message?.includes('Signups are full')) {
 			return authErrorResponse(request, 'Signups are full', 403);
 		}

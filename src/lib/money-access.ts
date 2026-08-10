@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from './supabase/database.types';
 
 // Money-page edit rights (BOM / transactions / member contributions) are the
-// mirror of the `can_edit_money` RLS helper in SCHEMA.md: a member can edit the
+// mirror of the database's `can_edit_money` RLS helper: a member can edit the
 // Money page if they are the project owner OR they carry the orthogonal
 // `is_auditor` flag. A plain editor (no flag) can edit Files/Overview but NOT
 // the Money page. RLS enforces this at the DB level too; this app-level check

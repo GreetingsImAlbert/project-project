@@ -11,8 +11,8 @@ import type { Database } from './database.types';
 // public vars (inlined into the client bundle at build time), not the `env` from
 // `cloudflare:workers` the rest of the app uses — that binding only exists on the
 // Worker. They mirror SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY and need adding to
-// .env (local) and the Cloudflare Pages/Workers build environment (deployed); see
-// CHECKLIST.md. The publishable key is safe to ship to the browser by design —
+// .env (local) and the Cloudflare Pages/Workers build environment (deployed).
+// The publishable key is safe to ship to the browser by design —
 // it's what RLS exists to make safe. Mode-specific builds are enforced by
 // scripts/build.mjs so staging cannot fall back to production's .env values. This
 // client still carries no session of

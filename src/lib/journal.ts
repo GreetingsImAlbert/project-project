@@ -5,15 +5,15 @@ import { appendJournalEntry } from './journal-entries';
 import { wouldExceedStorageQuota } from './r2-quota';
 import { appToday } from './today';
 
-// Every project gets at most one of these — the unique partial index in
-// SCHEMA.md (`journal_file_unique_per_project`) is what actually enforces that;
-// this filename is just what a member sees in the Files list.
+// Every project gets at most one of these — the database's
+// `journal_file_unique_per_project` partial index actually enforces that; this
+// filename is just what a member sees in the Files list.
 export const JOURNAL_FILENAME = 'Journal.md';
 export const JOURNAL_MIME = 'text/markdown';
 
 // A day's worth of notes, not a document — generous, but nowhere near the 1MB
 // the general file editor allows (file-kind.ts's MAX_VIEWABLE_BYTES). Enforced
-// both by the draft API and the journal_drafts check constraint in SCHEMA.md.
+// both by the draft API and the database's journal_drafts check constraint.
 export const MAX_DRAFT_CHARS = 50_000;
 
 function r2Client(env: Env) {

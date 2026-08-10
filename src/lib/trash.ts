@@ -3,7 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from './supabase/database.types';
 
 // How long a soft-deleted row sits recoverable in the Trash page before the daily
-// cron makes it permanent. See SCHEMA.md's "Trash bin" section for the full flow.
+// cron makes it permanent. The scheduled worker enforces this retention period.
 export const TRASH_GRACE_DAYS = 10;
 
 function r2Client(env: Env) {

@@ -10,8 +10,8 @@ const isGuest = !user;
 // projects (Overview or Files public) they're not a member of — the same
 // composition the sidebar uses. Guests get the discoverable slice only: same
 // list UI, but only the id/name/description columns the boundary RPC exposes.
-// There is deliberately no anonymous SELECT policy on projects (see SCHEMA.md) —
-// the `public_project_list` RPC is the only anonymous read path, so a guest
+// There is deliberately no anonymous SELECT policy on projects; the
+// `public_project_list` RPC is the only anonymous read path, so a guest
 // cannot name a field beyond those three.
 let projects: { id: string; name: string; description: string | null }[] | null = null;
 let errorMessage: string | null = null;

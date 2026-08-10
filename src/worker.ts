@@ -23,11 +23,10 @@ export default {
 	async scheduled(_controller, env, ctx) {
 		const admin = getSupabaseAdmin(env);
 		ctx.waitUntil(finalizeStaleDrafts(admin, env));
-		// Same daily tick handles both halves of account deletion's grace periods —
-		// see SCHEMA.md's "Account deletion" section for what each one does.
+		// Same daily tick handles both halves of account deletion's grace periods.
 		ctx.waitUntil(purgeExpiredPendingDeletions(admin));
 		ctx.waitUntil(purgeOrphanedFiles(admin, env));
-		// Trash-bin purge — see SCHEMA.md's "Trash bin" section.
+		// The same tick also purges expired Trash rows.
 		ctx.waitUntil(purgeTrash(admin, env));
 	},
 } satisfies ExportedHandler<Env>;

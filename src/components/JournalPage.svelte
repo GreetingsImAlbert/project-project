@@ -70,8 +70,9 @@
 		saveTimer = setTimeout(() => saveDraft(content), SAVE_DEBOUNCE_MS);
 	}
 
-	// Realtime: journal_drafts is in the supabase_realtime publication (see
-	// SCHEMA.md), so any owner/editor's save — including this tab's own, once it
+	// Realtime: the database migrations add journal_drafts to the
+	// supabase_realtime publication, so any owner/editor's save — including this
+	// tab's own, once it
 	// round-trips — arrives here as a Postgres Changes UPDATE. Own writes are
 	// recognised by matching `lastSavedContent` and skipped; anything else is a
 	// collaborator's edit and replaces the textarea outright. There's no merge —
