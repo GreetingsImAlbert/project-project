@@ -14,6 +14,7 @@ import PicturePicker from '../../../components/PicturePicker.svelte';
 import type { CurrencyCode } from '../../../lib/currency.svelte';
 import { listGhostMembers } from '../../../lib/ghost-members';
 import { normalizeAvatar, normalizeProjectAvatar } from '../../../lib/avatars';
+import { toPublicSectionFlags } from '../../../lib/project-visibility';
 
 export const prerender = false;
 
@@ -87,7 +88,15 @@ const projectAvatar = normalizeProjectAvatar(project.avatar);
 const returnTo = `/projects/${id}/settings`;
 
 ---
-<BaseLayout title={`${project.name} — Settings`} projectNav={{ projectId: project.id, userRole: userRole ?? '' }}>
+<BaseLayout
+	title={`${project.name} — Settings`}
+	projectNav={{
+		projectId: project.id,
+		userRole: userRole ?? '',
+		publicNav: false,
+		publicSections: toPublicSectionFlags(project),
+	}}
+>
 	<section>
 		<h3>Project picture</h3>
 		<PicturePicker

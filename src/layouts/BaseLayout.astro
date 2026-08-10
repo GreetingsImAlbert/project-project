@@ -6,14 +6,17 @@ import ProjectNav from '../components/ProjectNav.astro';
 import AppSidebar from '../components/AppSidebar.svelte';
 import GlobalFileViewer from '../components/GlobalFileViewer.svelte';
 import Toasts from '../components/Toasts.svelte';
+import type { PublicSectionFlags } from '../lib/project-visibility';
 
 interface Props {
 	title?: string;
 	projectNav?: {
 		projectId: string;
 		userRole: string;
-		readOnly?: boolean;
-		publicFilesEnabled?: boolean;
+		/** True when the page is being rendered for a non-member public reader. */
+		publicNav?: boolean;
+		/** Public visibility is also used to expose Journal to project viewers. */
+		publicSections: PublicSectionFlags;
 	};
 }
 const { title = 'P2', projectNav } = Astro.props;
@@ -92,7 +95,12 @@ const isStaging = Astro.url.hostname === 'p2testing.albertmendoza.com';
 			<main class="app-main project-main">
 				<div class="page-loading-indicator" role="status" aria-label="Loading"></div>
 				{projectNav && (
-					<ProjectNav projectId={projectNav.projectId} userRole={projectNav.userRole} readOnly={projectNav.readOnly} publicFilesEnabled={projectNav.publicFilesEnabled} />
+					<ProjectNav
+						projectId={projectNav.projectId}
+						userRole={projectNav.userRole}
+						publicNav={projectNav.publicNav}
+						publicSections={projectNav.publicSections}
+					/>
 				)}
 				<slot />
 			</main>

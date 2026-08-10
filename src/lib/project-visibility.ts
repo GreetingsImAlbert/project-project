@@ -46,6 +46,16 @@ export interface PublicProjectGate {
 	public_money_enabled: boolean;
 }
 
+export interface PublicSectionFlags {
+	overview: boolean;
+	tasks: boolean;
+	files: boolean;
+	journal: boolean;
+	money: boolean;
+}
+
+export type PublicProjectFlags = Omit<PublicProjectGate, 'id' | 'name'>;
+
 export interface PublicNavigationProject {
 	id: string;
 	name: string;
@@ -63,6 +73,16 @@ export function isPublicSectionEnabled(project: PublicProjectGate, section: Publ
 
 export function isPublicProject(project: PublicProjectGate): boolean {
 	return PUBLIC_SECTIONS.some((section) => isPublicSectionEnabled(project, section));
+}
+
+export function toPublicSectionFlags(project: PublicProjectFlags): PublicSectionFlags {
+	return {
+		overview: project.is_public,
+		tasks: project.public_tasks_enabled,
+		files: project.public_files_enabled,
+		journal: project.public_journal_enabled,
+		money: project.public_money_enabled,
+	};
 }
 
 /** Return the first enabled section, or null for a private project. */

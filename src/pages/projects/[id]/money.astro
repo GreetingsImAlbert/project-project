@@ -9,6 +9,8 @@ import { resolveContributionPercents } from '../../../lib/money-math';
 import { ghostPartyId } from '../../../lib/money-parties';
 import { listGhostMembers } from '../../../lib/ghost-members';
 import type { Party } from '../../../lib/parties-store.svelte';
+import { toPublicSectionFlags, type PublicProjectFlags } from '../../../lib/project-visibility';
+import type { CurrencyCode } from '../../../lib/currency';
 
 export const prerender = false;
 
@@ -18,6 +20,14 @@ if (!user) {
 }
 
 const { id } = Astro.params;
+
+type MoneyProject = {
+	id: string;
+	name: string;
+	description: string | null;
+	owner_id: string;
+	currency: CurrencyCode;
+} & PublicProjectFlags;
 
 interface TransactionRow {
 	id: string;
@@ -45,9 +55,10 @@ interface TransactionRow {
 const [{ data: project, error }, { data: members }, ghostMembers, { data: bomItems }, { data: transactions }] = await Promise.all([
 	Astro.locals.supabase
 		.from('projects')
-		.select('id, name, description, owner_id, currency')
+		.select('id, name, description, owner_id, currency, is_public, public_files_enabled, public_tasks_enabled, public_journal_enabled, public_money_enabled')
 		.eq('id', id)
-		.single(),
+		.single()
+		.overrideTypes<MoneyProject>(),
 	Astro.locals.supabase
 		.from('project_members')
 		.select('role, is_auditor, user_id, contribution_percent, profiles(display_name, email)')
@@ -109,7 +120,15 @@ const parties: Party[] = [
 // too so the summary strip and the table agree on first paint.
 const initialPercents = resolveContributionPercents(parties);
 ---
-<BaseLayout title={`${project.name} — Money`} projectNav={{ projectId: project.id, userRole: userRole ?? '' }}>
+<BaseLayout
+	title={`${project.name} — Money`}
+	projectNav={{
+		projectId: project.id,
+		userRole: userRole ?? '',
+		publicNav: false,
+		publicSections: toPublicSectionFlags(project),
+	}}
+>
 	<MoneySummary
 		client:load
 		currentUserId={user.id}

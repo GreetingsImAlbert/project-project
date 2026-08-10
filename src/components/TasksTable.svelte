@@ -57,6 +57,7 @@
 		members,
 		ghostMembers,
 		canEdit,
+		readOnly = false,
 		currentUserId,
 		serverToday,
 		serverNowTime,
@@ -72,7 +73,8 @@
 		members: { id: string; displayName: string; avatar: string | null }[];
 		ghostMembers: { id: string; displayName: string }[];
 		canEdit: boolean;
-		currentUserId: string;
+		readOnly?: boolean;
+		currentUserId: string | null;
 		serverToday: string;
 		serverNowTime: string;
 	} = $props();
@@ -110,7 +112,7 @@
 		const task = tasksState.tasks.find((t) => t.id === id);
 		if (!task) return;
 
-		if (onlyMine && !task.assignees.some((a) => a.user_id === currentUserId)) {
+		if (onlyMine && (!currentUserId || !task.assignees.some((a) => a.user_id === currentUserId))) {
 			onlyMine = false;
 			renderedTaskCount = TASK_PAGE_SIZE;
 		}
@@ -260,7 +262,7 @@
 	let visibleTasks = $derived(
 		tasksState.tasks.filter(
 			(task) =>
-				(!onlyMine || task.assignees.some((a) => a.user_id === currentUserId)) &&
+				(!onlyMine || (currentUserId !== null && task.assignees.some((a) => a.user_id === currentUserId))) &&
 				(!onlyOverdue || isTaskOverdue(task)),
 		),
 	);
@@ -1588,15 +1590,17 @@
 			· <strong>{openCount}</strong> open
 		</span>
 
-		<button
-			type="button"
-			class="btn-plain mine-toggle"
-			class:active={onlyMine}
-			aria-pressed={onlyMine}
-			onclick={() => (onlyMine = !onlyMine)}
-		>
-			Just my tasks
-		</button>
+		{#if !readOnly}
+			<button
+				type="button"
+				class="btn-plain mine-toggle"
+				class:active={onlyMine}
+				aria-pressed={onlyMine}
+				onclick={() => (onlyMine = !onlyMine)}
+			>
+				Just my tasks
+			</button>
+		{/if}
 
 		<button
 			type="button"

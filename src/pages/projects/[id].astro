@@ -13,32 +13,42 @@ import { projectReminders } from '../../lib/reminders';
 import { listGhostMembers } from '../../lib/ghost-members';
 import { appNowTime, appToday } from '../../lib/today';
 import { type CurrencyCode } from '../../lib/currency';
+import { toPublicSectionFlags, type PublicProjectFlags } from '../../lib/project-visibility';
 
 export const prerender = false;
 
 const user = Astro.locals.user;
 const { id } = Astro.params;
 
-// Outsiders use the same page shell and overview markup as members. The public RPC
-// supplies only the fields that can be rendered in the read-only state, plus the
-// visibility booleans the shared read-only navigation needs.
-let publicProject: {
+type PublicOverviewProject = {
 	id: string;
 	name: string;
 	description: string | null;
-	is_public: boolean;
-	public_files_enabled: boolean;
-} | null = null;
+	} & PublicProjectFlags;
+
+type MemberOverviewProject = {
+	id: string;
+	name: string;
+	description: string | null;
+	owner_id: string;
+	currency: string;
+	} & PublicProjectFlags;
+
+// Outsiders use the same page shell and overview markup as members. The public RPC
+// supplies only the fields that can be rendered in the read-only state, plus the
+// five visibility flags the shared public navigation needs.
+let publicProject: PublicOverviewProject | null = null;
 
 if (!user) {
-	const { data } = await Astro.locals.supabase.rpc('public_project_get', { p_id: id! });
-	publicProject = data?.[0] ?? null;
+	const { data } = await Astro.locals.supabase
+		.rpc('public_project_get', { p_id: id! });
+	publicProject = (data?.[0] as PublicOverviewProject | undefined) ?? null;
 	if (!publicProject) {
 		return new Response('Project not found', { status: 404 });
 	}
 }
 
-let project: { id: string; name: string; description: string | null; owner_id: string; currency: string } | null = null;
+let project: MemberOverviewProject | null = null;
 let members: { role: string; is_auditor: boolean; user_id: string; profiles: { display_name: string; email: string; avatar: string | null } | null }[] | null = null;
 let ghostMembers: Awaited<ReturnType<typeof listGhostMembers>> = [];
 let totalCost = 0;
@@ -57,15 +67,17 @@ if (user) {
 	// member-only data queries at all.
 	const { data: projectData, error } = await Astro.locals.supabase
 		.from('projects')
-		.select('id, name, description, owner_id, currency')
+		.select('id, name, description, owner_id, currency, is_public, public_files_enabled, public_tasks_enabled, public_journal_enabled, public_money_enabled')
 		.eq('id', id)
-		.single();
+		.single()
+		.overrideTypes<MemberOverviewProject>();
 
 	if (error || !projectData) {
 		// Authenticated non-member: RLS shows no project row. Try the public
 		// boundary before deciding it's missing.
-		const { data } = await Astro.locals.supabase.rpc('public_project_get', { p_id: id! });
-		publicProject = data?.[0] ?? null;
+		const { data } = await Astro.locals.supabase
+			.rpc('public_project_get', { p_id: id! });
+		publicProject = (data?.[0] as PublicOverviewProject | undefined) ?? null;
 		if (!publicProject) {
 			return new Response('Project not found', { status: 404 });
 		}
@@ -160,10 +172,15 @@ const memberGroups = roles.map((role) => ({
 	members: (members ?? []).filter((m) => m.role === role),
 }));
 ---
-<BaseLayout
-	title={displayedProject.name}
-	projectNav={{ projectId: displayedProject.id, userRole: userRole ?? '', readOnly, publicFilesEnabled: publicProject?.public_files_enabled ?? false }}
->
+		<BaseLayout
+		title={displayedProject.name}
+		projectNav={{
+			projectId: displayedProject.id,
+			userRole: userRole ?? '',
+			publicNav: readOnly,
+			publicSections: toPublicSectionFlags(displayedProject),
+		}}
+	>
 	<section class="overview-description">
 		<ProjectDescriptionEditor
 			client:load

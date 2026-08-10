@@ -5,6 +5,7 @@ import JournalPage from '../../../components/JournalPage.svelte';
 import { getSupabaseAdmin } from '../../../lib/supabase/admin';
 import { ensureJournalFile, ensureJournalDraft, readJournalObject } from '../../../lib/journal';
 import { parseJournalEntries } from '../../../lib/journal-entries';
+import { toPublicSectionFlags, type PublicProjectFlags } from '../../../lib/project-visibility';
 
 export const prerender = false;
 
@@ -15,8 +16,20 @@ if (!user) {
 
 const { id } = Astro.params;
 
+type JournalProject = {
+	id: string;
+	name: string;
+	description: string | null;
+	owner_id: string;
+} & PublicProjectFlags;
+
 const [{ data: project, error }, { data: members }] = await Promise.all([
-	Astro.locals.supabase.from('projects').select('id, name, description, owner_id').eq('id', id).single(),
+	Astro.locals.supabase
+		.from('projects')
+		.select('id, name, description, owner_id, is_public, public_files_enabled, public_tasks_enabled, public_journal_enabled, public_money_enabled')
+		.eq('id', id)
+		.single()
+		.overrideTypes<JournalProject>(),
 	Astro.locals.supabase
 		.from('project_members')
 		.select('role, is_auditor, user_id, profiles(display_name, email)')
@@ -53,7 +66,15 @@ const journalContent = await readJournalObject(env, journalFile.r2_key);
 // stays a plain append-only tail (see journal-entries.ts).
 const entries = parseJournalEntries(journalContent).reverse();
 ---
-<BaseLayout title={`${project.name} — Journal`} projectNav={{ projectId: project.id, userRole: userRole ?? '' }}>
+<BaseLayout
+	title={`${project.name} — Journal`}
+	projectNav={{
+		projectId: project.id,
+		userRole: userRole ?? '',
+		publicNav: false,
+		publicSections: toPublicSectionFlags(project),
+	}}
+>
 	<JournalPage
 		client:load
 		projectId={project.id}
