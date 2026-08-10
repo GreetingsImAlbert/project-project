@@ -23,7 +23,11 @@ export interface StagedProjectFiles {
 }
 
 async function deleteKeys(bucket: ProjectImportBucket, keys: string[]): Promise<void> {
-	await Promise.allSettled(keys.map((key) => bucket.delete(key)));
+	const results = await Promise.allSettled(keys.map((key) => bucket.delete(key)));
+	const failures = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
+	if (failures.length > 0) {
+		console.error(`[project-import] Could not clean up ${failures.length} staged storage object(s).`);
+	}
 }
 
 /**

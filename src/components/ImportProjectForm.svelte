@@ -4,6 +4,8 @@
 	let importing = $state(false);
 	let status = $state('');
 	let fileInput: HTMLInputElement | undefined = $state();
+	let pendingFileKey = $state('');
+	let importToken = $state('');
 
 	function openPicker() {
 		if (!importing) fileInput?.click();
@@ -22,11 +24,17 @@
 			resetInput();
 			return;
 		}
+		const fileKey = `${file.name}\u0000${file.size}\u0000${file.lastModified}`;
+		if (fileKey !== pendingFileKey || !importToken) {
+			pendingFileKey = fileKey;
+			importToken = crypto.randomUUID();
+		}
 
 		importing = true;
 		status = 'Preparing import…';
 		const body = new FormData();
 		body.set('file', file, file.name);
+		body.set('importToken', importToken);
 
 		try {
 			status = 'Uploading project…';
@@ -44,7 +52,9 @@
 				return;
 			}
 
-			toastSuccess(result.message ?? `${result.name ?? 'Project'} import started.`);
+			toastSuccess(result.message ?? `${result.name ?? 'Project'} imported successfully.`);
+			importToken = '';
+			pendingFileKey = '';
 		} catch (error) {
 			toastError(error instanceof Error ? error.message : 'Project import failed.');
 		} finally {
