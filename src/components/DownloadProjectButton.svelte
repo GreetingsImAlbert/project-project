@@ -41,7 +41,7 @@
 	class="btn-plain download-btn"
 	onclick={download}
 	disabled={downloading}
-	title="Download every file, plus tasks and money data, as one zip"
+	title="Download a complete project archive for backup or import"
 >
 	{downloading ? 'Preparing…' : 'Download project'}
 </button>
