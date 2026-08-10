@@ -116,7 +116,7 @@
 
 		<label class="choice choice-upload" class:disabled={saving}>
 			<span>Upload</span>
-			<input type="file" accept="image/*" onchange={upload} disabled={saving} />
+			<input type="file" accept="image/jpeg,image/png,image/webp" onchange={upload} disabled={saving} />
 		</label>
 	</div>
 
