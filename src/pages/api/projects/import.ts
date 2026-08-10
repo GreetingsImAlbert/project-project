@@ -1,6 +1,11 @@
 import type { APIRoute } from 'astro';
+import { env } from 'cloudflare:workers';
 import { ProjectImportError, PROJECT_IMPORT_LIMITS, validateP2ProjectArchive } from '../../../lib/project-import';
+import { getSupabaseAdmin } from '../../../lib/supabase/admin';
+import { wouldExceedStorageQuota } from '../../../lib/r2-quota';
+import { validateProjectImportLimits } from '../../../lib/project-import-limits';
 import { buildProjectImportOwnershipPlan } from '../../../lib/project-import-policy';
+import { remapProjectImport } from '../../../lib/project-import-remap';
 
 export const prerender = false;
 
@@ -33,9 +38,17 @@ export const POST: APIRoute = async ({ request, locals }) => {
 		const archiveBytes = new Uint8Array(await value.arrayBuffer());
 		const validated = await validateP2ProjectArchive(archiveBytes);
 		const ownership = buildProjectImportOwnershipPlan(validated.manifest, locals.user.id);
+		const limits = validateProjectImportLimits(validated.manifest, ownership);
+		if (limits.fileBytes > 0) {
+			const admin = getSupabaseAdmin(env);
+			if (await wouldExceedStorageQuota(admin, env, locals.user.id, limits.fileBytes)) {
+				return json({ message: 'Storage quota exceeded or unavailable.' }, 507);
+			}
+		}
+		const remapped = remapProjectImport(validated.manifest, ownership);
 		// Database/R2 creation remains in later import tasks. Returning 202 here keeps
-		// this endpoint validation-only while proving the ownership/privacy policy is
-		// applied before any destination records could be created.
+		// this endpoint preparation-only while proving the quota, ownership, privacy,
+		// and ID-remapping policies before any destination records could be created.
 		return json({
 			format: validated.manifest.format,
 			version: validated.manifest.version,
@@ -44,6 +57,8 @@ export const POST: APIRoute = async ({ request, locals }) => {
 			private: ownership.project.is_public === false && ownership.project.public_files_enabled === false,
 			realMemberCount: 1,
 			ghostMemberCount: ownership.ghostMembers.length,
+			preparedRecordCount: limits.recordCount,
+			preparedFileCount: remapped.payload.files.length,
 			message: 'Project archive validated and ready for import.',
 		}, 202);
 	} catch (error) {
