@@ -1,0 +1,1 @@
+If `.private/AGENTS.md` exists, read it completely before working in this repository and follow its instructions.
