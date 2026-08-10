@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { navigate } from 'astro:transitions/client';
 	import { toastError, toastSuccess } from '../lib/toast.svelte';
 
 	let importing = $state(false);
@@ -52,11 +53,24 @@
 				return;
 			}
 
+			if (!result.projectId) {
+				toastError('Project imported, but its project link was not returned. Open Projects to find it.');
+				return;
+			}
+
 			toastSuccess(result.message ?? `${result.name ?? 'Project'} imported successfully.`);
 			importToken = '';
 			pendingFileKey = '';
+			status = 'Opening project…';
+			try {
+				await navigate(`/projects/${encodeURIComponent(result.projectId)}`);
+			} catch (error) {
+				toastError(error instanceof Error
+					? `Project imported, but it could not be opened: ${error.message}`
+					: 'Project imported, but it could not be opened. Open Projects to view it.');
+			}
 		} catch (error) {
-			toastError(error instanceof Error ? error.message : 'Project import failed.');
+			toastError(error instanceof Error ? error.message : 'Project import failed. Check your connection and try again.');
 		} finally {
 			importing = false;
 			status = '';

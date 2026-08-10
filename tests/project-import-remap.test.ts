@@ -3,7 +3,8 @@ import test from 'node:test';
 import { buildProjectImportOwnershipPlan } from '../src/lib/project-import-policy.ts';
 import { validateProjectImportLimits } from '../src/lib/project-import-limits.ts';
 import { remapProjectImport } from '../src/lib/project-import-remap.ts';
-import { stageProjectImportFiles } from '../src/lib/project-import-stage.ts';
+import { deleteStagedProjectFiles, stageProjectImportFiles } from '../src/lib/project-import-stage.ts';
+import { wouldExceedStorageQuota } from '../src/lib/r2-quota.ts';
 import type { ParsedProjectZip } from '../src/lib/project-import.ts';
 import { createImportManifest, IMPORT_IDS } from './project-import-fixture.ts';
 
@@ -105,4 +106,90 @@ test('staging writes fresh project keys sequentially and cleans partial failures
 	assert.equal(staged.files.length, 1);
 	assert.equal(staged.files[0].r2Key.startsWith(`${remapped.payload.project.id}/`), true);
 	assert.deepEqual(objects.get(staged.files[0].r2Key), bytes);
+});
+
+test('storage quota rejects over-limit imports and fails closed on usage errors', async () => {
+	const importer = IMPORT_IDS.importer;
+	const userAdmin = (totalBytes: unknown, error: { message: string } | null = null) => ({
+		rpc: async (name: string) => {
+			assert.equal(name, 'user_storage_bytes');
+			return { data: [{ total_bytes: totalBytes }], error };
+		},
+	}) as any;
+	const globalAdmin = (totalBytes: unknown, error: { message: string } | null = null) => ({
+		rpc: async (name: string) => {
+			assert.equal(name, 'global_storage_bytes');
+			return { data: totalBytes, error };
+		},
+	}) as any;
+
+	assert.equal(await wouldExceedStorageQuota(userAdmin(900), { STORAGE_QUOTA_BYTES: '1000' }, importer, 100), false);
+	assert.equal(await wouldExceedStorageQuota(userAdmin(900), { STORAGE_QUOTA_BYTES: '1000' }, importer, 101), true);
+	assert.equal(await wouldExceedStorageQuota(globalAdmin(1_000), { STORAGE_QUOTA_SCOPE: 'global', STORAGE_QUOTA_BYTES: 1_000 }, importer, 1), true);
+	assert.equal(await wouldExceedStorageQuota(userAdmin(null, { message: 'RPC unavailable' }), { STORAGE_QUOTA_BYTES: '1000' }, importer, 1), true);
+	assert.equal(await wouldExceedStorageQuota(userAdmin(0), { STORAGE_QUOTA_BYTES: '1000' }, importer, -1), true);
+});
+
+test('staging removes already-written objects when a later write fails', async () => {
+	const manifest = createImportManifest();
+	const secondFileId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+	manifest.records.files.push({
+		...manifest.records.files[0],
+		id: secondFileId,
+		folder_id: null,
+		filename: 'second.txt',
+		archive_path: 'files/second.txt',
+	});
+	manifest.recordCounts.files = 2;
+	const ownership = buildProjectImportOwnershipPlan(manifest, IMPORT_IDS.importer);
+	const remapped = remapProjectImport(manifest, ownership);
+	const bytes = new TextEncoder().encode('data') as Uint8Array<ArrayBuffer>;
+	const archive: ParsedProjectZip = {
+		entries: new Map(manifest.records.files.map((file) => [file.archive_path, {
+			name: file.archive_path,
+			bytes,
+			isDirectory: false,
+			compressedSize: bytes.length,
+			uncompressedSize: bytes.length,
+		}])),
+		totalCompressedBytes: bytes.length * 2,
+		totalUncompressedBytes: bytes.length * 2,
+	};
+	const putKeys: string[] = [];
+	const deletedKeys: string[] = [];
+	let putCount = 0;
+	const bucket = {
+		put: async (key: string) => {
+			putKeys.push(key);
+			putCount += 1;
+			if (putCount === 2) throw new Error('storage unavailable');
+		},
+		delete: async (key: string) => { deletedKeys.push(key); },
+	};
+
+	await assert.rejects(
+		() => stageProjectImportFiles(archive, manifest, remapped, bucket),
+		/Could not stage imported files in storage/,
+	);
+	assert.deepEqual(deletedKeys, [putKeys[0]]);
+});
+
+test('R2 cleanup attempts every staged key even when one delete fails', async () => {
+	const deletedKeys: string[] = [];
+	const staged = {
+		files: [
+			{ sourceFileId: 'source-a', fileId: 'file-a', r2Key: 'project/file-a', bytes: 1 },
+			{ sourceFileId: 'source-b', fileId: 'file-b', r2Key: 'project/file-b', bytes: 1 },
+		],
+	};
+	const bucket = {
+		put: async () => undefined,
+		delete: async (key: string) => {
+			deletedKeys.push(key);
+			if (key === 'project/file-a') throw new Error('delete failed');
+		},
+	};
+
+	await deleteStagedProjectFiles(bucket, staged);
+	assert.deepEqual(deletedKeys, ['project/file-a', 'project/file-b']);
 });
