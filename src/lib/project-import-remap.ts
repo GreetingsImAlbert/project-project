@@ -11,7 +11,7 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3
 
 export type ImportProjectRow = Pick<
 	Row<'projects'>,
-	'name' | 'description' | 'owner_id' | 'currency' | 'is_public' | 'public_files_enabled'
+	'name' | 'description' | 'owner_id' | 'currency' | 'is_public' | 'public_files_enabled' | 'created_at' | 'updated_at'
 > & { id: string };
 
 export type ImportMemberRow = Pick<
@@ -153,6 +153,8 @@ export function remapProjectImport(
 		currency: ownership.project.currency,
 		is_public: false,
 		public_files_enabled: false,
+		created_at: manifest.project.created_at,
+		updated_at: manifest.project.updated_at,
 	};
 
 	const ghostMembers: ImportGhostRow[] = ownership.ghostMembers.map((ghost) => {

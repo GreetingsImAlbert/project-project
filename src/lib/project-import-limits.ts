@@ -1,4 +1,4 @@
-import { MAX_GHOSTS_PER_PROJECT } from './ghost-members';
+import { MAX_GHOST_NAME, MAX_GHOST_NOTE, MAX_GHOSTS_PER_PROJECT } from './ghost-members';
 import { ProjectImportError, PROJECT_IMPORT_LIMITS } from './project-import';
 import type { ProjectExportManifestV1 } from './project-export';
 import type { ProjectImportOwnershipPlan } from './project-import-policy';
@@ -22,6 +22,14 @@ export function validateProjectImportLimits(
 	const ghostMemberCount = ownership.ghostMembers.length;
 	if (ghostMemberCount > MAX_GHOSTS_PER_PROJECT) {
 		throw new ProjectImportError(`This project would need ${ghostMemberCount} ghost members; the limit is ${MAX_GHOSTS_PER_PROJECT}.`);
+	}
+	for (const ghost of ownership.ghostMembers) {
+		if (!ghost.display_name || ghost.display_name.length > MAX_GHOST_NAME) {
+			throw new ProjectImportError(`A ghost member name must be between 1 and ${MAX_GHOST_NAME} characters.`);
+		}
+		if (ghost.note && ghost.note.length > MAX_GHOST_NOTE) {
+			throw new ProjectImportError(`A ghost member note cannot exceed ${MAX_GHOST_NOTE} characters.`);
+		}
 	}
 
 	const recordCount = Object.values(manifest.recordCounts).reduce((total, count) => total + count, 0);

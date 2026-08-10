@@ -911,6 +911,10 @@ export type Database = {
         }[]
       }
       global_storage_bytes: { Args: never; Returns: number }
+      import_project: {
+        Args: { p_importer_id: string; p_payload: Json }
+        Returns: string
+      }
       is_project_member: {
         Args: { check_project_id: string }
         Returns: boolean

@@ -6,6 +6,8 @@ import { wouldExceedStorageQuota } from '../../../lib/r2-quota';
 import { validateProjectImportLimits } from '../../../lib/project-import-limits';
 import { buildProjectImportOwnershipPlan } from '../../../lib/project-import-policy';
 import { remapProjectImport } from '../../../lib/project-import-remap';
+import { deleteStagedProjectFiles, stageProjectImportFiles, type StagedProjectFiles } from '../../../lib/project-import-stage';
+import type { Json } from '../../../lib/supabase/database.types';
 
 export const prerender = false;
 
@@ -34,36 +36,47 @@ export const POST: APIRoute = async ({ request, locals }) => {
 	if (value.size === 0) return json({ message: 'The project ZIP file is empty.' }, 400);
 	if (value.size > PROJECT_IMPORT_LIMITS.maxArchiveBytes) return json({ message: 'The project ZIP file is too large.' }, 413);
 
+	let staged: StagedProjectFiles | null = null;
 	try {
 		const archiveBytes = new Uint8Array(await value.arrayBuffer());
 		const validated = await validateP2ProjectArchive(archiveBytes);
 		const ownership = buildProjectImportOwnershipPlan(validated.manifest, locals.user.id);
 		const limits = validateProjectImportLimits(validated.manifest, ownership);
+		const admin = getSupabaseAdmin(env);
 		if (limits.fileBytes > 0) {
-			const admin = getSupabaseAdmin(env);
 			if (await wouldExceedStorageQuota(admin, env, locals.user.id, limits.fileBytes)) {
 				return json({ message: 'Storage quota exceeded or unavailable.' }, 507);
 			}
 		}
 		const remapped = remapProjectImport(validated.manifest, ownership);
-		// Database/R2 creation remains in later import tasks. Returning 202 here keeps
-		// this endpoint preparation-only while proving the quota, ownership, privacy,
-		// and ID-remapping policies before any destination records could be created.
+		if (remapped.payload.files.length > 0) {
+			if (!env.R2_BUCKET) return json({ message: 'File storage is unavailable.' }, 503);
+			staged = await stageProjectImportFiles(validated.archive, validated.manifest, remapped, env.R2_BUCKET);
+		}
+
+		const { data: projectId, error } = await admin.rpc('import_project', {
+			p_importer_id: locals.user.id,
+			p_payload: remapped.payload as unknown as Json,
+		});
+		if (error || typeof projectId !== 'string') {
+			const failedStage = staged;
+			staged = null;
+			if (failedStage && env.R2_BUCKET) await deleteStagedProjectFiles(env.R2_BUCKET, failedStage);
+			console.error('[project-import] Database import failed', error);
+			return json({ message: 'Could not create the imported project.' }, 500);
+		}
+
+		staged = null;
 		return json({
-			format: validated.manifest.format,
-			version: validated.manifest.version,
+			projectId,
 			name: validated.projectName,
-			fileBytes: validated.fileBytes,
-			private: ownership.project.is_public === false && ownership.project.public_files_enabled === false,
-			realMemberCount: 1,
-			ghostMemberCount: ownership.ghostMembers.length,
-			preparedRecordCount: limits.recordCount,
-			preparedFileCount: remapped.payload.files.length,
-			message: 'Project archive validated and ready for import.',
-		}, 202);
+			fileBytes: limits.fileBytes,
+			message: 'Project imported successfully.',
+		}, 201);
 	} catch (error) {
+		if (staged && env.R2_BUCKET) await deleteStagedProjectFiles(env.R2_BUCKET, staged);
 		if (error instanceof ProjectImportError) return json({ message: error.message }, 400);
-		console.error('[project-import] Archive validation failed', error);
-		return json({ message: 'Could not validate the project ZIP file.' }, 500);
+		console.error('[project-import] Import failed', error);
+		return json({ message: 'Could not import the project ZIP file.' }, 500);
 	}
 };

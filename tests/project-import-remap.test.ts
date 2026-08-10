@@ -44,6 +44,8 @@ test('import remapping generates fresh IDs and rewrites every relationship', () 
 	assert.equal(payload.project.owner_id, id.importer);
 	assert.equal(payload.project.is_public, false);
 	assert.equal(payload.project.public_files_enabled, false);
+	assert.equal(payload.project.created_at, manifest.project.created_at);
+	assert.equal(payload.project.updated_at, manifest.project.updated_at);
 	assert.equal(payload.projectMember.user_id, id.importer);
 	assert.equal(payload.ghostMembers.length, 3);
 	assert.equal(payload.folders.find((folder) => folder.name === 'Child')?.parent_folder_id, payload.folders.find((folder) => folder.name === 'Root')?.id);
