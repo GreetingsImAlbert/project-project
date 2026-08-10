@@ -16,6 +16,7 @@
 	interface SidebarPublicProject {
 		id: string;
 		name: string;
+		avatar: string | null;
 	}
 
 	interface NavigationData {
@@ -307,7 +308,11 @@
 										onpointerdown={keepExpandedForNavigation}
 									>
 										<span class="row-icon">
-											<span class="glyph-p" aria-hidden="true">P</span>
+											{#if project.avatar}
+												<Avatar avatar={project.avatar} displayName={project.name} size={22} />
+											{:else}
+												<span class="glyph-p" aria-hidden="true">P</span>
+											{/if}
 										</span>
 										<span class="row-label project-name">{project.name}</span>
 									</a>

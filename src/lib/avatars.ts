@@ -163,8 +163,24 @@ export function isStoredProjectAvatarPath(value: unknown): value is string {
 	return typeof value === 'string' && PROJECT_AVATAR_STORAGE_PATH_RE.test(value);
 }
 
+export function isUuid(value: unknown): value is string {
+	return typeof value === 'string' && UUID_RE.test(value);
+}
+
+export function isProjectPictureOwner(ownerId: unknown, userId: unknown): boolean {
+	return typeof ownerId === 'string' && typeof userId === 'string' && ownerId === userId;
+}
+
 export function isStoredPicturePath(value: unknown): value is string {
 	return isStoredAvatarPath(value) || isStoredProjectAvatarPath(value);
+}
+
+export function projectAvatarCleanupPath(value: unknown): string | null {
+	return isStoredProjectAvatarPath(value) ? value : null;
+}
+
+export function projectAvatarReplacementPath(previous: unknown, next: unknown): string | null {
+	return previous !== next ? projectAvatarCleanupPath(previous) : null;
 }
 
 export function avatarUploadMimeType(typeValue: unknown, fileNameValue: unknown): string | null {
@@ -183,7 +199,7 @@ export function avatarStoragePath(userId: string, _mimeType: string): string {
 }
 
 export function projectAvatarStoragePath(projectId: string): string {
-	if (!UUID_RE.test(projectId)) throw new Error('Invalid project id');
+	if (!isUuid(projectId)) throw new Error('Invalid project id');
 	return `projects/${projectId}/${crypto.randomUUID()}.img`;
 }
 
