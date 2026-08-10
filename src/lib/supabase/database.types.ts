@@ -514,6 +514,42 @@ export type Database = {
         }
         Relationships: []
       }
+      project_imports: {
+        Row: {
+          created_at: string
+          import_token: string
+          importer_id: string
+          project_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          import_token: string
+          importer_id: string
+          project_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          import_token?: string
+          importer_id?: string
+          project_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_imports_importer_id_fkey"
+            columns: ["importer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_imports_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       project_members: {
         Row: {
           contribution_percent: number | null
@@ -914,6 +950,14 @@ export type Database = {
         }[]
       }
       global_storage_bytes: { Args: never; Returns: number }
+      import_project: {
+        Args: { p_importer_id: string; p_payload: Json }
+        Returns: string
+      }
+      import_project_once: {
+        Args: { p_import_token: string; p_importer_id: string; p_payload: Json }
+        Returns: string
+      }
       is_project_member: {
         Args: { check_project_id: string }
         Returns: boolean

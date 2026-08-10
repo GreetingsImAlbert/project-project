@@ -1,269 +1,447 @@
 import type { APIRoute } from 'astro';
 import { env } from 'cloudflare:workers';
-import { zip, type ZipEntry } from '../../../../lib/zip';
-import {
-	TASK_CATEGORY_POSITION_COLUMNS,
-	TASK_COLUMNS,
-	normalizeTask,
-	type RawTaskRow,
-	type TaskCategoryPosition,
-} from '../../../../lib/task-columns';
 import { buildTaskExportPayload } from '../../../../lib/task-export';
-import { TRANSACTION_COLUMNS } from '../../../../lib/transaction-columns';
-import { GHOST_COLUMNS } from '../../../../lib/ghost-members';
+import { normalizeTask, type RawTaskRow, type TaskCategoryPosition } from '../../../../lib/task-columns';
+import {
+	buildProjectArchiveLayout,
+	PROJECT_EXPORT_CHECKSUM,
+	PROJECT_EXPORT_FORMAT,
+	PROJECT_EXPORT_VERSION,
+	PROJECT_PICTURE_ARCHIVE_PATH,
+	safeArchiveName,
+	sha256Hex,
+	type ProjectExportManifestV2,
+	type ProjectExportProject,
+	type ProjectPictureDescriptor,
+} from '../../../../lib/project-export';
+import {
+	CUSTOM_AVATAR_BUCKET,
+	CUSTOM_AVATAR_MAX_BYTES,
+	isAvatarId,
+	isStoredProjectAvatarPath,
+	parseCustomAvatarBytes,
+} from '../../../../lib/avatars';
+import type { Database } from '../../../../lib/supabase/database.types';
+import { getSupabaseAdmin } from '../../../../lib/supabase/admin';
+import { zip, type ZipEntry } from '../../../../lib/zip';
 
 export const prerender = false;
 
-// A single Worker isolate is capped at ~128 MB, and the ZIP is built in memory
-// (see lib/zip.ts): every file's bytes live in the isolate at once, alongside
-// the assembled ZIP itself. This ceiling leaves headroom for both — a project
-// past it is refused rather than OOM-ing the request mid-stream. Well above what
-// a mechanical-engineering student's project typically holds; if this ever
-// becomes the wrong shape we'd switch to streaming with data descriptors.
+// The Worker builds this stored ZIP in memory, so both the source bytes and the
+// final archive coexist. Keep enough isolate headroom for JSON metadata and ZIP
+// structures; larger projects need a future streaming exporter.
 const MAX_DOWNLOAD_BYTES = 80 * 1_000_000;
+
+type Tables = Database['public']['Tables'];
+type Row<Name extends keyof Tables> = Tables[Name]['Row'];
 
 const encoder = new TextEncoder();
 const textEntry = (name: string, body: string): ZipEntry => ({ name, bytes: encoder.encode(body) });
 const jsonEntry = (name: string, data: unknown): ZipEntry =>
 	textEntry(name, `${JSON.stringify(data, null, 2)}\n`);
 
-// Windows/macOS/Linux disagree on quite a few characters; replaced rather than
-// dropped so two differently-named files/folders can't collapse onto the same
-// name inside the archive. Kept in sync with lib/download.ts's safeFilePart —
-// same reasoning, different call site (that one runs client-side over a project
-// name, this one runs server-side over every stored filename and folder name).
-function safeName(raw: string): string {
-	const cleaned = raw
-		.replace(/[<>:"/\\|?*]/g, '-')
-		.split('')
-		.filter((ch) => ch.codePointAt(0)! >= 0x20)
-		.join('')
-		.replace(/\s+/g, ' ')
-		.replace(/^[\s.]+|[\s.]+$/g, '');
-	return cleaned || 'untitled';
+class MissingStoredFileError extends Error {}
+class MissingProjectPictureError extends Error {}
+class InvalidProjectPictureError extends Error {}
+
+type ProjectPictureArchive = {
+	descriptor: ProjectPictureDescriptor | null;
+	bytes: Uint8Array<ArrayBuffer> | null;
+};
+
+async function readProjectPicture(
+	admin: ReturnType<typeof getSupabaseAdmin>,
+	projectId: string,
+	avatar: string | null,
+): Promise<ProjectPictureArchive> {
+	if (avatar === null) return { descriptor: null, bytes: null };
+	if (isAvatarId(avatar)) return { descriptor: { kind: 'builtin', id: avatar }, bytes: null };
+	if (!isStoredProjectAvatarPath(avatar) || !avatar.startsWith(`projects/${projectId}/`)) {
+		throw new InvalidProjectPictureError('The project picture path is invalid or belongs to another project.');
+	}
+
+	const { data, error } = await admin.storage.from(CUSTOM_AVATAR_BUCKET).download(avatar);
+	if (error || !data) {
+		throw new MissingProjectPictureError(error?.message ?? 'The project picture is missing from storage.');
+	}
+	if (data.size > CUSTOM_AVATAR_MAX_BYTES) {
+		throw new InvalidProjectPictureError('The project picture exceeds the 5 MB image limit.');
+	}
+
+	const bytes = new Uint8Array(await data.arrayBuffer());
+	const parsed = parseCustomAvatarBytes(bytes);
+	if (!parsed) {
+		throw new InvalidProjectPictureError('The project picture is not a valid JPEG, PNG, or WebP image.');
+	}
+
+	return {
+		descriptor: {
+			kind: 'custom',
+			archive_path: PROJECT_PICTURE_ARCHIVE_PATH,
+			mime_type: parsed.mimeType,
+			content_size_bytes: bytes.length,
+			sha256: await sha256Hex(bytes),
+		},
+		bytes,
+	};
 }
 
-// Two files with the same name in the same folder — legal in `files`, illegal in
-// a directory. Second and later occurrences get " (2)", " (3)", … suffixed
-// before the extension, same shape Windows and browsers use for duplicate
-// downloads.
-function dedupe(taken: Set<string>, name: string): string {
-	if (!taken.has(name)) {
-		taken.add(name);
-		return name;
-	}
-	const dot = name.lastIndexOf('.');
-	const stem = dot > 0 ? name.slice(0, dot) : name;
-	const ext = dot > 0 ? name.slice(dot) : '';
-	for (let i = 2; ; i++) {
-		const candidate = `${stem} (${i})${ext}`;
-		if (!taken.has(candidate)) {
-			taken.add(candidate);
-			return candidate;
-		}
-	}
+function databaseFailure(area: string, error: { message: string }) {
+	console.error(`[project-export] Failed to read ${area}: ${error.message}`);
+	return new Response('Could not prepare the project download.', { status: 500 });
 }
 
 export const GET: APIRoute = async ({ params, locals }) => {
-	if (!locals.user) {
-		return new Response('Unauthorized', { status: 401 });
-	}
+	if (!locals.user) return new Response('Unauthorized', { status: 401 });
 
-	const projectId = params.id!;
+	const projectId = params.id;
+	if (!projectId) return new Response('Project is required', { status: 400 });
 
-	// Fired together — none of these depend on the one before it, and RLS scopes each
-	// to the caller's project membership, so a non-member ends up with an empty archive
-	// rather than a leak.
+	// Project archives contain all private records and member identity snapshots,
+	// so the endpoint mirrors the owner-only Settings page that exposes the button.
+	const { data: project, error: projectError } = await locals.supabase
+		.from('projects')
+		.select('*')
+		.eq('id', projectId)
+		.single();
+	if (projectError || !project) return new Response('Project not found', { status: 404 });
+	if (project.owner_id !== locals.user.id) return new Response('Forbidden', { status: 403 });
+	// Version 2 archives carry a portable picture descriptor and optional bytes;
+	// the internal Supabase Storage path never enters the exported project row.
+	const { avatar: projectAvatar, ...projectForExport } = project;
+	const exportedProject: ProjectExportProject = projectForExport;
+
+	// Authorization is settled above with the caller's RLS-scoped session. The
+	// admin client then takes a consistent, complete snapshot, including Trash and
+	// identities still referenced after a member leaves the project.
+	const admin = getSupabaseAdmin(env);
 	const [
-		{ data: project, error: projectError },
-		{ data: folderRows },
-		{ data: fileRows },
-		{ data: taskRows },
-		{ data: categoryPositionRows },
-		{ data: bomRows },
-		{ data: transactionRows },
-		{ data: memberRows },
-		{ data: ghostRows },
+		folderResult,
+		fileResult,
+		taskResult,
+		categoryPositionResult,
+		categoryResult,
+		bomResult,
+		transactionResult,
+		memberResult,
+		ghostResult,
+		journalDraftResult,
 	] = await Promise.all([
-		locals.supabase
-			.from('projects')
-			.select('id, name, description, currency, created_at, updated_at, owner_id')
-			.eq('id', projectId)
-			.single(),
-		locals.supabase
-			.from('folders')
-			.select('id, name, parent_folder_id')
-			.eq('project_id', projectId)
-			.is('deleted_at', null),
-		locals.supabase
-			.from('files')
-			.select('id, filename, folder_id, r2_key, size_bytes, mime_type, is_journal, created_at')
-			.eq('project_id', projectId)
-			.is('deleted_at', null)
-			.is('uploader_deleted_at', null),
-		locals.supabase
-			.from('tasks')
-			.select(TASK_COLUMNS)
-			.eq('project_id', projectId)
-			.is('deleted_at', null)
-			.overrideTypes<RawTaskRow[]>(),
-		locals.supabase
+		admin.from('folders').select('*').eq('project_id', projectId).order('created_at').order('id'),
+		admin.from('files').select('*').eq('project_id', projectId).order('created_at').order('id'),
+		admin.from('tasks').select('*').eq('project_id', projectId).order('priority_position').order('id'),
+		admin
 			.from('task_category_positions')
-			.select(TASK_CATEGORY_POSITION_COLUMNS)
+			.select('*')
 			.eq('project_id', projectId)
-			.order('priority_position', { ascending: true })
-			.order('id', { ascending: true })
-			.overrideTypes<TaskCategoryPosition[]>(),
-		locals.supabase
-			.from('bom_items')
-			.select('id, part_name, category, description, quantity, unit, unit_cost, supplier, item_url, total_cost')
-			.eq('project_id', projectId)
-			.is('deleted_at', null)
-			.order('category', { ascending: true })
-			.order('part_name', { ascending: true }),
-		locals.supabase
+			.order('priority_position')
+			.order('id'),
+		admin.from('task_categories').select('*').eq('project_id', projectId).order('name'),
+		admin.from('bom_items').select('*').eq('project_id', projectId).order('category').order('part_name').order('id'),
+		admin
 			.from('transactions')
-			.select(TRANSACTION_COLUMNS)
+			.select('*')
 			.eq('project_id', projectId)
-			.is('deleted_at', null)
-			.order('transaction_date', { ascending: true }),
-		locals.supabase
-			.from('project_members')
-			.select('role, is_auditor, contribution_percent, joined_at, user_id, profiles(display_name, email)')
-			.eq('project_id', projectId)
-			.overrideTypes<{ role: string; is_auditor: boolean; contribution_percent: number | null; joined_at: string; user_id: string; profiles: { display_name: string; email: string } | null }[]>(),
-		locals.supabase
-			.from('ghost_members')
-			.select(GHOST_COLUMNS)
-			.eq('project_id', projectId)
-			.order('created_at', { ascending: true }),
+			.order('transaction_date')
+			.order('created_at')
+			.order('id'),
+		admin.from('project_members').select('*').eq('project_id', projectId).order('user_id'),
+		admin.from('ghost_members').select('*').eq('project_id', projectId).order('created_at').order('id'),
+		admin.from('journal_drafts').select('*').eq('project_id', projectId).maybeSingle(),
 	]);
 
-	if (projectError || !project) {
-		return new Response('Project not found', { status: 404 });
+	const snapshotResults = [
+		['folders', folderResult],
+		['files', fileResult],
+		['tasks', taskResult],
+		['task category positions', categoryPositionResult],
+		['task categories', categoryResult],
+		['BOM items', bomResult],
+		['transactions', transactionResult],
+		['project members', memberResult],
+		['ghost members', ghostResult],
+		['journal draft', journalDraftResult],
+	] as const;
+	for (const [area, result] of snapshotResults) {
+		if (result.error) return databaseFailure(area, result.error);
 	}
 
-	// Build folder id → posix path so the archive mirrors the tree the Files page
-	// renders. A missing parent (should never happen — parent_folder_id cascades)
-	// grounds out at the root, keeping the file visible instead of dropping it.
-	const folderById = new Map((folderRows ?? []).map((f) => [f.id, f]));
-	const pathCache = new Map<string, string>();
-	function folderPath(id: string | null): string {
-		if (!id) return '';
-		const cached = pathCache.get(id);
-		if (cached !== undefined) return cached;
-		const folder = folderById.get(id);
-		if (!folder) return '';
-		const parent = folderPath(folder.parent_folder_id);
-		const path = parent ? `${parent}/${safeName(folder.name)}` : safeName(folder.name);
-		pathCache.set(id, path);
-		return path;
+	const folderRows = folderResult.data ?? [];
+	const fileRows = fileResult.data ?? [];
+	const taskRows = taskResult.data ?? [];
+	const categoryPositionRows = categoryPositionResult.data ?? [];
+	const categoryRows = categoryResult.data ?? [];
+	const bomRows = bomResult.data ?? [];
+	const transactionRows = transactionResult.data ?? [];
+	const memberRows = memberResult.data ?? [];
+	const ghostRows = ghostResult.data ?? [];
+	const journalDraft = journalDraftResult.data ?? null;
+
+	let projectPicture: ProjectPictureArchive;
+	try {
+		projectPicture = await readProjectPicture(admin, projectId, projectAvatar);
+	} catch (error) {
+		if (error instanceof MissingProjectPictureError) {
+			return new Response('The project picture is missing from storage.', { status: 409 });
+		}
+		if (error instanceof InvalidProjectPictureError) {
+			return new Response(error.message, { status: 409 });
+		}
+		console.error('[project-export] Failed to read project picture', error);
+		return new Response('Could not read the project picture.', { status: 500 });
 	}
 
-	// Refuse an archive we already know we can't fit in the isolate before spending
-	// a round trip on every R2 object.
-	const totalFileBytes = (fileRows ?? []).reduce((sum, f) => sum + (f.size_bytes ?? 0), 0);
-	if (totalFileBytes > MAX_DOWNLOAD_BYTES) {
+	let taskAssigneeRows: Row<'task_assignees'>[] = [];
+	if (taskRows.length > 0) {
+		const result = await admin
+			.from('task_assignees')
+			.select('*')
+			.in('task_id', taskRows.map((task) => task.id))
+			.order('id');
+		if (result.error) return databaseFailure('task assignees', result.error);
+		taskAssigneeRows = result.data ?? [];
+	}
+
+	const referencedUserIds = new Set<string>([project.owner_id]);
+	for (const member of memberRows) referencedUserIds.add(member.user_id);
+	for (const file of fileRows) if (file.uploaded_by) referencedUserIds.add(file.uploaded_by);
+	for (const transaction of transactionRows) {
+		if (transaction.member_id) referencedUserIds.add(transaction.member_id);
+		if (transaction.related_member_id) referencedUserIds.add(transaction.related_member_id);
+	}
+	for (const assignee of taskAssigneeRows) if (assignee.user_id) referencedUserIds.add(assignee.user_id);
+	if (journalDraft?.updated_by) referencedUserIds.add(journalDraft.updated_by);
+
+	let profileRows: Pick<Row<'profiles'>, 'id' | 'display_name' | 'email'>[] = [];
+	if (referencedUserIds.size > 0) {
+		const result = await admin
+			.from('profiles')
+			.select('id, display_name, email')
+			.in('id', [...referencedUserIds])
+			.order('id');
+		if (result.error) return databaseFailure('referenced profiles', result.error);
+		profileRows = result.data ?? [];
+	}
+
+	let layout;
+	try {
+		layout = buildProjectArchiveLayout(folderRows, fileRows);
+	} catch (error) {
+		console.error('[project-export] Invalid project file hierarchy', error);
+		return new Response('The project file hierarchy is invalid and cannot be exported.', { status: 409 });
+	}
+
+	const recordedFileBytes = fileRows.reduce((sum, file) => sum + Number(file.size_bytes ?? 0), 0);
+	const recordedArchiveBytes = recordedFileBytes + (projectPicture.bytes?.length ?? 0);
+	if (recordedArchiveBytes > MAX_DOWNLOAD_BYTES) {
 		return new Response(
-			`This project's files total ${totalFileBytes.toLocaleString()} B, past the ${MAX_DOWNLOAD_BYTES.toLocaleString()} B cap for a single download.`,
+			`This project's files and picture total ${recordedArchiveBytes.toLocaleString()} B, past the ${MAX_DOWNLOAD_BYTES.toLocaleString()} B cap for a single download.`,
 			{ status: 413 },
 		);
 	}
 
-	// Read every file's bytes in parallel through the R2 binding — same path as
-	// files/[fileId]/raw.ts, one Worker invocation per object, no SigV4 signing.
-	const takenByFolder = new Map<string, Set<string>>();
-	const fileEntries: (ZipEntry | null)[] = await Promise.all(
-		(fileRows ?? []).map(async (file) => {
-			const object = await env.R2_BUCKET!.get(file.r2_key);
-			if (!object) return null;
-			const bytes = new Uint8Array(await object.arrayBuffer());
-			const dir = folderPath(file.folder_id);
-			const taken = takenByFolder.get(dir) ?? new Set<string>();
-			takenByFolder.set(dir, taken);
-			const name = dedupe(taken, safeName(file.filename));
-			return { name: `files/${dir ? `${dir}/` : ''}${name}`, bytes };
-		}),
-	);
+	const bucket = env.R2_BUCKET;
+	if (!bucket) return new Response('Project file storage is unavailable.', { status: 503 });
 
-	const memberById = new Map((memberRows ?? []).map((m) => [m.user_id, m.profiles?.display_name ?? '']));
-	const ghostById = new Map((ghostRows ?? []).map((g) => [g.id, g.display_name]));
-	const categoryPositions = categoryPositionRows ?? [];
-	const tasksPayload = buildTaskExportPayload(
-		project.name,
-		new Date().toISOString(),
-		(taskRows ?? []).map(normalizeTask),
-		categoryPositions,
-	);
+	let storedFiles: { file: Row<'files'>; bytes: Uint8Array<ArrayBuffer>; sha256: string }[];
+	try {
+		storedFiles = await Promise.all(
+			fileRows.map(async (file) => {
+				const object = await bucket.get(file.r2_key);
+				if (!object) throw new MissingStoredFileError(`Missing stored content for ${file.filename}`);
+				const bytes = new Uint8Array(await object.arrayBuffer());
+				return { file, bytes, sha256: await sha256Hex(bytes) };
+			}),
+		);
+	} catch (error) {
+		if (error instanceof MissingStoredFileError) return new Response(error.message, { status: 409 });
+		console.error('[project-export] Failed to read stored files', error);
+		return new Response('Could not read the project files.', { status: 500 });
+	}
 
-	// Same shape as TasksTable.svelte's downloadTasks — one export format across the
-	// app, so a reader who's seen a per-page export knows what this one holds too.
+	const actualFileBytes = storedFiles.reduce((sum, stored) => sum + stored.bytes.length, 0);
+	const actualArchiveBytes = actualFileBytes + (projectPicture.bytes?.length ?? 0);
+	if (actualArchiveBytes > MAX_DOWNLOAD_BYTES) {
+		return new Response(
+			`This project's files and picture total ${actualArchiveBytes.toLocaleString()} B, past the ${MAX_DOWNLOAD_BYTES.toLocaleString()} B cap for a single download.`,
+			{ status: 413 },
+		);
+	}
+
+	const exportedAt = new Date().toISOString();
+	const memberUserIds = new Set(memberRows.map((member) => member.user_id));
+	const people = profileRows.map((profile) => ({
+		sourceUserId: profile.id,
+		displayName: profile.display_name,
+		// Email is membership data already present in members.json. Do not expose a
+		// removed account's email merely because an old record still references it.
+		email: memberUserIds.has(profile.id) ? profile.email : null,
+	}));
+	const personById = new Map(people.map((person) => [person.sourceUserId, person]));
+	const ghostById = new Map(ghostRows.map((ghost) => [ghost.id, ghost]));
+	const storedFileById = new Map(storedFiles.map((stored) => [stored.file.id, stored]));
+
+	const manifestFiles = fileRows.map((file) => {
+		const stored = storedFileById.get(file.id)!;
+		return {
+			id: file.id,
+			project_id: file.project_id,
+			folder_id: file.folder_id,
+			uploaded_by: file.uploaded_by,
+			filename: file.filename,
+			mime_type: file.mime_type,
+			size_bytes: file.size_bytes,
+			storage_provider: file.storage_provider,
+			uploader_deleted_at: file.uploader_deleted_at,
+			created_at: file.created_at,
+			deleted_at: file.deleted_at,
+			is_public: file.is_public,
+			is_journal: file.is_journal,
+			archive_path: layout.filePaths.get(file.id)!,
+			content_size_bytes: stored.bytes.length,
+			sha256: stored.sha256,
+		};
+	});
+
+	const manifest: ProjectExportManifestV2 = {
+		format: PROJECT_EXPORT_FORMAT,
+		version: PROJECT_EXPORT_VERSION,
+		exportedAt,
+		checksumAlgorithm: PROJECT_EXPORT_CHECKSUM,
+		project: exportedProject,
+		projectPicture: projectPicture.descriptor,
+		people,
+		recordCounts: {
+			projectMembers: memberRows.length,
+			ghostMembers: ghostRows.length,
+			folders: folderRows.length,
+			files: fileRows.length,
+			bomItems: bomRows.length,
+			transactions: transactionRows.length,
+			tasks: taskRows.length,
+			taskAssignees: taskAssigneeRows.length,
+			taskCategories: categoryRows.length,
+			taskCategoryPositions: categoryPositionRows.length,
+			journalDrafts: journalDraft ? 1 : 0,
+		},
+		records: {
+			projectMembers: memberRows,
+			ghostMembers: ghostRows,
+			folders: folderRows.map((folder) => ({
+				...folder,
+				archive_path: layout.folderArchivePaths.get(folder.id)!,
+			})),
+			files: manifestFiles,
+			bomItems: bomRows,
+			transactions: transactionRows,
+			tasks: taskRows,
+			taskAssignees: taskAssigneeRows,
+			taskCategories: categoryRows,
+			taskCategoryPositions: categoryPositionRows,
+			journalDraft,
+		},
+	};
+
+	// Keep the original readable exports alongside the authoritative manifest so
+	// existing downloaded-archive workflows do not lose any files or JSON shapes.
+	const assigneesByTask = new Map<string, Row<'task_assignees'>[]>();
+	for (const assignee of taskAssigneeRows) {
+		const rows = assigneesByTask.get(assignee.task_id) ?? [];
+		rows.push(assignee);
+		assigneesByTask.set(assignee.task_id, rows);
+	}
+	const normalizedTasks = taskRows
+		.filter((task) => !task.deleted_at)
+		.map((task) => normalizeTask({
+			id: task.id,
+			name: task.name,
+			category: task.category,
+			priority_position: task.priority_position,
+			description: task.description,
+			start_date: task.start_date,
+			start_time: task.start_time,
+			deadline: task.deadline,
+			deadline_time: task.deadline_time,
+			status: task.status,
+			task_assignees: (assigneesByTask.get(task.id) ?? []).map((assignee) => ({
+				id: assignee.id,
+				user_id: assignee.user_id,
+				ghost_member_id: assignee.ghost_member_id,
+				deleted_display_name: assignee.deleted_display_name,
+				profiles: assignee.user_id
+					? { display_name: personById.get(assignee.user_id)?.displayName ?? '', avatar: null }
+					: null,
+				ghost_members: assignee.ghost_member_id
+					? { display_name: ghostById.get(assignee.ghost_member_id)?.display_name ?? '' }
+					: null,
+			})),
+		} satisfies RawTaskRow));
+	const legacyCategoryPositions: TaskCategoryPosition[] = categoryPositionRows.map((position) => ({
+		id: position.id,
+		category_name: position.category_name,
+		priority_position: position.priority_position,
+	}));
+	const tasksPayload = buildTaskExportPayload(project.name, exportedAt, normalizedTasks, legacyCategoryPositions);
 
 	const membersPayload = {
 		project: project.name,
-		exportedAt: new Date().toISOString(),
-		members: (memberRows ?? []).map((m) => ({
-			displayName: m.profiles?.display_name ?? null,
-			email: m.profiles?.email ?? null,
-			role: m.role,
-			isAuditor: m.is_auditor,
-			contributionPercent: m.contribution_percent,
-			joinedAt: m.joined_at,
+		exportedAt,
+		members: memberRows.map((member) => ({
+			displayName: personById.get(member.user_id)?.displayName ?? null,
+			email: personById.get(member.user_id)?.email ?? null,
+			role: member.role,
+			isAuditor: member.is_auditor,
+			contributionPercent: member.contribution_percent,
+			joinedAt: member.joined_at,
 		})),
-		ghostMembers: (ghostRows ?? []).map((g) => ({
-			displayName: g.display_name,
-			note: g.note,
-			contributionPercent: g.contribution_percent,
-			isDeletedAccount: g.is_deleted_account,
+		ghostMembers: ghostRows.map((ghost) => ({
+			displayName: ghost.display_name,
+			note: ghost.note,
+			contributionPercent: ghost.contribution_percent,
+			isDeletedAccount: ghost.is_deleted_account,
 		})),
 	};
 
 	const bomPayload = {
 		project: project.name,
 		currency: project.currency,
-		exportedAt: new Date().toISOString(),
-		items: (bomRows ?? []).map((b) => ({
-			partName: b.part_name,
-			category: b.category,
-			description: b.description,
-			quantity: b.quantity,
-			unit: b.unit,
-			unitCost: b.unit_cost,
-			supplier: b.supplier,
-			itemUrl: b.item_url,
-			totalCost: b.total_cost,
+		exportedAt,
+		items: bomRows.filter((item) => !item.deleted_at).map((item) => ({
+			partName: item.part_name,
+			category: item.category,
+			description: item.description,
+			quantity: item.quantity,
+			unit: item.unit,
+			unitCost: item.unit_cost,
+			supplier: item.supplier,
+			itemUrl: item.item_url,
+			totalCost: item.total_cost,
 		})),
 	};
 
-	// Party columns folded into a single readable name — the payer/payee id-space
-	// (see lib/money-parties.ts) is an internal detail, and an exported record
-	// should read on its own without a lookup table.
 	function partyName(memberId: string | null, ghostId: string | null): string | null {
-		if (memberId) return memberById.get(memberId) ?? null;
-		if (ghostId) return ghostById.get(ghostId) ?? null;
+		if (memberId) return personById.get(memberId)?.displayName ?? null;
+		if (ghostId) return ghostById.get(ghostId)?.display_name ?? null;
 		return null;
 	}
-
 	const transactionsPayload = {
 		project: project.name,
 		currency: project.currency,
-		exportedAt: new Date().toISOString(),
-		transactions: (transactionRows ?? []).map((t: any) => ({
-			id: t.id,
-			date: t.transaction_date,
-			type: t.type,
-			itemName: t.item_name,
-			quantity: t.quantity,
-			unit: t.unit,
-			unitCost: t.unit_cost,
-			supplier: t.supplier,
-			itemUrl: t.item_url,
-			totalCost: t.total_cost,
-			paidBy: partyName(t.member_id, t.ghost_member_id),
-			paidTo: partyName(t.related_member_id, t.related_ghost_member_id),
-			// Lines carry the parent's id here; a bulk parent's own row has this null.
-			// The reader can group on it to reconstruct the parent → lines shape.
-			groupId: t.group_id,
+		exportedAt,
+		transactions: transactionRows.filter((transaction) => !transaction.deleted_at).map((transaction) => ({
+			id: transaction.id,
+			date: transaction.transaction_date,
+			type: transaction.type,
+			itemName: transaction.item_name,
+			quantity: transaction.quantity,
+			unit: transaction.unit,
+			unitCost: transaction.unit_cost,
+			supplier: transaction.supplier,
+			itemUrl: transaction.item_url,
+			totalCost: transaction.total_cost,
+			paidBy: partyName(transaction.member_id, transaction.ghost_member_id),
+			paidTo: partyName(transaction.related_member_id, transaction.related_ghost_member_id),
+			groupId: transaction.group_id,
 		})),
 	};
 
@@ -272,35 +450,42 @@ export const GET: APIRoute = async ({ params, locals }) => {
 		project.description ? `\nDescription:\n${project.description}` : '',
 		`\nCurrency: ${project.currency}`,
 		`Created: ${project.created_at}`,
-		`Exported: ${new Date().toISOString()}`,
+		`Exported: ${exportedAt}`,
 		'',
 		'Contents:',
+		'  manifest.json           — authoritative, versioned project snapshot for P2 import',
+		'  project-picture.img    — optional custom project picture bytes',
+		'  files/…                 — active project files, mirroring the Files-page folder tree',
+		'  trash/files/…           — recoverable trashed/orphaned file contents',
+		'  tasks.json              — readable active-task export',
+		'  bom.json                — readable active bill of materials',
+		'  transactions.json       — readable active money transactions',
+		'  members.json            — readable member and ghost-member summary',
 		'  README.txt              — this file',
-		'  files/…                 — project files, mirroring the Files-page folder tree',
-		'  tasks.json              — tasks with categories, priority, deadlines, assignees',
-		'  bom.json                — bill of materials',
-		'  transactions.json       — money transactions (parent rows and their lines)',
-		'  members.json            — real members and ghost members with contribution %',
 		'',
 	].join('\n');
 
 	const entries: ZipEntry[] = [
 		textEntry('README.txt', readme),
+		jsonEntry('manifest.json', manifest),
 		jsonEntry('tasks.json', tasksPayload),
 		jsonEntry('bom.json', bomPayload),
 		jsonEntry('transactions.json', transactionsPayload),
 		jsonEntry('members.json', membersPayload),
-		...fileEntries.filter((e): e is ZipEntry => e !== null),
+		...(projectPicture.bytes ? [{ name: PROJECT_PICTURE_ARCHIVE_PATH, bytes: projectPicture.bytes }] : []),
+		...layout.directoryEntries.map((name) => ({ name, bytes: new Uint8Array() })),
+		...storedFiles.map((stored) => ({
+			name: layout.filePaths.get(stored.file.id)!,
+			bytes: stored.bytes,
+		})),
 	];
 
 	const bytes = zip(entries);
-	const safeProjectName = safeName(project.name);
-
 	return new Response(bytes.buffer as ArrayBuffer, {
 		headers: {
 			'content-type': 'application/zip',
 			'content-length': String(bytes.length),
-			'content-disposition': `attachment; filename="${safeProjectName}.zip"`,
+			'content-disposition': `attachment; filename="${safeArchiveName(project.name)}.zip"`,
 			'cache-control': 'private, no-store',
 		},
 	});
