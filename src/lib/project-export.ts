@@ -11,7 +11,14 @@ export const PROJECT_PICTURE_ARCHIVE_PATH = 'project-picture.img' as const;
 type Tables = Database['public']['Tables'];
 type Row<Name extends keyof Tables> = Tables[Name]['Row'];
 
-export type ProjectExportProject = Omit<Row<'projects'>, 'avatar'>;
+// Section visibility is added to the database before the export format learns
+// about it (see the public-section implementation checklist). Keep the current
+// manifest shape stable until the import/export task updates its validation and
+// private-by-default remapping together.
+export type ProjectExportProject = Omit<
+	Row<'projects'>,
+	'avatar' | 'public_tasks_enabled' | 'public_journal_enabled' | 'public_money_enabled'
+>;
 export type ProjectPictureMimeType = 'image/jpeg' | 'image/png' | 'image/webp';
 export type ProjectPictureDescriptor =
 	| { kind: 'builtin'; id: AvatarId }

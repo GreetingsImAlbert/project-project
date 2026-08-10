@@ -1,131 +1,118 @@
 <script lang="ts">
 	import { onSwapOrDestroy } from '../lib/island-teardown';
+	import { PUBLIC_SECTIONS, type PublicSection } from '../lib/project-visibility';
 
 	let {
 		projectId,
 		isPublic,
 		publicFilesEnabled,
+		publicTasksEnabled,
+		publicJournalEnabled,
+		publicMoneyEnabled,
 	}: {
 		projectId: string;
 		isPublic: boolean;
 		publicFilesEnabled: boolean;
+		publicTasksEnabled: boolean;
+		publicJournalEnabled: boolean;
+		publicMoneyEnabled: boolean;
 	} = $props();
 
-	type VisibilityScope = 'project' | 'files';
+	const labels: Record<PublicSection, string> = {
+		overview: 'Overview',
+		tasks: 'Tasks',
+		files: 'Files',
+		journal: 'Journal',
+		money: 'Money',
+	};
 
-	let projectValue = $state(isPublic);
-	let filesValue = $state(publicFilesEnabled);
-	let saving = $state<VisibilityScope | null>(null);
-	let saved = $state<VisibilityScope | null>(null);
-	let error = $state<{ scope: VisibilityScope; message: string } | null>(null);
-	let savedTimers: Partial<Record<VisibilityScope, ReturnType<typeof setTimeout>>> = {};
+	let values = $state<Record<PublicSection, boolean>>({
+		overview: isPublic,
+		tasks: publicTasksEnabled,
+		files: publicFilesEnabled,
+		journal: publicJournalEnabled,
+		money: publicMoneyEnabled,
+	});
+	let saving = $state<PublicSection | null>(null);
+	let saved = $state<PublicSection | null>(null);
+	let error = $state<{ section: PublicSection; message: string } | null>(null);
+	let savedTimers: Partial<Record<PublicSection, ReturnType<typeof setTimeout>>> = {};
 
-	function setValue(scope: VisibilityScope, next: boolean) {
-		if (scope === 'project') projectValue = next;
-		else filesValue = next;
+	function setValue(section: PublicSection, next: boolean) {
+		values[section] = next;
 		saved = null;
 		error = null;
 	}
 
-	function restoreValue(scope: VisibilityScope, previous: boolean) {
-		if (scope === 'project') projectValue = previous;
-		else filesValue = previous;
+	function restoreValue(section: PublicSection, previous: boolean) {
+		values[section] = previous;
 	}
 
-	async function setVisibility(scope: VisibilityScope, next: boolean) {
-		const current = scope === 'project' ? projectValue : filesValue;
+	async function setVisibility(section: PublicSection, next: boolean) {
+		const current = values[section];
 		if (next === current || saving) return;
 		const previous = current;
-		setValue(scope, next);
-		saving = scope;
+		setValue(section, next);
+		saving = section;
 
 		try {
-			const isProject = scope === 'project';
-			const res = await fetch(
-				isProject
-					? `/api/projects/${projectId}/visibility`
-					: `/api/projects/${projectId}/files-visibility`,
-				{
-					method: 'POST',
-					headers: { 'content-type': 'application/json' },
-					body: JSON.stringify(isProject ? { isPublic: next } : { publicFilesEnabled: next }),
-				},
-			);
+			const res = await fetch(`/api/projects/${projectId}/visibility`, {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ section, enabled: next }),
+			});
 			if (!res.ok) {
-				restoreValue(scope, previous);
-				error = { scope, message: await res.text() };
+				restoreValue(section, previous);
+				error = { section, message: await res.text() };
 				return;
 			}
-			clearTimeout(savedTimers[scope]);
-			saved = scope;
-			savedTimers[scope] = setTimeout(() => {
-				if (saved === scope) saved = null;
+			clearTimeout(savedTimers[section]);
+			saved = section;
+			savedTimers[section] = setTimeout(() => {
+				if (saved === section) saved = null;
 			}, 2500);
 		} catch (cause) {
 			error = {
-				scope,
+				section,
 				message: cause instanceof Error ? cause.message : 'Could not save visibility',
 			};
-			restoreValue(scope, previous);
+			restoreValue(section, previous);
 		} finally {
 			saving = null;
 		}
 	}
 
 	onSwapOrDestroy(() => {
-		clearTimeout(savedTimers.project);
-		clearTimeout(savedTimers.files);
+		for (const timer of Object.values(savedTimers)) clearTimeout(timer);
 	});
 </script>
 
 <div class="visibility-picker">
-	<div class="visibility-row">
-		<strong>Overview</strong>
-		<button
-			type="button"
-			class="visibility-switch"
-			class:active={projectValue}
-			role="switch"
-			aria-checked={projectValue}
-			aria-label="Overview visibility"
-			disabled={saving !== null}
-			title={projectValue ? 'Make overview private' : 'Make overview public'}
-			onclick={() => setVisibility('project', !projectValue)}
-		>
-			<span class="visibility-switch-track" aria-hidden="true"><span class="visibility-switch-thumb"></span></span>
-			<span class="visibility-switch-label">{projectValue ? 'Public' : 'Private'}</span>
-		</button>
-		{#if saving === 'project'}
-			<p class="visibility-status muted" role="status">Saving…</p>
-		{:else if saved === 'project'}
-			<p class="visibility-status muted" role="status">Saved</p>
-		{/if}
-		{#if error?.scope === 'project'}<p class="row-error">{error.message}</p>{/if}
-	</div>
-
-	<div class="visibility-row">
-		<strong>Files</strong>
-		<button
-			type="button"
-			class="visibility-switch"
-			class:active={filesValue}
-			role="switch"
-			aria-checked={filesValue}
-			aria-label="File visibility"
-			disabled={saving !== null}
-			title={filesValue ? 'Make files private' : 'Make files public'}
-			onclick={() => setVisibility('files', !filesValue)}
-		>
-			<span class="visibility-switch-track" aria-hidden="true"><span class="visibility-switch-thumb"></span></span>
-			<span class="visibility-switch-label">{filesValue ? 'Public' : 'Private'}</span>
-		</button>
-		{#if saving === 'files'}
-			<p class="visibility-status muted" role="status">Saving…</p>
-		{:else if saved === 'files'}
-			<p class="visibility-status muted" role="status">Saved</p>
-		{/if}
-		{#if error?.scope === 'files'}<p class="row-error">{error.message}</p>{/if}
-	</div>
+	{#each PUBLIC_SECTIONS as section}
+		<div class="visibility-row">
+			<strong>{labels[section]}</strong>
+			<button
+				type="button"
+				class="visibility-switch"
+				class:active={values[section]}
+				role="switch"
+				aria-checked={values[section]}
+				aria-label={`${labels[section]} visibility`}
+				disabled={saving !== null}
+				title={values[section] ? `Make ${labels[section].toLowerCase()} private` : `Make ${labels[section].toLowerCase()} public`}
+				onclick={() => setVisibility(section, !values[section])}
+			>
+				<span class="visibility-switch-track" aria-hidden="true"><span class="visibility-switch-thumb"></span></span>
+				<span class="visibility-switch-label">{values[section] ? 'Public' : 'Private'}</span>
+			</button>
+			{#if saving === section}
+				<p class="visibility-status muted" role="status">Saving…</p>
+			{:else if saved === section}
+				<p class="visibility-status muted" role="status">Saved</p>
+			{/if}
+			{#if error?.section === section}<p class="row-error">{error.message}</p>{/if}
+		</div>
+	{/each}
 </div>
 
 <style>

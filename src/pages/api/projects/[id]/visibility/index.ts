@@ -1,5 +1,10 @@
 import type { APIRoute } from 'astro';
 import { errorResponse } from '../../../../../lib/error-report';
+import {
+	isPublicSection,
+	PUBLIC_SECTION_COLUMNS,
+	type PublicSection,
+} from '../../../../../lib/project-visibility';
 
 export const prerender = false;
 
@@ -32,31 +37,37 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 	if (!project) return new Response('Project not found', { status: 404 });
 	if (project.owner_id !== locals.user.id) return new Response('Forbidden', { status: 403 });
 
-	let isPublic: unknown;
+	let section: unknown;
+	let enabled: unknown;
 	try {
-		isPublic = (await request.json() as { isPublic?: unknown }).isPublic;
+		const body = await request.json() as { section?: unknown; enabled?: unknown } | null;
+		section = body?.section;
+		enabled = body?.enabled;
 	} catch {
 		return new Response('Invalid request body', { status: 400 });
 	}
 
-	if (typeof isPublic !== 'boolean') {
-		return new Response('Invalid visibility value', { status: 400 });
+	if (!isPublicSection(section) || typeof enabled !== 'boolean') {
+		return new Response('Invalid visibility section or value', { status: 400 });
 	}
 
+	const column = PUBLIC_SECTION_COLUMNS[section as PublicSection];
 	const { error: updateError } = await locals.supabase
 		.from('projects')
-		.update({ is_public: isPublic })
+		// The column comes only from the static section allowlist. The generated
+		// database types are refreshed separately after the migration is applied.
+		.update({ [column]: enabled } as never)
 		.eq('id', projectId);
 
 	if (updateError) {
 		return errorResponse({
 			request,
 			userId: locals.user.id,
-			privateMessage: `Failed to update visibility: ${updateError.message}`,
+			privateMessage: `Failed to update ${section} visibility: ${updateError.message}`,
 			action: 'Failed to update visibility.',
 			context: { projectId: projectId ?? null },
 		});
 	}
 
-	return Response.json({ isPublic });
+	return Response.json({ section, enabled });
 };

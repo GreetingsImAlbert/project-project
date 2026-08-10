@@ -108,7 +108,15 @@ export const GET: APIRoute = async ({ params, locals }) => {
 	if (project.owner_id !== locals.user.id) return new Response('Forbidden', { status: 403 });
 	// Version 2 archives carry a portable picture descriptor and optional bytes;
 	// the internal Supabase Storage path never enters the exported project row.
-	const { avatar: projectAvatar, ...projectForExport } = project;
+	// Section visibility is intentionally omitted until the import/export task
+	// updates the manifest validation and private-by-default remapping together.
+	const {
+		avatar: projectAvatar,
+		public_tasks_enabled: _publicTasksEnabled,
+		public_journal_enabled: _publicJournalEnabled,
+		public_money_enabled: _publicMoneyEnabled,
+		...projectForExport
+	} = project;
 	const exportedProject: ProjectExportProject = projectForExport;
 
 	// Authorization is settled above with the caller's RLS-scoped session. The
