@@ -13,7 +13,12 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3
 export type ImportProjectRow = Pick<
 	Row<'projects'>,
 	'avatar' | 'name' | 'description' | 'owner_id' | 'currency' | 'is_public' | 'public_files_enabled' | 'created_at' | 'updated_at'
-> & { id: string };
+> & {
+	id: string;
+	public_tasks_enabled: boolean;
+	public_journal_enabled: boolean;
+	public_money_enabled: boolean;
+};
 
 export type ImportMemberRow = Pick<
 	Row<'project_members'>,
@@ -162,6 +167,9 @@ export function remapProjectImport(
 		currency: ownership.project.currency,
 		is_public: false,
 		public_files_enabled: false,
+		public_tasks_enabled: false,
+		public_journal_enabled: false,
+		public_money_enabled: false,
 		created_at: manifest.project.created_at,
 		updated_at: manifest.project.updated_at,
 	};
@@ -367,7 +375,15 @@ export function remapProjectImport(
 // makes the relationship remappers read as data-only operations and gives later
 // callers one place to add a defensive policy assertion.
 function planOrThrow(plan: ProjectImportOwnershipPlan): ProjectImportOwnershipPlan {
-	if (plan.realMember.role !== 'owner' || plan.realMember.is_auditor || plan.project.is_public || plan.project.public_files_enabled) {
+	if (
+		plan.realMember.role !== 'owner'
+		|| plan.realMember.is_auditor
+		|| plan.project.is_public
+		|| plan.project.public_files_enabled
+		|| plan.project.public_tasks_enabled
+		|| plan.project.public_journal_enabled
+		|| plan.project.public_money_enabled
+	) {
 		throw new ProjectImportError('Invalid import ownership policy.');
 	}
 	return plan;

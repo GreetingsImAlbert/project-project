@@ -33,6 +33,9 @@ export function createImportManifest(): ProjectExportManifestV1 {
 			updated_at: '2026-08-02T00:00:00.000Z',
 			is_public: true,
 			public_files_enabled: true,
+			public_tasks_enabled: true,
+			public_journal_enabled: true,
+			public_money_enabled: true,
 		},
 		people: [
 			{ sourceUserId: id.owner, displayName: 'Former owner', email: 'owner@example.test' },

@@ -603,6 +603,9 @@ export type Database = {
           name: string
           owner_id: string
           public_files_enabled: boolean
+          public_journal_enabled: boolean
+          public_money_enabled: boolean
+          public_tasks_enabled: boolean
           updated_at: string | null
         }
         Insert: {
@@ -615,6 +618,9 @@ export type Database = {
           name: string
           owner_id: string
           public_files_enabled?: boolean
+          public_journal_enabled?: boolean
+          public_money_enabled?: boolean
+          public_tasks_enabled?: boolean
           updated_at?: string | null
         }
         Update: {
@@ -627,6 +633,9 @@ export type Database = {
           name?: string
           owner_id?: string
           public_files_enabled?: boolean
+          public_journal_enabled?: boolean
+          public_money_enabled?: boolean
+          public_tasks_enabled?: boolean
           updated_at?: string | null
         }
         Relationships: [
@@ -986,6 +995,9 @@ export type Database = {
           is_public: boolean
           name: string
           public_files_enabled: boolean
+          public_journal_enabled: boolean
+          public_money_enabled: boolean
+          public_tasks_enabled: boolean
         }[]
       }
       public_project_list: {
@@ -993,6 +1005,7 @@ export type Database = {
         Returns: {
           description: string
           id: string
+          landing_page: string
           name: string
         }[]
       }

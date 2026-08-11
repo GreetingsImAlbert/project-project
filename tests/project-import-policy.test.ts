@@ -27,6 +27,9 @@ function manifest(): ProjectExportManifestV1 {
 			updated_at: '2026-08-02T00:00:00.000Z',
 			is_public: true,
 			public_files_enabled: true,
+			public_tasks_enabled: true,
+			public_journal_enabled: true,
+			public_money_enabled: true,
 		},
 		people: [
 			{ sourceUserId: ownerId, displayName: 'Former owner', email: 'owner@example.test' },
@@ -75,6 +78,9 @@ test('ownership policy makes the importer sole private owner and ghosts every so
 		owner_id: importerId,
 		is_public: false,
 		public_files_enabled: false,
+		public_tasks_enabled: false,
+		public_journal_enabled: false,
+		public_money_enabled: false,
 	});
 	assert.deepEqual(plan.realMember, {
 		user_id: importerId,

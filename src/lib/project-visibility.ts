@@ -67,6 +67,20 @@ export function isPublicSection(value: unknown): value is PublicSection {
 	return typeof value === 'string' && (PUBLIC_SECTIONS as readonly string[]).includes(value);
 }
 
+export interface PublicVisibilityRequest {
+	section: PublicSection;
+	enabled: boolean;
+}
+
+/** Parse the narrow visibility body shared by the owner API and its tests. */
+export function parsePublicVisibilityRequest(value: unknown): PublicVisibilityRequest | null {
+	if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
+	const body = value as { section?: unknown; enabled?: unknown };
+	return isPublicSection(body.section) && typeof body.enabled === 'boolean'
+		? { section: body.section, enabled: body.enabled }
+		: null;
+}
+
 export function isPublicSectionEnabled(project: PublicProjectGate, section: PublicSection): boolean {
 	return project[PUBLIC_SECTION_COLUMNS[section]];
 }

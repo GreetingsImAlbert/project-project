@@ -1,9 +1,8 @@
 import type { APIRoute } from 'astro';
 import { errorResponse } from '../../../../../lib/error-report';
 import {
-	isPublicSection,
+	parsePublicVisibilityRequest,
 	PUBLIC_SECTION_COLUMNS,
-	type PublicSection,
 } from '../../../../../lib/project-visibility';
 
 export const prerender = false;
@@ -37,21 +36,20 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 	if (!project) return new Response('Project not found', { status: 404 });
 	if (project.owner_id !== locals.user.id) return new Response('Forbidden', { status: 403 });
 
-	let section: unknown;
-	let enabled: unknown;
+	let body: unknown;
 	try {
-		const body = await request.json() as { section?: unknown; enabled?: unknown } | null;
-		section = body?.section;
-		enabled = body?.enabled;
+		body = await request.json();
 	} catch {
 		return new Response('Invalid request body', { status: 400 });
 	}
 
-	if (!isPublicSection(section) || typeof enabled !== 'boolean') {
+	const parsed = parsePublicVisibilityRequest(body);
+	if (!parsed) {
 		return new Response('Invalid visibility section or value', { status: 400 });
 	}
+	const { section, enabled } = parsed;
 
-	const column = PUBLIC_SECTION_COLUMNS[section as PublicSection];
+	const column = PUBLIC_SECTION_COLUMNS[section];
 	const { error: updateError } = await locals.supabase
 		.from('projects')
 		// The column comes only from the static section allowlist. The generated

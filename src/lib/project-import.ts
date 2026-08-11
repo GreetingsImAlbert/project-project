@@ -302,7 +302,20 @@ function array(value: unknown, label: string): unknown[] {
 
 function projectRow(value: unknown): ProjectExportManifestV1['project'] {
 	const row = object(value, 'project');
-	exactKeys(row, 'project', ['id', 'name', 'description', 'owner_id', 'currency', 'created_at', 'updated_at', 'is_public', 'public_files_enabled']);
+	exactKeys(row, 'project', [
+		'id',
+		'name',
+		'description',
+		'owner_id',
+		'currency',
+		'created_at',
+		'updated_at',
+		'is_public',
+		'public_files_enabled',
+		'public_tasks_enabled',
+		'public_journal_enabled',
+		'public_money_enabled',
+	]);
 	uuid(row.id, 'project.id');
 	string(row.name, 'project.name', 200);
 	nullableString(row.description, 'project.description', 2_000);
@@ -312,6 +325,9 @@ function projectRow(value: unknown): ProjectExportManifestV1['project'] {
 	nullableString(row.updated_at, 'project.updated_at', 100);
 	bool(row.is_public, 'project.is_public');
 	bool(row.public_files_enabled, 'project.public_files_enabled');
+	bool(row.public_tasks_enabled, 'project.public_tasks_enabled');
+	bool(row.public_journal_enabled, 'project.public_journal_enabled');
+	bool(row.public_money_enabled, 'project.public_money_enabled');
 	return row as ProjectExportManifestV1['project'];
 }
 

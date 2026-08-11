@@ -19,6 +19,7 @@ import { listGhostMembers } from '../../../lib/ghost-members';
 import { appNowTime, appToday } from '../../../lib/today';
 import { summarizeTasks } from '../../../lib/task-summary';
 import { getPublicProjectGate, toPublicSectionFlags, type PublicProjectFlags } from '../../../lib/project-visibility';
+import { toPublicTasks } from '../../../lib/public-project-dto';
 import { getSupabaseAdmin } from '../../../lib/supabase/admin';
 
 export const prerender = false;
@@ -175,15 +176,7 @@ const ghostOptions = ghostMembers.map((ghost) => ({ id: ghost.id, displayName: g
 
 const tasks = taskRows.map(normalizeTask);
 const publicTasks: Task[] = publicReader
-	? tasks.map((task) => ({
-			...task,
-			assignees: task.assignees.map((assignee, index) => ({
-				...assignee,
-				id: `public-assignee-${task.id}-${index}`,
-				user_id: null,
-				ghost_member_id: null,
-			})),
-		}))
+	? toPublicTasks(tasks)
 	: tasks;
 const publicCategoryPositions: TaskCategoryPosition[] = publicReader
 	? categoryPositionRows.map((position, index) => ({ ...position, id: `public-category-${index}` }))

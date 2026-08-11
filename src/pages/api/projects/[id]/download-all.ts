@@ -34,6 +34,11 @@ const MAX_DOWNLOAD_BYTES = 80 * 1_000_000;
 
 type Tables = Database['public']['Tables'];
 type Row<Name extends keyof Tables> = Tables[Name]['Row'];
+type ExportProjectRow = Row<'projects'> & {
+	public_tasks_enabled: boolean;
+	public_journal_enabled: boolean;
+	public_money_enabled: boolean;
+};
 
 const encoder = new TextEncoder();
 const textEntry = (name: string, body: string): ZipEntry => ({ name, bytes: encoder.encode(body) });
@@ -101,22 +106,15 @@ export const GET: APIRoute = async ({ params, locals }) => {
 	// so the endpoint mirrors the owner-only Settings page that exposes the button.
 	const { data: project, error: projectError } = await locals.supabase
 		.from('projects')
-		.select('*')
+		.select('id, avatar, name, description, owner_id, currency, is_public, public_files_enabled, public_tasks_enabled, public_journal_enabled, public_money_enabled, created_at, updated_at')
 		.eq('id', projectId)
-		.single();
+		.single()
+		.overrideTypes<ExportProjectRow>();
 	if (projectError || !project) return new Response('Project not found', { status: 404 });
 	if (project.owner_id !== locals.user.id) return new Response('Forbidden', { status: 403 });
 	// Version 2 archives carry a portable picture descriptor and optional bytes;
 	// the internal Supabase Storage path never enters the exported project row.
-	// Section visibility is intentionally omitted until the import/export task
-	// updates the manifest validation and private-by-default remapping together.
-	const {
-		avatar: projectAvatar,
-		public_tasks_enabled: _publicTasksEnabled,
-		public_journal_enabled: _publicJournalEnabled,
-		public_money_enabled: _publicMoneyEnabled,
-		...projectForExport
-	} = project;
+	const { avatar: projectAvatar, ...projectForExport } = project;
 	const exportedProject: ProjectExportProject = projectForExport;
 
 	// Authorization is settled above with the caller's RLS-scoped session. The

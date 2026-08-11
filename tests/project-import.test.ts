@@ -113,6 +113,9 @@ test('P2 manifest validation checks the complete archive contract', async () => 
 			updated_at: '2026-08-10T00:00:00.000Z',
 			is_public: false,
 			public_files_enabled: false,
+			public_tasks_enabled: false,
+			public_journal_enabled: false,
+			public_money_enabled: false,
 		},
 		people: [{ sourceUserId: ownerId, displayName: 'Owner', email: 'owner@example.test' }],
 		recordCounts: {
@@ -152,6 +155,21 @@ test('P2 manifest validation checks the complete archive contract', async () => 
 		{ name: 'files/' },
 	]));
 	assert.equal(valid.projectName, 'Demo project');
+
+	const missingVisibilityFlag = JSON.parse(JSON.stringify(manifest)) as Record<string, any>;
+	delete missingVisibilityFlag.project.public_tasks_enabled;
+	await assert.rejects(
+		() => validateP2ProjectArchive(archive([
+			{ name: 'README.txt', body: 'Project: Demo project\n' },
+			{ name: 'manifest.json', body: JSON.stringify(missingVisibilityFlag) },
+			{ name: 'tasks.json', body: JSON.stringify({ project: 'Demo project' }) },
+			{ name: 'bom.json', body: JSON.stringify({ project: 'Demo project' }) },
+			{ name: 'transactions.json', body: JSON.stringify({ project: 'Demo project' }) },
+			{ name: 'members.json', body: JSON.stringify({ project: 'Demo project' }) },
+			{ name: 'files/' },
+		])),
+		(error: unknown) => error instanceof ProjectImportError && /project\.public_tasks_enabled is missing/.test(error.message),
+	);
 
 	const unsupported = { ...manifest, version: 99 };
 	await assert.rejects(
@@ -308,6 +326,7 @@ test('legacy and built-in manifests reject unexpected picture payloads', async (
 
 test('import migrations retain atomic and idempotent database safeguards', () => {
 	const atomic = readFileSync(new URL('../supabase/migrations/20260810042553_import_project_rpc.sql', import.meta.url), 'utf8');
+	const visibility = readFileSync(new URL('../supabase/migrations/20260811001455_import_project_public_sections.sql', import.meta.url), 'utf8');
 	const retry = readFileSync(new URL('../supabase/migrations/20260810045524_project_import_idempotency.sql', import.meta.url), 'utf8');
 	const exporter = readFileSync(new URL('../src/pages/api/projects/[id]/download-all.ts', import.meta.url), 'utf8');
 	const importer = readFileSync(new URL('../src/pages/api/projects/import.ts', import.meta.url), 'utf8');
@@ -319,6 +338,13 @@ test('import migrations retain atomic and idempotent database safeguards', () =>
 	assert.match(atomic, /projects\/.*\[0-9a-f\]\{8\}/i);
 	assert.match(atomic, /raise exception 'folder hierarchy is incomplete'/);
 	assert.match(atomic, /revoke all on function public\.import_project\(uuid, jsonb\) from public/);
+	assert.match(visibility, /public\.import_project\(uuid, jsonb\)/);
+	assert.match(visibility, /public_tasks_enabled/);
+	assert.match(visibility, /public_journal_enabled/);
+	assert.match(visibility, /public_money_enabled/);
+	assert.match(visibility, /jsonb_object_keys\(v_project\)\) <> 13/);
+	assert.match(visibility, /v_project->>'public_tasks_enabled'.*'false'/s);
+	assert.match(visibility, /public_tasks_enabled, public_journal_enabled, public_money_enabled/s);
 	assert.match(retry, /primary key \(importer_id, import_token\)/);
 	assert.match(retry, /on conflict \(importer_id, import_token\) do nothing/);
 	assert.match(retry, /v_project_id := public\.import_project\(p_importer_id, p_payload\)/);
