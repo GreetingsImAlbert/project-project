@@ -9,8 +9,15 @@
 	box-sizing: border-box;
 }
 
-html {
-	scrollbar-gutter: stable;
+/* Keep secondary scroll containers functional without showing native scrollbar chrome.
+   The app's main content pane opts back into a styled scrollbar in BaseLayout. */
+* {
+	-ms-overflow-style: none;
+	scrollbar-width: none;
+}
+
+*::-webkit-scrollbar {
+	display: none;
 }
 
 /* Pages swap instantly under <ClientRouter />, with no cross-fade. The fade isn't
