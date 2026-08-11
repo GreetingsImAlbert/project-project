@@ -33,8 +33,11 @@ const isStaging = import.meta.env.MODE === 'staging';
 <style>
 	.site-header {
 		width: 100%;
-		padding: var(--space-2) var(--space-2) 0;
-		background: var(--color-frame);
+		padding: 0;
+		background: var(--color-surface-header);
+		border-bottom: 1px solid var(--color-border);
+		position: relative;
+		z-index: 1100;
 	}
 
 	.site-header-inner {
@@ -42,12 +45,9 @@ const isStaging = import.meta.env.MODE === 'staging';
 		align-items: center;
 		justify-content: space-between;
 		gap: var(--space-6);
-		padding: var(--space-3) var(--space-6);
-		max-width: var(--max-width);
+		padding: var(--space-3) var(--space-5);
 		width: 100%;
 		margin: 0 auto;
-		background: var(--color-surface-header);
-		border-radius: var(--radius-sm);
 	}
 
 	.lockup {
@@ -102,12 +102,6 @@ const isStaging = import.meta.env.MODE === 'staging';
 		align-items: center;
 		gap: var(--space-4);
 		flex-shrink: 0;
-	}
-
-	@media (min-width: 769px) {
-		.site-header {
-			padding: var(--space-2) var(--space-2) 0;
-		}
 	}
 
 	@media (max-width: 768px) {

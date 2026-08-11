@@ -94,15 +94,17 @@ const isStaging = Astro.url.hostname === 'p2testing.albertmendoza.com';
 			/>
 			<main class="app-main project-main">
 				<div class="page-loading-indicator" role="status" aria-label="Loading"></div>
-				{projectNav && (
-					<ProjectNav
-						projectId={projectNav.projectId}
-						userRole={projectNav.userRole}
-						publicNav={projectNav.publicNav}
-						publicSections={projectNav.publicSections}
-					/>
-				)}
-				<slot />
+				<div class="app-content">
+					{projectNav && (
+						<ProjectNav
+							projectId={projectNav.projectId}
+							userRole={projectNav.userRole}
+							publicNav={projectNav.publicNav}
+							publicSections={projectNav.publicSections}
+						/>
+					)}
+					<slot />
+				</div>
 			</main>
 		</div>
 		<script>
@@ -122,29 +124,16 @@ const isStaging = Astro.url.hostname === 'p2testing.albertmendoza.com';
 		flex-direction: column;
 		height: 100vh;
 		overflow: hidden;
-		background: var(--color-frame);
+		background: var(--color-surface-content);
 	}
 
 	.app-shell {
 		display: flex;
 		flex: 1;
 		min-height: 0;
-		max-width: var(--max-width);
 		width: 100%;
-		margin: 0 auto;
-		gap: var(--space-2);
-		padding: var(--space-2);
-		--sidebar-rail-width: 56px;
-		--sidebar-panel-width: 280px;
-	}
-
-	/* Hover and pinned expansion reserve the same gutter, keeping page content visible
-	   beside the open panel. */
-	.app-shell:has(.sidebar-rail:hover) .app-main,
-	.app-shell:has(.sidebar-rail:focus-within) .app-main,
-	html[data-sidebar-pinned] .app-shell .app-main,
-	html[data-sidebar-navigating] .app-shell .app-main {
-		margin-left: calc(var(--sidebar-panel-width) - var(--sidebar-rail-width));
+		margin: 0;
+		padding: 0;
 	}
 
 	.app-main {
@@ -152,13 +141,17 @@ const isStaging = Astro.url.hostname === 'p2testing.albertmendoza.com';
 		min-width: 0;
 		position: relative;
 		background: var(--color-surface-content);
-		border-radius: var(--radius-sm);
 		overflow-y: auto;
 		-ms-overflow-style: auto;
 		scrollbar-width: thin;
 		scrollbar-color: color-mix(in srgb, var(--color-muted) 48%, transparent) transparent;
-		padding: var(--space-7) var(--space-7) var(--space-8);
-		transition: margin-left 0.18s ease;
+		padding: var(--space-7) var(--space-6) var(--space-8);
+	}
+
+	.app-content {
+		width: 100%;
+		max-width: 1240px;
+		margin: 0 auto;
 	}
 
 	.app-main::-webkit-scrollbar {
@@ -224,27 +217,6 @@ const isStaging = Astro.url.hostname === 'p2testing.albertmendoza.com';
 	@media (max-width: 1200px) {
 		.app-main {
 			padding: var(--space-6) var(--space-5) var(--space-7);
-		}
-	}
-
-	@media (max-width: 768px) {
-		.app-shell {
-			width: 100%;
-		}
-
-		.app-shell:has(.sidebar-rail:hover) .app-main,
-		.app-shell:has(.sidebar-rail:focus-within) .app-main,
-		html[data-sidebar-pinned] .app-shell .app-main,
-		html[data-sidebar-navigating] .app-shell .app-main,
-		.app-main {
-			margin-left: 0;
-		}
-	}
-
-	@media (min-width: 769px) {
-		.app-shell {
-			width: calc(100% - var(--space-4));
-			padding: var(--space-2) 0 var(--space-3);
 		}
 	}
 

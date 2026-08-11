@@ -79,7 +79,7 @@ h2 {
    with a rule across the top of the content area, which separates the title from
    nothing. Astro slots the page's own markup straight into these containers, so the
    title is a first child in both the app shell and the signed-out layout. */
-.app-main > h2:first-child,
+.app-content > h2:first-child,
 .container > h2:first-child {
 	margin-top: 0;
 	padding-top: 0;

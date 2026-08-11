@@ -190,7 +190,7 @@
 	// fixture, not a menu, so working in the page shouldn't put it away.
 	// A click on a link is a navigation and leaves the pin alone.
 	function onPanelClick(event: MouseEvent) {
-		if (mobileViewport) return;
+		if (mobileViewport || window.matchMedia('(min-width: 1201px)').matches) return;
 		if (event.target instanceof Element && event.target.closest('a')) return;
 		setPinned(!pinned);
 	}
@@ -332,13 +332,18 @@
 		flex: 0 0 var(--rail-width);
 		position: relative;
 		min-height: 0;
-		--rail-width: 56px;
-		--panel-width: 280px;
+		--rail-width: 64px;
+		--panel-width: 256px;
 		--icon-size: 26px;
 		/* Centres the icon slot in the folded rail, which is also what makes the active
 		   row's highlight sit square around it. */
 		--row-inset: calc((var(--rail-width) - var(--icon-size)) / 2);
 		transition: flex-basis 0.15s ease;
+	}
+
+	:global(html[data-sidebar-pinned]) .sidebar-rail,
+	:global(html[data-sidebar-navigating]) .sidebar-rail {
+		flex-basis: var(--panel-width);
 	}
 
 	/* Reaches leftward out of the shell to the viewport edge — that empty margin is
@@ -366,13 +371,13 @@
 		width: var(--rail-width);
 		display: flex;
 		background: var(--color-surface-sidebar);
-		border-radius: var(--radius-sm);
+		border-right: 1px solid var(--color-border);
 		overflow: hidden;
 		z-index: 2;
 		transition: width 0.15s ease;
 	}
 
-	/* The sidebar uses the same solid card surface and radius as the header and main. */
+	/* Compact desktop navigation expands over the canvas; pinning reserves its width. */
 	.sidebar-rail:hover .sidebar-panel,
 	.sidebar-rail:focus-within .sidebar-panel,
 	:global(html[data-sidebar-navigating]) .sidebar-panel {
@@ -563,6 +568,28 @@
 		color: var(--color-fg);
 	}
 
+	@media (min-width: 1201px) {
+		.sidebar-rail {
+			flex-basis: var(--panel-width);
+		}
+
+		.sidebar-panel {
+			width: var(--panel-width);
+		}
+
+		.row-label {
+			opacity: 1;
+		}
+
+		.project-list {
+			padding-left: var(--space-4);
+		}
+
+		.sidebar-header-row {
+			display: none;
+		}
+	}
+
 	@media (max-width: 768px) {
 		.sidebar-rail {
 			display: block;
@@ -586,6 +613,7 @@
 		.sidebar-rail .sidebar-panel {
 			width: min(var(--panel-width), calc(100vw - var(--space-6)));
 			transform: translateX(-105%);
+			border-right: 1px solid var(--color-border);
 			border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
 			box-shadow: 4px 0 18px rgb(0 0 0 / 0.18);
 			transition: width 0.15s ease, transform 0.18s ease;
