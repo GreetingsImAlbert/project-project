@@ -6,27 +6,54 @@ import { getSupabaseAdmin } from '../../lib/supabase/admin';
 import { normalizeDeadlineTime, normalizeStartTime } from '../../lib/deadline-time';
 import { appNowTime, appToday } from '../../lib/today';
 import { normalizeProjectAvatar, resolveProjectAvatar } from '../../lib/avatars';
+import {
+	PUBLIC_PROJECT_COLUMNS,
+	PUBLIC_PROJECT_DISCOVERY_FILTER,
+	toPublicNavigationProject,
+	type PublicProjectGate,
+} from '../../lib/project-visibility';
+
+interface PublicNavigationProject {
+	id: string;
+	name: string;
+	avatar: string | null;
+	href: string;
+}
+
+type PublicProjectRow = PublicProjectGate & { avatar: string | null };
+
+async function loadPublicProjects(): Promise<{ projects: PublicNavigationProject[]; error: string | null }> {
+	const { data, error } = await getSupabaseAdmin(env)
+		.from('projects')
+		.select(`${PUBLIC_PROJECT_COLUMNS}, avatar`)
+		.or(PUBLIC_PROJECT_DISCOVERY_FILTER)
+		.order('created_at', { ascending: false })
+		.overrideTypes<PublicProjectRow[]>();
+
+	if (error) return { projects: [], error: error.message };
+
+	const projects = (data ?? []).flatMap((project) => {
+		const navigation = toPublicNavigationProject(project);
+		return navigation
+			? [{ id: project.id, name: project.name, avatar: normalizeProjectAvatar(project.avatar), href: navigation.href }]
+			: [];
+	});
+
+	return { projects, error: null };
+}
 
 export async function GET({ request, locals }: { request: Request; locals: App.Locals }) {
 	const user = locals.user;
+	const publicProjectsPromise = loadPublicProjects();
 	if (!user) {
-		const { data: publicProjectRows, error } = await getSupabaseAdmin(env)
-			.from('projects')
-			.select('id, name, avatar')
-			.or('is_public.eq.true,public_files_enabled.eq.true')
-			.order('created_at', { ascending: false })
-			.overrideTypes<{ id: string; name: string; avatar: string | null }[]>();
+		const { projects: publicProjects, error } = await publicProjectsPromise;
 
-		if (error) return errorResponse({ request, privateMessage: error.message, action: 'Could not load navigation.' });
+		if (error) return errorResponse({ request, privateMessage: error, action: 'Could not load navigation.' });
 
 		return Response.json(
 			{
 				projects: [],
-				publicProjects: (publicProjectRows ?? []).map((project) => ({
-					id: project.id,
-					name: project.name,
-					avatar: normalizeProjectAvatar(project.avatar),
-				})),
+				publicProjects,
 			},
 			{ headers: { 'cache-control': 'private, no-store' } },
 		);
@@ -35,7 +62,7 @@ export async function GET({ request, locals }: { request: Request; locals: App.L
 	const [
 		{ data, error: projectsError },
 		{ data: taskRows, error: tasksError },
-		{ data: publicProjectRows, error: publicProjectsError },
+		publicProjectsResult,
 	] = await Promise.all([
 		locals.supabase
 			.from('projects')
@@ -69,20 +96,14 @@ export async function GET({ request, locals }: { request: Request; locals: App.L
 			}[]>(),
 		// This endpoint is authenticated, but the service-role query keeps the
 		// public sidebar slice independent of the member-only projects policy.
-		// Discoverable = either the Overview or the Files section is public.
-		getSupabaseAdmin(env)
-			.from('projects')
-			.select('id, name, avatar')
-			.or('is_public.eq.true,public_files_enabled.eq.true')
-			.order('created_at', { ascending: false })
-			.overrideTypes<{ id: string; name: string; avatar: string | null }[]>(),
+		publicProjectsPromise,
 	]);
 
-	if (projectsError || tasksError || publicProjectsError) {
+	if (projectsError || tasksError || publicProjectsResult.error) {
 		return errorResponse({
 			request,
 			userId: user.id,
-			privateMessage: projectsError?.message ?? tasksError?.message ?? publicProjectsError?.message ?? 'unknown error',
+			privateMessage: projectsError?.message ?? tasksError?.message ?? publicProjectsResult.error ?? 'unknown error',
 			action: 'Could not load navigation.',
 		});
 	}
@@ -122,13 +143,7 @@ export async function GET({ request, locals }: { request: Request; locals: App.L
 	});
 
 	const memberProjectIds = new Set(projects.map((project) => project.id));
-	const publicProjects = (publicProjectRows ?? [])
-		.filter((project) => !memberProjectIds.has(project.id))
-		.map((project) => ({
-			id: project.id,
-			name: project.name,
-			avatar: normalizeProjectAvatar(project.avatar),
-		}));
+	const publicProjects = publicProjectsResult.projects.filter((project) => !memberProjectIds.has(project.id));
 
 	return Response.json({ projects, publicProjects }, { headers: { 'cache-control': 'private, no-store' } });
 }

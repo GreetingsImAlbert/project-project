@@ -17,6 +17,7 @@
 		id: string;
 		name: string;
 		avatar: string | null;
+		href: string;
 	}
 
 	interface NavigationData {
@@ -127,8 +128,8 @@
 		return match?.[1] ?? '';
 	});
 
-	function projectHref(projectId: string, isPublic = false): string {
-		return isPublic ? `/projects/${projectId}` : `/projects/${projectId}${currentProjectPage}`;
+	function projectHref(projectId: string): string {
+		return `/projects/${projectId}${currentProjectPage}`;
 	}
 
 	// Pinned = stays open without the pointer, and the rail widens to the full panel so
@@ -300,7 +301,7 @@
 							{#each publicProjects as project}
 								<li>
 									<a
-										href={projectHref(project.id, true)}
+										href={project.href}
 										class="nav-link project-link row"
 										class:active={currentProjectId === project.id}
 										title={project.name}
