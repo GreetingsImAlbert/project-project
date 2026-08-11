@@ -4,6 +4,7 @@ import BaseLayout from '../../../layouts/BaseLayout.astro';
 import FileBrowser from '../../../components/FileBrowser.svelte';
 import { getSupabaseAdmin } from '../../../lib/supabase/admin';
 import { getStorageUsage, getProjectStorageBytes } from '../../../lib/r2-quota';
+import { toPublicSectionFlags, type PublicProjectFlags } from '../../../lib/project-visibility';
 
 export const prerender = false;
 
@@ -28,9 +29,14 @@ interface FileRow {
 	profiles?: { display_name: string } | null;
 }
 
+type FilesProject = {
+	id: string;
+	name: string;
+} & PublicProjectFlags;
+
 // Outsiders (guests and authenticated non-members) share the same page shell and
 // file-browser UI as members; only the data and the edit controls differ.
-let project: { id: string; name: string; public_files_enabled: boolean } | null = null;
+let project: FilesProject | null = null;
 let readOnly = false;
 let userRole: string | undefined;
 let allFolders: { id: string; name: string; parent_folder_id: string | null }[] | null = null;
@@ -50,9 +56,10 @@ if (user) {
 	// never fire the member-only data queries at all.
 	const { data: projectData, error } = await Astro.locals.supabase
 		.from('projects')
-		.select('id, name, public_files_enabled')
+		.select('id, name, is_public, public_files_enabled, public_tasks_enabled, public_journal_enabled, public_money_enabled')
 		.eq('id', id)
-		.single();
+		.single()
+		.overrideTypes<FilesProject>();
 
 	if (!error && projectData) {
 		project = projectData;
@@ -125,9 +132,10 @@ if (!project) {
 	// indistinguishable 404 even when its Overview is public.
 	const { data: gate, error: gateError } = await admin
 		.from('projects')
-		.select('id, name, public_files_enabled')
+		.select('id, name, is_public, public_files_enabled, public_tasks_enabled, public_journal_enabled, public_money_enabled')
 		.eq('id', id!)
-		.single();
+		.single()
+		.overrideTypes<FilesProject>();
 
 	if (gateError || !gate || !gate.public_files_enabled) {
 		return new Response('Project not found', { status: 404 });
@@ -149,7 +157,7 @@ if (!project) {
 		return new Response(`Failed to load files: ${filesError.message}`, { status: 500 });
 	}
 
-	project = { id: gate.id, name: gate.name, public_files_enabled: true };
+	project = gate;
 	readOnly = true;
 	files = publicFiles ?? [];
 
@@ -166,7 +174,15 @@ const canEdit = !readOnly && (userRole === 'owner' || userRole === 'editor');
 const storedViewMode = Astro.cookies.get('p2-file-view-mode')?.value;
 const initialViewMode = storedViewMode === 'list' ? 'list' : 'grid';
 ---
-<BaseLayout title={`${project.name} — Files`} projectNav={{ projectId: project.id, userRole: userRole ?? '', readOnly, publicFilesEnabled: project.public_files_enabled }}>
+<BaseLayout
+	title={`${project.name} — Files`}
+	projectNav={{
+		projectId: project.id,
+		userRole: userRole ?? '',
+		publicNav: readOnly,
+		publicSections: toPublicSectionFlags(project),
+	}}
+>
 	<FileBrowser
 		client:load
 		projectId={project.id}

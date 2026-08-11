@@ -45,6 +45,9 @@ test('import remapping generates fresh IDs and rewrites every relationship', () 
 	assert.equal(payload.project.owner_id, id.importer);
 	assert.equal(payload.project.is_public, false);
 	assert.equal(payload.project.public_files_enabled, false);
+	assert.equal(payload.project.public_tasks_enabled, false);
+	assert.equal(payload.project.public_journal_enabled, false);
+	assert.equal(payload.project.public_money_enabled, false);
 	assert.equal(payload.project.created_at, manifest.project.created_at);
 	assert.equal(payload.project.updated_at, manifest.project.updated_at);
 	assert.equal(payload.projectMember.user_id, id.importer);

@@ -12,7 +12,7 @@
 		initialPercents,
 		currency,
 	}: {
-		currentUserId: string;
+		currentUserId: string | null;
 		initialItems: BomItem[];
 		initialTransactions: Transaction[];
 		initialPercents: Record<string, number>;
@@ -31,9 +31,9 @@
 	// A bulk purchase is one transaction, not one per line it holds.
 	let transactionCount = $derived(topLevel(transactionsState.items).length);
 
-	let sharePercent = $derived(contributionsState.percents[currentUserId] ?? 0);
+	let sharePercent = $derived(currentUserId ? contributionsState.percents[currentUserId] ?? 0 : 0);
 	let shareAmount = $derived((netTotal * sharePercent) / 100);
-	let dues = $derived(duesFor(transactionsState.items, contributionsState.percents, currentUserId));
+	let dues = $derived(currentUserId ? duesFor(transactionsState.items, contributionsState.percents, currentUserId) : 0);
 
 	// Rounded before comparing so a floating-point crumb doesn't render as "You owe"
 	// alongside a displayed balance of exactly zero.
@@ -42,7 +42,7 @@
 	let duesLabel = $derived(duesRounded > 0 ? 'You owe' : duesRounded < 0 ? "You're owed" : 'Settled up');
 </script>
 
-<div class="summary">
+	<div class="summary" class:public-summary={!currentUserId}>
 	<div class="tile">
 		<span class="tile-label">Net spent</span>
 		<span class="tile-value">{formatCurrency(netTotal)}</span>
@@ -55,25 +55,27 @@
 		<span class="tile-note">{bomState.items.length} item{bomState.items.length === 1 ? '' : 's'} planned</span>
 	</div>
 
-	<div class="tile">
-		<span class="tile-label">Your share</span>
-		<span class="tile-value">{formatCurrency(shareAmount)}</span>
-		<span class="tile-note">{sharePercent.toFixed(2)}% of net spend</span>
-	</div>
+	{#if currentUserId}
+		<div class="tile">
+			<span class="tile-label">Your share</span>
+			<span class="tile-value">{formatCurrency(shareAmount)}</span>
+			<span class="tile-note">{sharePercent.toFixed(2)}% of net spend</span>
+		</div>
 
-	<div class="tile" class:owed={duesRounded > 0} class:credit={duesRounded < 0}>
-		<span class="tile-label">{duesLabel}</span>
-		<span class="tile-value">{formatCurrency(Math.abs(duesRounded))}</span>
-		<span class="tile-note">
-			{#if duesRounded > 0}
-				to settle with the group
-			{:else if duesRounded < 0}
-				back from the group
-			{:else}
-				nothing outstanding
-			{/if}
-		</span>
-	</div>
+		<div class="tile" class:owed={duesRounded > 0} class:credit={duesRounded < 0}>
+			<span class="tile-label">{duesLabel}</span>
+			<span class="tile-value">{formatCurrency(Math.abs(duesRounded))}</span>
+			<span class="tile-note">
+				{#if duesRounded > 0}
+					to settle with the group
+				{:else if duesRounded < 0}
+					back from the group
+				{:else}
+					nothing outstanding
+				{/if}
+			</span>
+		</div>
+	{/if}
 </div>
 
 <style>
@@ -83,6 +85,10 @@
 		gap: 0;
 		border: 1px solid var(--color-border-strong);
 		margin-bottom: var(--space-2);
+	}
+
+	.summary.public-summary {
+		grid-template-columns: repeat(2, 1fr);
 	}
 
 	.tile {

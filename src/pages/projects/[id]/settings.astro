@@ -14,6 +14,7 @@ import PicturePicker from '../../../components/PicturePicker.svelte';
 import type { CurrencyCode } from '../../../lib/currency.svelte';
 import { listGhostMembers } from '../../../lib/ghost-members';
 import { normalizeAvatar, normalizeProjectAvatar } from '../../../lib/avatars';
+import { toPublicSectionFlags } from '../../../lib/project-visibility';
 
 export const prerender = false;
 
@@ -27,7 +28,7 @@ const { id } = Astro.params;
 const [{ data: project, error }, { data: members }, ghostMembers] = await Promise.all([
 	Astro.locals.supabase
 		.from('projects')
-		.select('id, name, description, owner_id, avatar, currency, is_public, public_files_enabled')
+		.select('id, name, description, owner_id, avatar, currency, is_public, public_files_enabled, public_tasks_enabled, public_journal_enabled, public_money_enabled')
 		.eq('id', id)
 		.single()
 		.overrideTypes<{
@@ -39,6 +40,9 @@ const [{ data: project, error }, { data: members }, ghostMembers] = await Promis
 			currency: CurrencyCode;
 			is_public: boolean;
 			public_files_enabled: boolean;
+			public_tasks_enabled: boolean;
+			public_journal_enabled: boolean;
+			public_money_enabled: boolean;
 		}>(),
 	Astro.locals.supabase
 		.from('project_members')
@@ -84,7 +88,15 @@ const projectAvatar = normalizeProjectAvatar(project.avatar);
 const returnTo = `/projects/${id}/settings`;
 
 ---
-<BaseLayout title={`${project.name} — Settings`} projectNav={{ projectId: project.id, userRole: userRole ?? '' }}>
+<BaseLayout
+	title={`${project.name} — Settings`}
+	projectNav={{
+		projectId: project.id,
+		userRole: userRole ?? '',
+		publicNav: false,
+		publicSections: toPublicSectionFlags(project),
+	}}
+>
 	<section>
 		<h3>Project picture</h3>
 		<PicturePicker
@@ -119,6 +131,9 @@ const returnTo = `/projects/${id}/settings`;
 			projectId={project.id}
 			isPublic={project.is_public}
 			publicFilesEnabled={project.public_files_enabled}
+			publicTasksEnabled={project.public_tasks_enabled}
+			publicJournalEnabled={project.public_journal_enabled}
+			publicMoneyEnabled={project.public_money_enabled}
 		/>
 	</section>
 

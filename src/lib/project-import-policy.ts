@@ -10,6 +10,9 @@ export interface ProjectImportProjectDraft {
 	owner_id: string;
 	is_public: false;
 	public_files_enabled: false;
+	public_tasks_enabled: false;
+	public_journal_enabled: false;
+	public_money_enabled: false;
 }
 
 export interface ProjectImportMemberDraft {
@@ -106,6 +109,9 @@ export function buildProjectImportOwnershipPlan(
 			owner_id: importerId,
 			is_public: false,
 			public_files_enabled: false,
+			public_tasks_enabled: false,
+			public_journal_enabled: false,
+			public_money_enabled: false,
 		},
 		realMember: {
 			user_id: importerId,

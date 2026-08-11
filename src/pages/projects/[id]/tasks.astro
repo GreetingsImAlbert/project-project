@@ -1,4 +1,5 @@
 ---
+import { env } from 'cloudflare:workers';
 import BaseLayout from '../../../layouts/BaseLayout.astro';
 import TasksSummary from '../../../components/TasksSummary.svelte';
 import TasksTable from '../../../components/TasksTable.svelte';
@@ -9,6 +10,7 @@ import {
 	isTaskSortMode,
 	normalizeTask,
 	type RawTaskRow,
+	type Task,
 	type TaskCategoryPosition,
 	type TaskSortMode,
 } from '../../../lib/task-columns';
@@ -16,115 +18,192 @@ import { isCategoryColorIndex, type CategoryColors } from '../../../lib/category
 import { listGhostMembers } from '../../../lib/ghost-members';
 import { appNowTime, appToday } from '../../../lib/today';
 import { summarizeTasks } from '../../../lib/task-summary';
+import { getPublicProjectGate, toPublicSectionFlags, type PublicProjectFlags } from '../../../lib/project-visibility';
+import { toPublicTasks } from '../../../lib/public-project-dto';
+import { getSupabaseAdmin } from '../../../lib/supabase/admin';
 
 export const prerender = false;
 
 const user = Astro.locals.user;
-if (!user) {
-	return Astro.redirect('/login');
-}
-
 const { id } = Astro.params;
 
-// All independent queries go out at once: the Worker is a long trip from Postgres and none of
-// them depend on the one before it (RLS scopes each to the caller independently),
-// so the 404 check just moves below the await.
-const [{ data: project, error }, { data: members }, ghostMembers, { data: taskRows }, { data: categoryPositionRows }, { data: categoryRows }] = await Promise.all([
-	Astro.locals.supabase.from('projects').select('id, name, description, owner_id').eq('id', id).single(),
-	Astro.locals.supabase
-		.from('project_members')
-		.select('role, is_auditor, user_id, profiles(display_name, email, avatar)')
-		.eq('project_id', id)
-		.overrideTypes<
-			{
-				role: string;
-				is_auditor: boolean;
-				user_id: string;
-				profiles: { display_name: string; email: string; avatar: string | null };
-			}[]
-		>(),
-	listGhostMembers(Astro.locals.supabase, id!),
-	// Soonest deadline first, undated tasks last (Postgres would put nulls last on an
-	// ascending order anyway — stated explicitly so it can't drift), name as the
-	// tiebreak. sortTasks in the store applies the same order to later edits.
-	Astro.locals.supabase
-		.from('tasks')
-		.select(TASK_COLUMNS)
-		.eq('project_id', id)
-		.is('deleted_at', null)
-		.order('deadline', { ascending: true, nullsFirst: false })
-		.order('deadline_time', { ascending: true })
-		.order('name', { ascending: true })
-		.overrideTypes<RawTaskRow[]>(),
-	// Category order is project-level rather than part of each task row. Keep the
-	// stable id for the deterministic tie-break used once priority sorting lands.
-	Astro.locals.supabase
-		.from('task_category_positions')
-		.select(TASK_CATEGORY_POSITION_COLUMNS)
-		.eq('project_id', id)
-		.order('priority_position', { ascending: true })
-		.order('id', { ascending: true })
-		.overrideTypes<TaskCategoryPosition[]>(),
-	// Only the categories somebody has picked a colour for. Everything else falls back
-	// to a hash of the category name in category-color.ts, so this coming back empty
-	// still renders a fully coloured page.
-	Astro.locals.supabase
-		.from('task_categories')
-		.select('name, color_index')
-		.eq('project_id', id)
-		.overrideTypes<{ name: string; color_index: number }[]>(),
-]);
+type TasksProject = {
+	id: string;
+	name: string;
+	description: string | null;
+	owner_id: string | null;
+} & PublicProjectFlags;
 
-if (error || !project) {
-	return new Response('Project not found', { status: 404 });
+type MemberRow = {
+	role: string;
+	is_auditor: boolean;
+	user_id: string;
+	profiles: { display_name: string; email: string; avatar: string | null };
+};
+
+let project: TasksProject | null = null;
+let publicReader = false;
+let members: MemberRow[] = [];
+let ghostMembers: Awaited<ReturnType<typeof listGhostMembers>> = [];
+let taskRows: RawTaskRow[] = [];
+let categoryPositionRows: TaskCategoryPosition[] = [];
+let categoryRows: { name: string; color_index: number }[] = [];
+
+// Members are always resolved through the caller's RLS view first. This keeps the
+// existing role-aware branch unchanged and makes an authenticated non-member
+// indistinguishable from a guest before the public gate is consulted.
+if (user) {
+	const { data: projectData, error } = await Astro.locals.supabase
+		.from('projects')
+		.select('id, name, description, owner_id, is_public, public_files_enabled, public_tasks_enabled, public_journal_enabled, public_money_enabled')
+		.eq('id', id)
+		.single()
+		.overrideTypes<TasksProject>();
+
+	if (!error && projectData) {
+		project = projectData;
+
+		// These queries are independent once membership is established. Keep the
+		// member branch's existing RLS-scoped payload and ordering intact.
+		const [
+			{ data: membersData },
+			ghostMembersData,
+			{ data: memberTaskRows },
+			{ data: memberCategoryPositionRows },
+			{ data: memberCategoryRows },
+		] = await Promise.all([
+			Astro.locals.supabase
+				.from('project_members')
+				.select('role, is_auditor, user_id, profiles(display_name, email, avatar)')
+				.eq('project_id', id)
+				.overrideTypes<MemberRow[]>(),
+			listGhostMembers(Astro.locals.supabase, id!),
+			Astro.locals.supabase
+				.from('tasks')
+				.select(TASK_COLUMNS)
+				.eq('project_id', id)
+				.is('deleted_at', null)
+				.order('deadline', { ascending: true, nullsFirst: false })
+				.order('deadline_time', { ascending: true })
+				.order('name', { ascending: true })
+				.overrideTypes<RawTaskRow[]>(),
+			Astro.locals.supabase
+				.from('task_category_positions')
+				.select(TASK_CATEGORY_POSITION_COLUMNS)
+				.eq('project_id', id)
+				.order('priority_position', { ascending: true })
+				.order('id', { ascending: true })
+				.overrideTypes<TaskCategoryPosition[]>(),
+			Astro.locals.supabase
+				.from('task_categories')
+				.select('name, color_index')
+				.eq('project_id', id)
+				.overrideTypes<{ name: string; color_index: number }[]>(),
+		]);
+
+		members = membersData ?? [];
+		ghostMembers = ghostMembersData;
+		taskRows = memberTaskRows ?? [];
+		categoryPositionRows = memberCategoryPositionRows ?? [];
+		categoryRows = memberCategoryRows ?? [];
+	}
 }
 
-const currentMember = members?.find((member) => member.user_id === user.id);
-const userRole = currentMember?.role;
-// Tasks follow base editor rights, not Money's owner-or-auditor rule.
-const canEdit = userRole === 'owner' || userRole === 'editor';
+if (!project) {
+	const admin = getSupabaseAdmin(env);
+	const gate = await getPublicProjectGate(admin, id, 'tasks');
+	if (!gate) {
+		return new Response('Project not found', { status: 404 });
+	}
 
-// `avatar` rides along for the appointment picker in the task panel, which lists
-// every member's face whether they're appointed or not.
-const memberOptions = (members ?? []).map((member) => ({
+	// Public queries select only task display fields, category presentation data, and
+	// the names/avatars needed by the read-only task view. Internal assignee IDs are
+	// redacted before the payload reaches the island below.
+	const [
+		{ data: publicTaskRows, error: tasksError },
+		{ data: publicCategoryPositionRows, error: positionsError },
+		{ data: publicCategoryRows, error: categoriesError },
+	] = await Promise.all([
+		admin
+			.from('tasks')
+			.select(TASK_COLUMNS)
+			.eq('project_id', gate.id)
+			.is('deleted_at', null)
+			.order('deadline', { ascending: true, nullsFirst: false })
+			.order('deadline_time', { ascending: true })
+			.order('name', { ascending: true })
+			.overrideTypes<RawTaskRow[]>(),
+		admin
+			.from('task_category_positions')
+			.select(TASK_CATEGORY_POSITION_COLUMNS)
+			.eq('project_id', gate.id)
+			.order('priority_position', { ascending: true })
+			.order('id', { ascending: true })
+			.overrideTypes<TaskCategoryPosition[]>(),
+		admin
+			.from('task_categories')
+			.select('name, color_index')
+			.eq('project_id', gate.id)
+			.overrideTypes<{ name: string; color_index: number }[]>(),
+	]);
+
+	if (tasksError || positionsError || categoriesError) {
+		return new Response('Could not load tasks', { status: 500 });
+	}
+
+	project = { ...gate, description: null, owner_id: null };
+	publicReader = true;
+	taskRows = publicTaskRows ?? [];
+	categoryPositionRows = publicCategoryPositionRows ?? [];
+	categoryRows = publicCategoryRows ?? [];
+}
+
+const currentMember = members.find((member) => member.user_id === user?.id);
+const userRole = currentMember?.role;
+// Tasks follow base editor rights, not Money's owner-or-auditor rule. Public readers
+// always stay read-only even if the request carries an authenticated identity.
+const canEdit = !publicReader && (userRole === 'owner' || userRole === 'editor');
+
+// `avatar` rides along for the appointment picker in the member task panel. Public
+// readers receive empty picker arrays; their task rows retain only display names and
+// avatars for the read-only assignee column/detail panel.
+const memberOptions = members.map((member) => ({
 	id: member.user_id,
 	displayName: member.profiles.display_name,
 	avatar: member.profiles.avatar,
 }));
-
 const ghostOptions = ghostMembers.map((ghost) => ({ id: ghost.id, displayName: ghost.display_name }));
 
-const tasks = (taskRows ?? []).map(normalizeTask);
+const tasks = taskRows.map(normalizeTask);
+const publicTasks: Task[] = publicReader
+	? toPublicTasks(tasks)
+	: tasks;
+const publicCategoryPositions: TaskCategoryPosition[] = publicReader
+	? categoryPositionRows.map((position, index) => ({ ...position, id: `public-category-${index}` }))
+	: categoryPositionRows;
 
 // A row whose index is outside the palette is dropped rather than clamped: it can
 // only mean the column drifted from the ten slots tokens.css defines, and falling
 // back to the name hash is a real colour where a clamp would be a guess.
 const categoryColors: CategoryColors = {};
-for (const row of categoryRows ?? []) {
+for (const row of categoryRows) {
 	if (isCategoryColorIndex(row.color_index)) categoryColors[row.name] = row.color_index;
 }
 
-// Read from a cookie rather than left to the client: localStorage is only readable
+// Read from cookies rather than left to the client: localStorage is only readable
 // after hydration, so the page would render one order and then swap to another.
 const storedTaskView = Astro.cookies.get('p2-task-view-mode')?.value;
 const initialViewMode = storedTaskView === 'calendar' ? 'calendar' : 'list';
-
-// The sort preference is global rather than project-specific. The cookie is the SSR
-// copy; the browser mirrors it in localStorage when the segmented control changes.
 const storedTaskSortMode = Astro.cookies.get(TASK_SORT_MODE_COOKIE)?.value;
 const initialTaskSortMode: TaskSortMode = isTaskSortMode(storedTaskSortMode) ? storedTaskSortMode : 'priority';
 
-// Which category bands are folded. Done folds by default; once the user has folded
-// or unfolded anything, the whole set is remembered in a per-project cookie instead
-// (so the server renders the page pre-folded rather than flashing the list open on
-// hydrate). Unparseable or all-garbage cookies fall back to the default.
 const storedCollapsed = Astro.cookies.get(`p2-task-collapsed-${id}`)?.value;
 let initialCollapsed = ['Done'];
 if (storedCollapsed) {
 	try {
 		const parsed: unknown = JSON.parse(decodeURIComponent(storedCollapsed));
 		if (Array.isArray(parsed)) {
-			const strings = parsed.filter((c): c is string => typeof c === 'string');
+			const strings = parsed.filter((category): category is string => typeof category === 'string');
 			if (strings.length > 0) initialCollapsed = strings;
 		}
 	} catch {
@@ -136,25 +215,36 @@ if (storedCollapsed) {
 // identical statuses — see lib/today.ts.
 const serverToday = appToday();
 const serverNowTime = appNowTime();
-const initialSummary = summarizeTasks(tasks, serverToday, serverNowTime);
+const initialSummary = publicReader ? null : summarizeTasks(tasks, serverToday, serverNowTime);
 ---
 
-<BaseLayout title={`${project.name} — Tasks`} projectNav={{ projectId: project.id, userRole: userRole ?? '' }}>
-	<TasksSummary client:load initialSummary={initialSummary} serverToday={serverToday} serverNowTime={serverNowTime} />
+<BaseLayout
+	title={`${project.name} — Tasks`}
+	projectNav={{
+		projectId: project.id,
+		userRole: userRole ?? '',
+		publicNav: publicReader,
+		publicSections: toPublicSectionFlags(project),
+	}}
+>
+	{!publicReader && initialSummary && (
+		<TasksSummary client:load initialSummary={initialSummary} serverToday={serverToday} serverNowTime={serverNowTime} />
+	)}
 	<TasksTable
 		client:load
 		projectId={project.id}
 		projectName={project.name}
-		initialTasks={tasks}
-		initialCategoryPositions={categoryPositionRows ?? []}
+		initialTasks={publicTasks}
+		initialCategoryPositions={publicCategoryPositions}
 		initialTaskSortMode={initialTaskSortMode}
 		initialCategoryColors={categoryColors}
 		initialViewMode={initialViewMode}
 		initialCollapsed={initialCollapsed}
-		members={memberOptions}
-		ghostMembers={ghostOptions}
+		members={publicReader ? [] : memberOptions}
+		ghostMembers={publicReader ? [] : ghostOptions}
 		canEdit={canEdit}
-		currentUserId={user.id}
+		readOnly={publicReader}
+		currentUserId={publicReader ? null : user?.id ?? null}
 		serverToday={serverToday}
 		serverNowTime={serverNowTime}
 	/>

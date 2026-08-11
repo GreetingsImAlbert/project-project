@@ -1,5 +1,6 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import { isPublicSection, publicProjectPath } from '../../lib/project-visibility';
 
 export const prerender = false;
 
@@ -7,23 +8,43 @@ const user = Astro.locals.user;
 const isGuest = !user;
 
 // Members list every project they're part of through RLS, plus discoverable
-// projects (Overview or Files public) they're not a member of — the same
-// composition the sidebar uses. Guests get the discoverable slice only: same
-// list UI, but only the id/name/description columns the boundary RPC exposes.
-// There is deliberately no anonymous SELECT policy on projects; the
-// `public_project_list` RPC is the only anonymous read path, so a guest
-// cannot name a field beyond those three.
-let projects: { id: string; name: string; description: string | null }[] | null = null;
+// projects they're not a member of. The public RPC supplies the safe landing
+// section so Overview-private projects do not get a dead Overview link.
+type PublicProjectListRow = {
+	id: string;
+	name: string;
+	description: string | null;
+	landing_page: string;
+};
+
+type ProjectListItem = {
+	id: string;
+	name: string;
+	description: string | null;
+	href: string;
+};
+
+function publicProjectItem(project: PublicProjectListRow): ProjectListItem | null {
+	return isPublicSection(project.landing_page)
+		? { ...project, href: publicProjectPath(project.id, project.landing_page) }
+		: null;
+}
+
+let projects: ProjectListItem[] | null = null;
 let errorMessage: string | null = null;
 
 if (isGuest) {
 	const { data, error } = await Astro.locals.supabase.rpc('public_project_list');
-	projects = data;
+	const publicRows = (data ?? []) as unknown as PublicProjectListRow[];
+	projects = publicRows.flatMap((project) => {
+		const item = publicProjectItem(project);
+		return item ? [item] : [];
+	});
 	errorMessage = error?.message ?? null;
 } else {
 	const [
 		{ data: memberRows, error: memberError },
-		{ data: publicRows, error: publicError },
+		{ data: publicRowsRaw, error: publicError },
 	] = await Promise.all([
 		Astro.locals.supabase
 			.from('projects')
@@ -35,11 +56,22 @@ if (isGuest) {
 	if (memberError || publicError) {
 		errorMessage = memberError?.message ?? publicError?.message ?? null;
 	} else {
+		const publicRows = (publicRowsRaw ?? []) as unknown as PublicProjectListRow[];
 		const memberIds = new Set((memberRows ?? []).map((project) => project.id));
-		const publicOnly = (publicRows ?? []).filter(
-			(project: { id: string; name: string; description: string | null }) => !memberIds.has(project.id),
-		);
-		projects = [...(memberRows ?? []), ...publicOnly];
+		const publicOnly = (publicRows ?? []).flatMap((project) => {
+			if (memberIds.has(project.id)) return [];
+			const item = publicProjectItem(project);
+			return item ? [item] : [];
+		});
+		projects = [
+			...(memberRows ?? []).map((project) => ({
+				id: project.id,
+				name: project.name,
+				description: project.description,
+				href: `/projects/${project.id}`,
+			})),
+			...publicOnly,
+		];
 	}
 }
 ---
@@ -54,7 +86,7 @@ if (isGuest) {
 	<ul class="list-plain">
 		{projects?.map((project) => (
 			<li>
-				<a href={`/projects/${project.id}`} data-astro-prefetch>{project.name}</a>
+				<a href={project.href} data-astro-prefetch>{project.name}</a>
 				{project.description && <p class="muted">{project.description}</p>}
 			</li>
 		))}
