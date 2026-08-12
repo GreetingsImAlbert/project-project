@@ -577,32 +577,7 @@
 				{parts.base}{#if parts.ext}<span class="viewer-ext muted">{parts.ext}</span>{/if}{#if dirty}<span class="dirty-dot" title="Unsaved changes">•</span>{/if}
 			</span>
 
-			<div class="viewer-actions">
-				{#if editing}
-					<button type="button" class="btn-plain" onclick={save} disabled={saving || !dirty}>
-						{saving ? 'Saving…' : 'Save'}
-					</button>
-					<button type="button" class="btn-plain" onclick={cancelEditing} disabled={saving}>Cancel</button>
-				{:else}
-					{#if isTextKind(kind)}
-						<!-- Binary previews are view-only, and a permanently disabled Edit button reading
-						     "you need edit access" would blame the wrong thing. -->
-						<button
-							type="button"
-							class="btn-plain"
-							onclick={startEditing}
-							disabled={!canEdit || content === null}
-							title={canEdit ? 'Edit this file' : 'You need edit access to this project'}
-						>
-							Edit
-						</button>
-					{/if}
-					<button type="button" class="btn-plain" onclick={download} disabled={downloading}>
-						{downloading ? 'Preparing…' : 'Download'}
-					</button>
-				{/if}
-				<button type="button" class="btn-plain close-btn" aria-label="Close preview" onclick={requestClose}>✕</button>
-			</div>
+			<button type="button" class="btn-plain close-btn" aria-label="Close preview" onclick={requestClose}>✕</button>
 		</header>
 
 		<nav class="viewer-tabs" aria-label="Open files">
@@ -633,6 +608,32 @@
 				</div>
 			{/each}
 		</nav>
+
+		<!-- Keep file actions in their own row. Sharing the title row lets long filenames
+		     and the close control squeeze the useful actions out of the visible header. -->
+		<div class="viewer-toolbar" role="toolbar" aria-label="File actions">
+			{#if editing}
+				<button type="button" class="btn-plain" onclick={save} disabled={saving || !dirty}>
+					{saving ? 'Saving…' : 'Save'}
+				</button>
+				<button type="button" class="btn-plain" onclick={cancelEditing} disabled={saving}>Cancel</button>
+			{:else if isTextKind(kind)}
+				<!-- Binary previews are view-only, and a permanently disabled Edit button reading
+				     "you need edit access" would blame the wrong thing. -->
+				<button
+					type="button"
+					class="btn-plain"
+					onclick={startEditing}
+					disabled={!canEdit || content === null}
+					title={canEdit ? 'Edit this file' : 'You need edit access to this project'}
+				>
+					Edit
+				</button>
+			{/if}
+			<button type="button" class="btn-plain" onclick={download} disabled={downloading}>
+				{downloading ? 'Preparing…' : 'Download'}
+			</button>
+		</div>
 
 		{#if downloadError}
 			<p class="download-error">{downloadError}</p>
@@ -801,23 +802,11 @@
 		font-size: 0.8rem;
 	}
 
-	.viewer-actions {
-		display: flex;
-		align-items: center;
-		gap: var(--space-1);
-		flex: 0 0 auto;
-	}
-
-	.viewer-actions button {
-		font-size: 0.8rem;
-		padding: var(--space-1) var(--space-2);
-		line-height: 1.4;
-	}
-
-	.viewer-actions .close-btn {
+	.close-btn {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
+		flex: 0 0 auto;
 		width: 28px;
 		height: 28px;
 		padding: 0;
@@ -827,11 +816,28 @@
 		line-height: 1;
 	}
 
-	.viewer-actions .close-btn:hover {
+	.close-btn:hover {
 		background: var(--color-highlight);
 		border-color: var(--color-border);
 		color: var(--color-fg);
 		opacity: 1;
+	}
+
+	.viewer-toolbar {
+		display: flex;
+		align-items: center;
+		justify-content: flex-end;
+		gap: var(--space-2);
+		flex: 0 0 auto;
+		padding: var(--space-2) var(--space-4);
+		border-bottom: 1px solid var(--color-border);
+		background: var(--color-surface-raised);
+	}
+
+	.viewer-toolbar button {
+		font-size: 0.8rem;
+		padding: var(--space-1) var(--space-3);
+		line-height: 1.4;
 	}
 
 	.viewer-tabs {
