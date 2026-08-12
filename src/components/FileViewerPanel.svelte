@@ -551,7 +551,6 @@
 {#snippet syntax(nodes: RootContent[])}{#each nodes as node}{#if node.type === 'text'}{node.value}{:else if node.type === 'element'}<span class={tokenClass(node)}>{@render syntax(node.children)}</span>{/if}{/each}{/snippet}
 
 {#if file}
-	{@const parts = splitFilename(file.filename)}
 	<aside
 		class="viewer"
 		style={`width: ${width ?? 480}px; z-index: ${zIndex}`}
@@ -572,40 +571,8 @@
 			onkeydown={resizeKeys}
 		></div>
 
-		<header class="viewer-head">
-			<span class="viewer-name" title={file.filename}>
-				{parts.base}{#if parts.ext}<span class="viewer-ext muted">{parts.ext}</span>{/if}{#if dirty}<span class="dirty-dot" title="Unsaved changes">•</span>{/if}
-			</span>
-
-			<div class="viewer-actions">
-				{#if editing}
-					<button type="button" class="btn-plain" onclick={save} disabled={saving || !dirty}>
-						{saving ? 'Saving…' : 'Save'}
-					</button>
-					<button type="button" class="btn-plain" onclick={cancelEditing} disabled={saving}>Cancel</button>
-				{:else}
-					{#if isTextKind(kind)}
-						<!-- Binary previews are view-only, and a permanently disabled Edit button reading
-						     "you need edit access" would blame the wrong thing. -->
-						<button
-							type="button"
-							class="btn-plain"
-							onclick={startEditing}
-							disabled={!canEdit || content === null}
-							title={canEdit ? 'Edit this file' : 'You need edit access to this project'}
-						>
-							Edit
-						</button>
-					{/if}
-					<button type="button" class="btn-plain" onclick={download} disabled={downloading}>
-						{downloading ? 'Preparing…' : 'Download'}
-					</button>
-				{/if}
-				<button type="button" class="btn-plain close-btn" aria-label="Close preview" onclick={requestClose}>✕</button>
-			</div>
-		</header>
-
-		<nav class="viewer-tabs" aria-label="Open files">
+		<div class="viewer-tabs-row">
+			<nav class="viewer-tabs" aria-label="Open files">
 			{#each tabs as tab (tab.id)}
 				{@const tabParts = splitFilename(tab.filename)}
 				<div class="viewer-tab" class:active={file?.id === tab.id}>
@@ -632,7 +599,35 @@
 					</button>
 				</div>
 			{/each}
-		</nav>
+			</nav>
+			<button type="button" class="btn-plain close-btn" aria-label="Close preview" onclick={requestClose}>✕</button>
+		</div>
+
+		<!-- Keep file actions in their own row. Sharing the title row lets long filenames
+		     and the close control squeeze the useful actions out of the visible header. -->
+		<div class="viewer-toolbar" role="toolbar" aria-label="File actions">
+			{#if editing}
+				<button type="button" class="btn-plain" onclick={save} disabled={saving || !dirty}>
+					{saving ? 'Saving…' : 'Save'}
+				</button>
+				<button type="button" class="btn-plain" onclick={cancelEditing} disabled={saving}>Cancel</button>
+			{:else if isTextKind(kind)}
+				<!-- Binary previews are view-only, and a permanently disabled Edit button reading
+				     "you need edit access" would blame the wrong thing. -->
+				<button
+					type="button"
+					class="btn-plain"
+					onclick={startEditing}
+					disabled={!canEdit || content === null}
+					title={canEdit ? 'Edit this file' : 'You need edit access to this project'}
+				>
+					Edit
+				</button>
+			{/if}
+			<button type="button" class="btn-plain" onclick={download} disabled={downloading}>
+				{downloading ? 'Preparing…' : 'Download'}
+			</button>
+		</div>
 
 		{#if downloadError}
 			<p class="download-error">{downloadError}</p>
@@ -726,7 +721,7 @@
 <style>
 	.viewer {
 		position: fixed;
-		top: var(--space-4);
+		top: 81px;
 		right: var(--space-4);
 		bottom: var(--space-4);
 		/* z-index comes in inline, from the zIndex prop. */
@@ -763,34 +758,6 @@
 		outline: none;
 	}
 
-	.viewer-head {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: var(--space-3);
-		padding: var(--space-3) var(--space-4);
-		border-bottom: 1px solid var(--color-border);
-		background: var(--color-surface-raised);
-	}
-
-	.viewer-name {
-		font-size: 0.85rem;
-		font-weight: 700;
-		/* min-width:0 — a flex item won't shrink below its content without it, and the
-		   ellipsis never kicks in. */
-		flex: 1 1 auto;
-		min-width: 0;
-		overflow: hidden;
-		white-space: nowrap;
-		text-overflow: ellipsis;
-	}
-
-	.viewer-ext {
-		margin-left: 2px;
-		font-size: 0.78rem;
-		font-weight: 400;
-	}
-
 	.download-error,
 	.save-error {
 		margin: 0;
@@ -801,23 +768,11 @@
 		font-size: 0.8rem;
 	}
 
-	.viewer-actions {
-		display: flex;
-		align-items: center;
-		gap: var(--space-1);
-		flex: 0 0 auto;
-	}
-
-	.viewer-actions button {
-		font-size: 0.8rem;
-		padding: var(--space-1) var(--space-2);
-		line-height: 1.4;
-	}
-
-	.viewer-actions .close-btn {
+	.close-btn {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
+		flex: 0 0 auto;
 		width: 28px;
 		height: 28px;
 		padding: 0;
@@ -827,23 +782,47 @@
 		line-height: 1;
 	}
 
-	.viewer-actions .close-btn:hover {
+	.close-btn:hover {
 		background: var(--color-highlight);
 		border-color: var(--color-border);
 		color: var(--color-fg);
 		opacity: 1;
 	}
 
+	.viewer-toolbar {
+		display: flex;
+		align-items: center;
+		justify-content: flex-end;
+		gap: var(--space-2);
+		flex: 0 0 auto;
+		padding: var(--space-2) var(--space-4);
+		border-bottom: 1px solid var(--color-border);
+		background: var(--color-surface-raised);
+	}
+
+	.viewer-toolbar button {
+		font-size: 0.8rem;
+		padding: var(--space-1) var(--space-3);
+		line-height: 1.4;
+	}
+
+	.viewer-tabs-row {
+		display: flex;
+		align-items: center;
+		flex: 0 0 auto;
+		min-width: 0;
+		background: var(--color-surface-inset);
+		border-bottom: 1px solid var(--color-border);
+	}
+
 	.viewer-tabs {
 		display: flex;
 		align-items: stretch;
 		gap: 2px;
-		flex: 0 0 auto;
+		flex: 1 1 auto;
 		min-width: 0;
 		overflow-x: auto;
 		padding: 0 var(--space-3);
-		background: var(--color-surface-inset);
-		border-bottom: 1px solid var(--color-border);
 		scrollbar-width: thin;
 	}
 
@@ -1005,11 +984,6 @@
 		tab-size: 4;
 		white-space: pre-wrap;
 		overflow-wrap: anywhere;
-	}
-
-	.dirty-dot {
-		color: var(--color-danger);
-		padding-left: var(--space-1);
 	}
 
 	.reload-btn {
@@ -1277,7 +1251,7 @@
 	   to beat the inline width the drag handle writes. */
 	@media (max-width: 768px) {
 		.viewer {
-			top: 0;
+			top: 57px;
 			right: 0;
 			bottom: 0;
 			width: 100vw !important;
@@ -1288,10 +1262,6 @@
 
 		.resize-handle {
 			display: none;
-		}
-
-		.viewer-head {
-			padding: var(--space-3) var(--space-4);
 		}
 
 		.viewer-body {
