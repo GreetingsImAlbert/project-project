@@ -5,7 +5,9 @@ name = "project-project"
 [setup]
 script = '''
 npm.cmd ci
-npx.cmd wrangler types'''
+npx.cmd wrangler types
+git submodule update --init --recursive ./.private
+'''
 
 [[actions]]
 name = "Dev"

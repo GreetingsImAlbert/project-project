@@ -161,10 +161,7 @@
 	}
 
 	function keepExpandedForNavigation() {
-		if (mobileViewport) {
-			setMobileSidebarOpen(false);
-			return;
-		}
+		if (mobileViewport) return;
 		document.documentElement.setAttribute(NAV_ATTR, '');
 	}
 
@@ -246,7 +243,14 @@
 			{/if}
 
 			<nav class="sidebar-nav">
-				<a href="/" class="nav-link row" class:active={currentPath === '/'} title="Dashboard" data-astro-prefetch onpointerdown={keepExpandedForNavigation}>
+				<a
+					href="/"
+					class="nav-link row"
+					class:active={currentPath === '/'}
+					title="Dashboard"
+					data-astro-prefetch
+					onpointerdown={keepExpandedForNavigation}
+				>
 					<span class="row-icon">
 						<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 							<path d="M3 10.5 12 3l9 7.5" />
@@ -255,7 +259,14 @@
 					</span>
 					<span class="row-label">Dashboard</span>
 				</a>
-				<a href="/projects" class="nav-link row" class:active={currentPath === '/projects'} title="Projects" data-astro-prefetch onpointerdown={keepExpandedForNavigation}>
+				<a
+					href="/projects"
+					class="nav-link row"
+					class:active={currentPath === '/projects'}
+					title="Projects"
+					data-astro-prefetch
+					onpointerdown={keepExpandedForNavigation}
+				>
 					<span class="row-icon">
 						<span class="glyph-p">P</span>
 					</span>
@@ -291,7 +302,13 @@
 								</li>
 							{/each}
 							<li>
-								<a href="/projects/new" class="nav-link add-project row" title="Add project" data-astro-prefetch onpointerdown={keepExpandedForNavigation}>
+								<a
+									href="/projects/new"
+									class="nav-link add-project row"
+									title="Add project"
+									data-astro-prefetch
+									onpointerdown={keepExpandedForNavigation}
+								>
 									<span class="row-icon">+</span>
 									<span class="row-label">Add project</span>
 								</a>
