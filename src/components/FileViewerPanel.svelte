@@ -576,11 +576,10 @@
 			<span class="viewer-name" title={file.filename}>
 				{parts.base}{#if parts.ext}<span class="viewer-ext muted">{parts.ext}</span>{/if}{#if dirty}<span class="dirty-dot" title="Unsaved changes">•</span>{/if}
 			</span>
-
-			<button type="button" class="btn-plain close-btn" aria-label="Close preview" onclick={requestClose}>✕</button>
 		</header>
 
-		<nav class="viewer-tabs" aria-label="Open files">
+		<div class="viewer-tabs-row">
+			<nav class="viewer-tabs" aria-label="Open files">
 			{#each tabs as tab (tab.id)}
 				{@const tabParts = splitFilename(tab.filename)}
 				<div class="viewer-tab" class:active={file?.id === tab.id}>
@@ -607,7 +606,9 @@
 					</button>
 				</div>
 			{/each}
-		</nav>
+			</nav>
+			<button type="button" class="btn-plain close-btn" aria-label="Close preview" onclick={requestClose}>✕</button>
+		</div>
 
 		<!-- Keep file actions in their own row. Sharing the title row lets long filenames
 		     and the close control squeeze the useful actions out of the visible header. -->
@@ -840,16 +841,23 @@
 		line-height: 1.4;
 	}
 
+	.viewer-tabs-row {
+		display: flex;
+		align-items: center;
+		flex: 0 0 auto;
+		min-width: 0;
+		background: var(--color-surface-inset);
+		border-bottom: 1px solid var(--color-border);
+	}
+
 	.viewer-tabs {
 		display: flex;
 		align-items: stretch;
 		gap: 2px;
-		flex: 0 0 auto;
+		flex: 1 1 auto;
 		min-width: 0;
 		overflow-x: auto;
 		padding: 0 var(--space-3);
-		background: var(--color-surface-inset);
-		border-bottom: 1px solid var(--color-border);
 		scrollbar-width: thin;
 	}
 
