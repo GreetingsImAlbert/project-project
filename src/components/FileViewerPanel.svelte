@@ -551,7 +551,6 @@
 {#snippet syntax(nodes: RootContent[])}{#each nodes as node}{#if node.type === 'text'}{node.value}{:else if node.type === 'element'}<span class={tokenClass(node)}>{@render syntax(node.children)}</span>{/if}{/each}{/snippet}
 
 {#if file}
-	{@const parts = splitFilename(file.filename)}
 	<aside
 		class="viewer"
 		style={`width: ${width ?? 480}px; z-index: ${zIndex}`}
@@ -571,12 +570,6 @@
 			onpointercancel={endResize}
 			onkeydown={resizeKeys}
 		></div>
-
-		<header class="viewer-head">
-			<span class="viewer-name" title={file.filename}>
-				{parts.base}{#if parts.ext}<span class="viewer-ext muted">{parts.ext}</span>{/if}{#if dirty}<span class="dirty-dot" title="Unsaved changes">•</span>{/if}
-			</span>
-		</header>
 
 		<div class="viewer-tabs-row">
 			<nav class="viewer-tabs" aria-label="Open files">
@@ -728,7 +721,7 @@
 <style>
 	.viewer {
 		position: fixed;
-		top: var(--space-4);
+		top: 81px;
 		right: var(--space-4);
 		bottom: var(--space-4);
 		/* z-index comes in inline, from the zIndex prop. */
@@ -763,34 +756,6 @@
 	.resize-handle.resizing {
 		background: var(--color-highlight-strong);
 		outline: none;
-	}
-
-	.viewer-head {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: var(--space-3);
-		padding: var(--space-3) var(--space-4);
-		border-bottom: 1px solid var(--color-border);
-		background: var(--color-surface-raised);
-	}
-
-	.viewer-name {
-		font-size: 0.85rem;
-		font-weight: 700;
-		/* min-width:0 — a flex item won't shrink below its content without it, and the
-		   ellipsis never kicks in. */
-		flex: 1 1 auto;
-		min-width: 0;
-		overflow: hidden;
-		white-space: nowrap;
-		text-overflow: ellipsis;
-	}
-
-	.viewer-ext {
-		margin-left: 2px;
-		font-size: 0.78rem;
-		font-weight: 400;
 	}
 
 	.download-error,
@@ -1019,11 +984,6 @@
 		tab-size: 4;
 		white-space: pre-wrap;
 		overflow-wrap: anywhere;
-	}
-
-	.dirty-dot {
-		color: var(--color-danger);
-		padding-left: var(--space-1);
 	}
 
 	.reload-btn {
@@ -1291,7 +1251,7 @@
 	   to beat the inline width the drag handle writes. */
 	@media (max-width: 768px) {
 		.viewer {
-			top: 0;
+			top: 57px;
 			right: 0;
 			bottom: 0;
 			width: 100vw !important;
@@ -1302,10 +1262,6 @@
 
 		.resize-handle {
 			display: none;
-		}
-
-		.viewer-head {
-			padding: var(--space-3) var(--space-4);
 		}
 
 		.viewer-body {
