@@ -2,6 +2,9 @@ import { AwsClient } from 'aws4fetch';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from './supabase/database.types';
 import { appendJournalEntry } from './journal-entries';
+import { createJournalCronReport, type JournalCronPhase, type JournalCronOutcome } from './journal-cron-report';
+import { retryJournalOperationWithIncident } from './journal-retry';
+import { logError } from './error-report';
 import { wouldExceedStorageQuota } from './r2-quota';
 import { appToday } from './today';
 
@@ -15,6 +18,47 @@ export const JOURNAL_MIME = 'text/markdown';
 // the general file editor allows (file-kind.ts's MAX_VIEWABLE_BYTES). Enforced
 // both by the draft API and the database's journal_drafts check constraint.
 export const MAX_DRAFT_CHARS = 50_000;
+
+interface SupabaseFailure {
+	code?: string;
+	details?: string;
+	hint?: string;
+	message: string;
+}
+
+function supabaseFailure(error: SupabaseFailure, status: number): Error {
+	return Object.assign(new Error(error.message), error, { status });
+}
+
+function errorMessage(error: unknown): string {
+	return error instanceof Error ? error.message : String((error as { message?: unknown })?.message ?? error);
+}
+
+export interface JournalCronContext {
+	cron?: string | null;
+	scheduledTime?: number;
+}
+
+async function reportJournalCronIncident(
+	admin: SupabaseClient<Database>,
+	env: Env,
+	context: Required<JournalCronContext>,
+	phase: JournalCronPhase,
+	outcome: JournalCronOutcome,
+	attempts: number,
+	error: unknown,
+	projectId?: string,
+): Promise<void> {
+	await logError(admin, createJournalCronReport({
+		phase,
+		outcome,
+		attempts,
+		error,
+		cron: context.cron,
+		scheduledAt: new Date(context.scheduledTime).toISOString(),
+		projectId,
+	}), { outbox: env.R2_BUCKET });
+}
 
 function r2Client(env: Env) {
 	return new AwsClient({
@@ -47,7 +91,7 @@ async function writeJournalObject(env: Env, r2Key: string, content: string): Pro
 		body: bytes,
 	});
 	if (!putRes.ok) {
-		throw new Error(`Failed to write journal object: ${putRes.status} ${await putRes.text()}`);
+		throw Object.assign(new Error(`Failed to write journal object: ${putRes.status} ${await putRes.text()}`), { status: putRes.status });
 	}
 
 	const headRes = await r2.fetch(objectUrlFor(env, r2Key), { method: 'HEAD' });
@@ -146,27 +190,64 @@ export async function ensureJournalDraft(
 // this catches them up the same way. Runs entirely on the admin client: there's no
 // caller session to scope RLS to, and every project's draft needs finalizing in
 // the same pass.
-export async function finalizeStaleDrafts(admin: SupabaseClient<Database>, env: Env): Promise<void> {
+export async function finalizeStaleDrafts(
+	admin: SupabaseClient<Database>,
+	env: Env,
+	cronContext: JournalCronContext = {},
+): Promise<void> {
 	const today = appToday();
+	const incidentContext: Required<JournalCronContext> = {
+		cron: cronContext.cron ?? null,
+		scheduledTime: cronContext.scheduledTime ?? Date.now(),
+	};
+	let staleDrafts: Array<{ project_id: string; draft_date: string; content: string }> | null = null;
+	let readAttempts = 0;
 
-	const { data: staleDrafts, error } = await admin
-		.from('journal_drafts')
-		.select('project_id, draft_date, content')
-		.lt('draft_date', today);
+	try {
+		staleDrafts = await retryJournalOperationWithIncident(async (attempt) => {
+			readAttempts = attempt;
+			const { data, error, status } = await admin
+				.from('journal_drafts')
+				.select('project_id, draft_date, content')
+				.lt('draft_date', today);
 
-	if (error) {
-		console.error(`[journal] failed to read stale drafts: ${error.message}`);
+			if (error) throw supabaseFailure(error, status);
+			return data;
+		}, {
+			onRetry: (error, attempt, delayMs) => {
+				console.warn(`[journal] failed to read stale drafts (attempt ${attempt}/4): ${errorMessage(error)}; retrying in ${delayMs}ms`);
+			},
+			onIncident: ({ outcome, attempts, error }) => reportJournalCronIncident(
+				admin, env, incidentContext, 'read-stale-drafts', outcome, attempts, error,
+			),
+		});
+	} catch (error) {
+		console.error(`[journal] failed to read stale drafts after ${readAttempts} attempt${readAttempts === 1 ? '' : 's'}: ${errorMessage(error)}`);
 		return;
 	}
 
 	for (const draft of staleDrafts ?? []) {
+		let attempts = 0;
 		try {
-			await finalizeOneDraft(admin, env, draft.project_id, draft.draft_date, draft.content, today);
+			// Retrying the whole project is safe after any partial success: the Journal
+			// append replaces its trailing section for this date, and both database
+			// writes below set deterministic values.
+			await retryJournalOperationWithIncident(async (attempt) => {
+				attempts = attempt;
+				await finalizeOneDraft(admin, env, draft.project_id, draft.draft_date, draft.content, today);
+			}, {
+				onRetry: (error, attempt, delayMs) => {
+					console.warn(`[journal] failed to finalize project ${draft.project_id} (attempt ${attempt}/4): ${errorMessage(error)}; retrying in ${delayMs}ms`);
+				},
+				onIncident: ({ outcome, attempts, error }) => reportJournalCronIncident(
+					admin, env, incidentContext, 'finalize-project', outcome, attempts, error, draft.project_id,
+				),
+			});
 		} catch (err) {
 			// One project's failure (a full quota, a transient R2 error) shouldn't stop the
 			// rest from finalizing — this draft simply stays queued and is retried at the
 			// next run, since it's still dated before `today`.
-			console.error(`[journal] failed to finalize project ${draft.project_id}: ${(err as Error).message}`);
+			console.error(`[journal] failed to finalize project ${draft.project_id} after ${attempts} attempt${attempts === 1 ? '' : 's'}: ${errorMessage(err)}`);
 		}
 	}
 }
@@ -183,12 +264,14 @@ async function finalizeOneDraft(
 	// to be saved" — but the draft still has to move forward to today, or every empty
 	// day between now and the last real entry would be retried forever.
 	if (content.trim()) {
-		const { data: file } = await admin
+		const { data: file, error, status } = await admin
 			.from('files')
 			.select('id, r2_key, size_bytes, uploaded_by')
 			.eq('project_id', projectId)
 			.eq('is_journal', true)
 			.maybeSingle();
+
+		if (error) throw supabaseFailure(error, status);
 
 		if (!file) {
 			console.error(`[journal] project ${projectId} has a draft but no journal file — skipping`);
@@ -217,11 +300,16 @@ async function finalizeOneDraft(
 		const updated = appendJournalEntry(current, draftDate, content);
 		const sizeBytes = await writeJournalObject(env, file.r2_key, updated);
 
-		await admin.from('files').update({ size_bytes: sizeBytes }).eq('id', file.id);
+		const { error: updateError, status: updateStatus } = await admin
+			.from('files')
+			.update({ size_bytes: sizeBytes })
+			.eq('id', file.id);
+		if (updateError) throw supabaseFailure(updateError, updateStatus);
 	}
 
-	await admin
+	const { error: resetError, status: resetStatus } = await admin
 		.from('journal_drafts')
 		.update({ draft_date: today, content: '', updated_by: null })
 		.eq('project_id', projectId);
+	if (resetError) throw supabaseFailure(resetError, resetStatus);
 }

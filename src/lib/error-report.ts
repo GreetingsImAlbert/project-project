@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database, Json } from './supabase/database.types';
 import { env } from 'cloudflare:workers';
 import { getSupabaseAdmin } from './supabase/admin';
+import { persistErrorReport, type StoredErrorReport } from './error-report-outbox';
 
 // Crockford-ish alphabet, minus 0/O/1/I/L — meant to be read aloud or typed
 // back by a user, so visually ambiguous characters are out.
@@ -31,9 +32,13 @@ export interface ErrorReportInput {
 // Logs an unexpected error and returns the short id to hand back to whoever
 // hit it. Never throws itself — a broken logging path must not mask the
 // original error or take down the request/response that triggered it.
-export async function logError(admin: SupabaseClient<Database>, input: ErrorReportInput): Promise<string> {
+export async function logError(
+	admin: SupabaseClient<Database>,
+	input: ErrorReportInput,
+	options: { outbox?: R2Bucket } = {},
+): Promise<string> {
 	const id = generateReportId();
-	const { error } = await admin.from('error_reports').insert({
+	const report: StoredErrorReport = {
 		id,
 		message: input.message.slice(0, 2000),
 		stack: input.stack?.slice(0, 8000) ?? null,
@@ -43,9 +48,16 @@ export async function logError(admin: SupabaseClient<Database>, input: ErrorRepo
 		url: input.url ?? null,
 		user_id: input.userId ?? null,
 		context: input.context ?? null,
-	});
-	if (error) {
-		console.error(`[error-report] failed to persist report ${id}:`, error.message, '| original error:', input.message);
+		created_at: new Date().toISOString(),
+	};
+	const result = await persistErrorReport(admin, report, options.outbox);
+	if (!result.persisted) {
+		console.error(`[error-report] failed to persist report ${id}:`, result.databaseError, '| original error:', input.message);
+		if (result.queued) {
+			console.warn(`[error-report] queued report ${id} for a later flush`);
+		} else if (result.outboxError) {
+			console.error(`[error-report] failed to queue report ${id}: ${result.outboxError}`);
+		}
 	}
 	return id;
 }

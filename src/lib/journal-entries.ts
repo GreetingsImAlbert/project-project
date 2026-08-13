@@ -42,7 +42,10 @@ export function appendJournalEntry(content: string, date: string, body: string):
 
 	if (last && last.date === date) {
 		const lines = content.replace(/\r\n?/g, '\n').split('\n');
-		const headingIndex = lines.findIndex((line) => line === `## ${date}`);
+		// Replace the trailing matching section specifically. A malformed or legacy
+		// file may already contain the same date earlier; starting at the first match
+		// would silently discard every section between the two headings.
+		const headingIndex = lines.lastIndexOf(`## ${date}`);
 		return `${lines.slice(0, headingIndex).join('\n').trimEnd()}\n\n${section}`.trimStart();
 	}
 

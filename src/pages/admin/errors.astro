@@ -4,6 +4,7 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 import { getSupabaseAdmin } from '../../lib/supabase/admin';
 import { isAdminUser } from '../../lib/admin-guard';
 import { feedbackKindFromContext } from '../../lib/feedback';
+import { flushErrorReportOutbox } from '../../lib/error-report-outbox';
 
 export const prerender = false;
 
@@ -18,6 +19,11 @@ if (!(await isAdminUser(Astro.locals.supabase, user.id))) {
 }
 
 const admin = getSupabaseAdmin(env);
+
+// Supabase may have been unavailable when a background job tried to record an
+// error. An authenticated admin opening this page is a safe opportunity to move
+// those private R2 outbox records into the table before querying it.
+await flushErrorReportOutbox(admin, env.R2_BUCKET);
 
 const { data: reports, error: reportsError } = await admin
 	.from('error_reports')
@@ -62,6 +68,12 @@ const { data: reports, error: reportsError } = await admin
 								<details>
 									<summary>{report.message}</summary>
 									{report.stack && <pre class="stack">{report.stack}</pre>}
+									{report.context !== null && (
+										<div class="report-context">
+											<strong>Context</strong>
+											<pre>{JSON.stringify(report.context, null, 2)}</pre>
+										</div>
+									)}
 								</details>
 							</td>
 						</tr>
@@ -87,6 +99,17 @@ const { data: reports, error: reportsError } = await admin
 
 	.stack {
 		margin-top: var(--space-2);
+		max-width: 40rem;
+		white-space: pre-wrap;
+		font-size: 0.8rem;
+		color: var(--color-muted);
+	}
+
+	.report-context {
+		margin-top: var(--space-2);
+	}
+
+	.report-context pre {
 		max-width: 40rem;
 		white-space: pre-wrap;
 		font-size: 0.8rem;

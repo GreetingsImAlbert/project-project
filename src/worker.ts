@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from './lib/supabase/admin';
 import { finalizeStaleDrafts } from './lib/journal';
 import { purgeExpiredPendingDeletions, purgeOrphanedFiles } from './lib/account-deletion';
 import { purgeTrash } from './lib/trash';
+import { flushErrorReportOutbox } from './lib/error-report-outbox';
 
 // Astro's Cloudflare adapter only ever exports a `fetch` handler — see
 // @astrojs/cloudflare/entrypoints/server.js — and has no config surface for
@@ -20,9 +21,13 @@ export default {
 	// waitUntil rather than awaiting directly: the platform tears the invocation
 	// down once this function returns, and the work here is all async I/O
 	// (Postgres, R2) that would otherwise be cut off mid-flight.
-	async scheduled(_controller, env, ctx) {
+	async scheduled(controller, env, ctx) {
 		const admin = getSupabaseAdmin(env);
-		ctx.waitUntil(finalizeStaleDrafts(admin, env));
+		ctx.waitUntil(finalizeStaleDrafts(admin, env, {
+			cron: controller.cron,
+			scheduledTime: controller.scheduledTime,
+		}));
+		ctx.waitUntil(flushErrorReportOutbox(admin, env.R2_BUCKET));
 		// Same daily tick handles both halves of account deletion's grace periods.
 		ctx.waitUntil(purgeExpiredPendingDeletions(admin));
 		ctx.waitUntil(purgeOrphanedFiles(admin, env));
