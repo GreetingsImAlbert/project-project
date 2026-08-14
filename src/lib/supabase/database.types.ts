@@ -1052,6 +1052,10 @@ export type Database = {
         Returns: undefined
       }
       task_project_id: { Args: { check_task_id: string }; Returns: string }
+      transfer_project_ownership: {
+        Args: { p_new_owner_id: string; p_project_id: string }
+        Returns: undefined
+      }
       update_task_with_assignees: {
         Args: {
           p_category: string

@@ -11,6 +11,7 @@ import TrashList from '../../../components/TrashList.svelte';
 import ProjectVisibilityPicker from '../../../components/ProjectVisibilityPicker.svelte';
 import DownloadProjectButton from '../../../components/DownloadProjectButton.svelte';
 import PicturePicker from '../../../components/PicturePicker.svelte';
+import TransferOwnershipPanel from '../../../components/TransferOwnershipPanel.svelte';
 import type { CurrencyCode } from '../../../lib/currency.svelte';
 import { listGhostMembers } from '../../../lib/ghost-members';
 import { normalizeAvatar, normalizeProjectAvatar } from '../../../lib/avatars';
@@ -154,6 +155,14 @@ const returnTo = `/projects/${id}/settings`;
 
 	<section>
 		<h3>Danger zone</h3>
+		<TransferOwnershipPanel
+			client:idle
+			projectId={project.id}
+			projectName={project.name}
+			members={memberData
+				.filter((member) => member.user_id !== project.owner_id)
+				.map((member) => ({ user_id: member.user_id, display_name: member.display_name }))}
+		/>
 		<DeleteProjectPanel client:idle projectId={project.id} projectName={project.name} />
 	</section>
 
@@ -195,5 +204,9 @@ const returnTo = `/projects/${id}/settings`;
 	.add-actions-row > :global(*) {
 		flex: 1 1 240px;
 		margin: 0;
+	}
+
+	section :global(.transfer-panel + .delete-panel) {
+		margin-top: var(--space-4);
 	}
 </style>
