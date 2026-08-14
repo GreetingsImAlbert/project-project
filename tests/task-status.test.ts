@@ -34,3 +34,14 @@ test('deadline time still controls overdue on the boundary day', () => {
 		'overdue',
 	);
 });
+
+test('a task without a start date is not started', () => {
+	assert.equal(displayStatus({ ...task, start_date: null }, '2026-08-09', '10:00'), 'not-started');
+});
+
+test('a task without a start date becomes overdue once its deadline passes', () => {
+	assert.equal(
+		displayStatus({ ...task, start_date: null, deadline: '2026-08-09', deadline_time: '09:59' }, '2026-08-09', '10:00'),
+		'overdue',
+	);
+});

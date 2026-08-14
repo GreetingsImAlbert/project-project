@@ -13,7 +13,10 @@ function formWith(fields: Record<string, string> = {}): FormData {
 test('a missing start time defaults to midnight', () => {
 	const parsed = parseTaskForm(formWith(), new Set(), new Set());
 	assert.equal('error' in parsed, false);
-	if ('values' in parsed) assert.equal(parsed.values.start_time, '00:00');
+	if ('values' in parsed) {
+		assert.equal(parsed.values.start_date, null);
+		assert.equal(parsed.values.start_time, '00:00');
+	}
 });
 
 test('a valid start time is retained', () => {

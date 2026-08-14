@@ -5,7 +5,8 @@
 // time from the deadline's date and its time of day (see deadline-time.ts), so it
 // flips on the next render past that moment rather than the next time somebody
 // happens to open the edit form. The same render-time rule makes a future Start
-// date/time `not-started`; a stored third state would be stale by definition.
+// date/time, or a task with no Start date, `not-started`; a stored third state would
+// be stale by definition.
 //
 // Everything here takes `today` as an argument rather than calling the clock
 // itself, and that argument always comes from appToday() in today.ts — one fixed
@@ -47,14 +48,15 @@ export function displayStatus(
 	nowTime: string,
 ): TaskDisplayStatus {
 	if (task.status === 'done') return 'done';
+	// Deadline wins over the planned start. In particular, a task with no start date
+	// stays neutral only until its deadline passes, when it must immediately read as
+	// overdue rather than remaining "Not started" forever.
+	if (task.deadline && deadlinePassed(task.deadline, task.deadline_time, today, nowTime)) return 'overdue';
+	if (!task.start_date) return 'not-started';
 	if (
-		task.start_date &&
 		(task.start_date > today || (task.start_date === today && task.start_time > nowTime))
 	)
 		return 'not-started';
-	if (!task.deadline) return 'ongoing';
-	if (task.deadline < today) return 'overdue';
-	if (task.deadline === today && task.deadline_time < nowTime) return 'overdue';
 	return 'ongoing';
 }
 
