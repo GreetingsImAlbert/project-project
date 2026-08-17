@@ -208,7 +208,7 @@ Journal files must physically appear inside the protected `journals` folder, but
 - Keep journals excluded from per-file public sharing.
 - Ensure generic file preview/download endpoints apply journal visibility rules; `files.is_public` must never make a journal public.
 
-### Step 7: Finalize every journal at end of day
+### [DONE] Step 7: Finalize every journal at end of day
 
 Refactor `finalizeStaleDrafts` and `finalizeOneDraft` to process rows by `journal_file_id`, not by project:
 

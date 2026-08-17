@@ -86,7 +86,11 @@ async function reportJournalCronIncident(
 	outcome: JournalCronOutcome,
 	attempts: number,
 	error: unknown,
-	projectId?: string,
+	scope: {
+		projectId?: string | null;
+		journalFileId?: string | null;
+		journalKind?: JournalKind | null;
+	} = {},
 ): Promise<void> {
 	await logError(admin, createJournalCronReport({
 		phase,
@@ -95,7 +99,9 @@ async function reportJournalCronIncident(
 		error,
 		cron: context.cron,
 		scheduledAt: new Date(context.scheduledTime).toISOString(),
-		projectId,
+		projectId: scope.projectId,
+		journalFileId: scope.journalFileId,
+		journalKind: scope.journalKind,
 	}), { outbox: env.R2_BUCKET });
 }
 
@@ -156,9 +162,8 @@ export interface JournalsFolderRow {
 	id: string;
 }
 
-// These queries intentionally describe the post-migration schema locally. The
-// generated Database type remains untouched until the migration is applied and
-// the repository-required `npm run update-types` is run by the user.
+// These queries describe the journal-aware schema and remain locally explicit so
+// callers can use the journal fields while older generated clients are refreshed.
 export function journalSchemaClient(client: SupabaseClient<Database>): SupabaseClient<any> {
 	return client as SupabaseClient<any>;
 }
@@ -311,28 +316,8 @@ export interface JournalDraftRow {
 export async function ensureJournalDraft(
 	supabase: SupabaseClient<Database>,
 	projectId: string,
-	journalFileId?: string,
+	journalFileId: string,
 ): Promise<JournalDraftRow> {
-	// Temporary legacy path for the current single-journal page. Step 4 removes
-	// this after the schema migration and journal collection loader are active.
-	if (!journalFileId) {
-		const { data: existing, error: readError, status: readStatus } = await supabase
-			.from('journal_drafts')
-			.select('draft_date, content')
-			.eq('project_id', projectId)
-			.maybeSingle();
-		if (readError) throw supabaseFailure(readError, readStatus);
-		if (existing) return existing;
-
-		const { data: created, error, status } = await supabase
-			.from('journal_drafts')
-			.insert({ project_id: projectId, draft_date: appToday(), content: '' })
-			.select('draft_date, content')
-			.single();
-		if (error || !created) throw supabaseFailure(error ?? { message: 'Failed to create journal draft' }, status);
-		return created;
-	}
-
 	const db = journalSchemaClient(supabase);
 	const { data: existing, error: readError, status: readStatus } = await db
 		.from('journal_drafts')
@@ -471,12 +456,28 @@ export async function loadPublicProjectJournals(
 	});
 }
 
-// The cron job's actual work, run once at Manila midnight for every project whose
+interface StaleJournalDraft {
+	project_id: string;
+	journal_file_id: string;
+	draft_date: string;
+	content: string;
+	updated_at: string | null;
+}
+
+interface JournalFinalizationFile {
+	id: string;
+	r2_key: string;
+	size_bytes: number | null;
+	uploaded_by: string | null;
+	journal_kind: JournalKind;
+}
+
+// The cron job's actual work, run once at Manila midnight for every journal whose
 // draft has fallen behind today — normally just the drafts dated yesterday, but
 // a missed run (a deploy, a Cloudflare incident) leaves older ones queued too, and
 // this catches them up the same way. Runs entirely on the admin client: there's no
-// caller session to scope RLS to, and every project's draft needs finalizing in
-// the same pass.
+// caller session to scope RLS to, and each journal is finalized independently so a
+// quota, R2, or database failure cannot block another journal in the same project.
 export async function finalizeStaleDrafts(
 	admin: SupabaseClient<Database>,
 	env: Env,
@@ -487,19 +488,19 @@ export async function finalizeStaleDrafts(
 		cron: cronContext.cron ?? null,
 		scheduledTime: cronContext.scheduledTime ?? Date.now(),
 	};
-	let staleDrafts: Array<{ project_id: string; draft_date: string; content: string }> | null = null;
+	let staleDrafts: StaleJournalDraft[] | null = null;
 	let readAttempts = 0;
 
 	try {
 		staleDrafts = await retryJournalOperationWithIncident(async (attempt) => {
 			readAttempts = attempt;
-			const { data, error, status } = await admin
+			const { data, error, status } = await journalSchemaClient(admin)
 				.from('journal_drafts')
-				.select('project_id, draft_date, content')
+				.select('project_id, journal_file_id, draft_date, content, updated_at')
 				.lt('draft_date', today);
 
 			if (error) throw supabaseFailure(error, status);
-			return data;
+			return (data ?? []) as StaleJournalDraft[];
 		}, {
 			onRetry: (error, attempt, delayMs) => {
 				console.warn(`[journal] failed to read stale drafts (attempt ${attempt}/4): ${errorMessage(error)}; retrying in ${delayMs}ms`);
@@ -515,26 +516,44 @@ export async function finalizeStaleDrafts(
 
 	for (const draft of staleDrafts ?? []) {
 		let attempts = 0;
+		const scope: {
+			projectId: string;
+			journalFileId: string;
+			journalKind: JournalKind | null;
+		} = {
+			projectId: draft.project_id,
+			journalFileId: draft.journal_file_id,
+			journalKind: null,
+		};
 		try {
-			// Retrying the whole project is safe after any partial success: the Journal
-			// append replaces its trailing section for this date, and both database
-			// writes below set deterministic values.
 			await retryJournalOperationWithIncident(async (attempt) => {
 				attempts = attempt;
-				await finalizeOneDraft(admin, env, draft.project_id, draft.draft_date, draft.content, today);
+				await finalizeOneDraft(admin, env, draft, today, (file) => {
+					scope.journalKind = file.journal_kind;
+				});
 			}, {
 				onRetry: (error, attempt, delayMs) => {
-					console.warn(`[journal] failed to finalize project ${draft.project_id} (attempt ${attempt}/4): ${errorMessage(error)}; retrying in ${delayMs}ms`);
+					console.warn(
+						`[journal] failed to finalize journal ${scope.journalFileId} (${scope.journalKind ?? 'unknown'}) in project ${scope.projectId} (attempt ${attempt}/4): ${errorMessage(error)}; retrying in ${delayMs}ms`,
+					);
 				},
 				onIncident: ({ outcome, attempts, error }) => reportJournalCronIncident(
-					admin, env, incidentContext, 'finalize-project', outcome, attempts, error, draft.project_id,
+					admin,
+					env,
+					incidentContext,
+					'finalize-project',
+					outcome,
+					attempts,
+					error,
+					scope,
 				),
 			});
 		} catch (err) {
-			// One project's failure (a full quota, a transient R2 error) shouldn't stop the
-			// rest from finalizing — this draft simply stays queued and is retried at the
-			// next run, since it's still dated before `today`.
-			console.error(`[journal] failed to finalize project ${draft.project_id} after ${attempts} attempt${attempts === 1 ? '' : 's'}: ${errorMessage(err)}`);
+			// This journal simply stays queued and is retried at the next run, since it
+			// remains dated before `today`; the loop continues with every other journal.
+			console.error(
+				`[journal] failed to finalize journal ${scope.journalFileId} (${scope.journalKind ?? 'unknown'}) in project ${scope.projectId} after ${attempts} attempt${attempts === 1 ? '' : 's'}: ${errorMessage(err)}`,
+			);
 		}
 	}
 }
@@ -542,62 +561,83 @@ export async function finalizeStaleDrafts(
 async function finalizeOneDraft(
 	admin: SupabaseClient<Database>,
 	env: Env,
-	projectId: string,
-	draftDate: string,
-	content: string,
+	draft: StaleJournalDraft,
 	today: string,
+	onFileLoaded?: (file: JournalFinalizationFile) => void,
 ): Promise<void> {
-	// A day with nothing written is simply skipped — "except if there is no content
-	// to be saved" — but the draft still has to move forward to today, or every empty
-	// day between now and the last real entry would be retried forever.
-	if (content.trim()) {
-		const { data: file, error, status } = await journalSchemaClient(admin)
-			.from('files')
-			.select('id, r2_key, size_bytes, uploaded_by')
-			.eq('project_id', projectId)
-			.eq('is_journal', true)
-			.eq('journal_kind', 'group')
-			.maybeSingle();
+	const { data, error, status } = await journalSchemaClient(admin)
+		.from('files')
+		.select('id, r2_key, size_bytes, uploaded_by, journal_kind')
+		.eq('id', draft.journal_file_id)
+		.eq('project_id', draft.project_id)
+		.eq('is_journal', true)
+		.is('deleted_at', null)
+		.maybeSingle();
 
-		if (error) throw supabaseFailure(error, status);
+	if (error) throw supabaseFailure(error, status);
+	if (!data) {
+		throw new Error(`journal file ${draft.journal_file_id} is missing or deleted`);
+	}
 
-		if (!file) {
-			console.error(`[journal] project ${projectId} has a draft but no journal file — skipping`);
-			return;
-		}
+	const journalKind = data.journal_kind as JournalKind;
+	if (journalKind !== 'group' && journalKind !== 'personal') {
+		throw new Error(`journal file ${draft.journal_file_id} has invalid journal kind`);
+	}
 
-		// uploaded_by is nullable on files generally (an uploader's account can be
-		// hard-deleted — see account-deletion.ts), but never for the Journal file
-		// itself: it's always charged to the project owner (see ensureJournalFile),
-		// and an owner's account can't be deleted while they still own the project.
-		if (!file.uploaded_by) {
-			console.error(`[journal] project ${projectId}'s journal file has no uploader — skipping`);
-			return;
-		}
+	const file: JournalFinalizationFile = {
+		id: data.id,
+		r2_key: data.r2_key,
+		size_bytes: data.size_bytes,
+		uploaded_by: data.uploaded_by,
+		journal_kind: journalKind,
+	};
+	onFileLoaded?.(file);
 
-		// Charged to the file's owner (always the project owner — see ensureJournalFile),
-		// same rule as content.ts's PUT. A full quota leaves the draft queued rather than
-		// writing past the cap; it's retried on the next run instead of being dropped.
-		const growth = new TextEncoder().encode(content).byteLength;
-		if (await wouldExceedStorageQuota(admin, env, file.uploaded_by, growth)) {
-			console.error(`[journal] project ${projectId}'s owner is over quota — leaving draft queued`);
-			return;
-		}
+	if (!file.uploaded_by) {
+		throw new Error(`journal file ${draft.journal_file_id} has no quota owner`);
+	}
 
+	// A day with nothing written is simply skipped, but the draft still has to move
+	// forward to today or every empty day between now and the last real entry would
+	// be retried forever. The reset below is scoped to this journal file only.
+	if (draft.content.trim()) {
 		const current = await readJournalObject(env, file.r2_key);
-		const updated = appendJournalEntry(current, draftDate, content);
+		const updated = appendJournalEntry(current, draft.draft_date, draft.content);
+		const encoder = new TextEncoder();
+		const beforeBytes = encoder.encode(current).byteLength;
+		const afterBytes = encoder.encode(updated).byteLength;
+		const growthBytes = Math.max(0, afterBytes - beforeBytes);
+
+		// Quota is charged to uploaded_by: the personal journal creator or the
+		// current project owner attribution on the group journal.
+		if (await wouldExceedStorageQuota(admin, env, file.uploaded_by, growthBytes)) {
+			console.error(
+				`[journal] journal ${draft.journal_file_id} (${file.journal_kind}) owner ${file.uploaded_by} is over quota — leaving draft queued`,
+			);
+			return;
+		}
+
 		const sizeBytes = await writeJournalObject(env, file.r2_key, updated);
 
-		const { error: updateError, status: updateStatus } = await admin
+		const { error: updateError, status: updateStatus } = await journalSchemaClient(admin)
 			.from('files')
 			.update({ size_bytes: sizeBytes })
-			.eq('id', file.id);
+			.eq('id', file.id)
+			.eq('project_id', draft.project_id);
 		if (updateError) throw supabaseFailure(updateError, updateStatus);
 	}
 
-	const { error: resetError, status: resetStatus } = await admin
+	let resetQuery = journalSchemaClient(admin)
 		.from('journal_drafts')
 		.update({ draft_date: today, content: '', updated_by: null })
-		.eq('project_id', projectId);
+		.eq('journal_file_id', draft.journal_file_id)
+		.eq('project_id', draft.project_id)
+		.eq('draft_date', draft.draft_date);
+	if (draft.updated_at) resetQuery = resetQuery.eq('updated_at', draft.updated_at);
+
+	const { data: resetRows, error: resetError, status: resetStatus } = await resetQuery.select('journal_file_id');
 	if (resetError) throw supabaseFailure(resetError, resetStatus);
+	if (!resetRows || resetRows.length === 0) {
+		console.warn(`[journal] journal ${draft.journal_file_id} changed while finalizing; leaving newer draft queued`);
+	}
 }

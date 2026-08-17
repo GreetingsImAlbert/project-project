@@ -38,11 +38,17 @@ export interface ProjectExportPerson {
 	email: string | null;
 }
 
-export type ProjectExportFolder = Row<'folders'> & {
+// Legacy V1/V2 archives predate the journal-folder marker. Keep the new schema
+// fields optional at the archive boundary until the versioned manifest migration
+// starts emitting them explicitly.
+export type ProjectExportFolder = Omit<Row<'folders'>, 'is_journals_folder'> & {
+	is_journals_folder?: boolean;
 	archive_path: string;
 };
 
-export type ProjectExportFile = Omit<Row<'files'>, 'r2_key'> & {
+export type ProjectExportFile = Omit<Row<'files'>, 'r2_key' | 'journal_kind' | 'journal_visibility'> & {
+	journal_kind?: string | null;
+	journal_visibility?: string | null;
 	archive_path: string;
 	content_size_bytes: number;
 	sha256: string;
@@ -78,7 +84,7 @@ interface ProjectExportManifestBase {
 		taskAssignees: Row<'task_assignees'>[];
 		taskCategories: Row<'task_categories'>[];
 		taskCategoryPositions: Row<'task_category_positions'>[];
-		journalDraft: Row<'journal_drafts'> | null;
+		journalDraft: Omit<Row<'journal_drafts'>, 'journal_file_id'> & { journal_file_id?: string } | null;
 	};
 }
 

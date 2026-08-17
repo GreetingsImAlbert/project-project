@@ -86,3 +86,26 @@ test('journal overhaul migration scopes drafts and RLS by journal file', () => {
 	assert.match(migration, /protect_journal_file_update/);
 	assert.match(migration, /journal_kind = 'group'/);
 });
+
+test('journal finalizer isolates stale rows and charges complete Markdown growth', () => {
+	const journal = source('../src/lib/journal.ts');
+	const finalizer = journal.slice(journal.indexOf('export async function finalizeStaleDrafts'));
+	assert.match(finalizer, /select\('project_id, journal_file_id, draft_date, content, updated_at'\)/);
+	assert.match(finalizer, /\.eq\('id', draft\.journal_file_id\)/);
+	assert.match(finalizer, /\.eq\('project_id', draft\.project_id\)/);
+	assert.match(finalizer, /\.is\('deleted_at', null\)/);
+	assert.match(finalizer, /journal_kind/);
+	assert.match(finalizer, /beforeBytes/);
+	assert.match(finalizer, /afterBytes/);
+	assert.match(finalizer, /Math\.max\(0, afterBytes - beforeBytes\)/);
+	assert.match(finalizer, /wouldExceedStorageQuota\(admin, env, file\.uploaded_by, growthBytes\)/);
+	assert.match(finalizer, /\.eq\('journal_file_id', draft\.journal_file_id\)/);
+	assert.doesNotMatch(finalizer, /\.update\(\{ draft_date: today, content: '', updated_by: null \}\)[\s\S]*?\.eq\('project_id', projectId\)/);
+	assert.match(finalizer, /'finalize-project'/);
+	assert.match(journal, /failed to finalize journal \$\{scope\.journalFileId\} \(\$\{scope\.journalKind/);
+	const report = source('../src/lib/journal-cron-report.ts');
+	assert.match(report, /journalFileId\?: string \| null/);
+	assert.match(report, /journalKind\?: 'group' \| 'personal' \| null/);
+	assert.match(report, /journalFileId: incident\.journalFileId/);
+	assert.match(report, /journalKind: incident\.journalKind/);
+});

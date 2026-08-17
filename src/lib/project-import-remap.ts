@@ -30,15 +30,24 @@ export type ImportGhostRow = Pick<
 	'id' | 'project_id' | 'display_name' | 'note' | 'contribution_percent' | 'is_deleted_account' | 'created_at'
 >;
 
-export type ImportFolderRow = Row<'folders'>;
-export type ImportFileRow = Row<'files'>;
+// Import accepts legacy manifests that do not carry the post-journal-overhaul
+// folder/file metadata; the import RPC applies the schema defaults.
+export type ImportFolderRow = Omit<Row<'folders'>, 'is_journals_folder'> & {
+	is_journals_folder?: boolean;
+};
+export type ImportFileRow = Omit<Row<'files'>, 'journal_kind' | 'journal_visibility'> & {
+	journal_kind?: string | null;
+	journal_visibility?: string | null;
+};
 export type ImportBomRow = Omit<Row<'bom_items'>, 'total_cost'>;
 export type ImportTransactionRow = Omit<Row<'transactions'>, 'total_cost'>;
 export type ImportTaskRow = Row<'tasks'>;
 export type ImportTaskAssigneeRow = Row<'task_assignees'>;
 export type ImportTaskCategoryRow = Row<'task_categories'>;
 export type ImportTaskCategoryPositionRow = Row<'task_category_positions'>;
-export type ImportJournalDraftRow = Row<'journal_drafts'>;
+export type ImportJournalDraftRow = Omit<Row<'journal_drafts'>, 'journal_file_id'> & {
+	journal_file_id?: string;
+};
 
 export interface ProjectImportRemappedPayload {
 	project: ImportProjectRow;
