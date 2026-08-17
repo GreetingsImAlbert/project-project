@@ -49,6 +49,12 @@ export interface ProjectJournal {
 	canChangeVisibility: boolean;
 }
 
+export interface PublicProjectJournal {
+	kind: JournalKind;
+	label: string;
+	history: JournalEntry[];
+}
+
 // A day's worth of notes, not a document — generous, but nowhere near the 1MB
 // the general file editor allows (file-kind.ts's MAX_VIEWABLE_BYTES). Enforced
 // both by the draft API and the database's journal_drafts check constraint.
@@ -306,18 +312,20 @@ export async function ensureJournalFile(
 	projectId: string,
 	ownerId: string,
 ): Promise<JournalFileRow> {
-	const { data: existing, error: readError, status: readStatus } = await admin
+	const db = journalSchemaClient(admin);
+	const { data: existing, error: readError, status: readStatus } = await db
 		.from('files')
 		.select('id, r2_key, size_bytes')
 		.eq('project_id', projectId)
 		.eq('is_journal', true)
+		.eq('journal_kind', 'group')
 		.maybeSingle();
 	if (readError) throw supabaseFailure(readError, readStatus);
 	if (existing) return existing;
 
 	const r2Key = `${projectId}/${crypto.randomUUID()}-${JOURNAL_FILENAME}`;
 	const sizeBytes = await writeJournalObject(env, r2Key, '');
-	const { data: created, error, status } = await admin
+	const { data: created, error, status } = await db
 		.from('files')
 		.insert({
 			project_id: projectId,
@@ -474,6 +482,39 @@ export async function loadProjectJournals(
 	}));
 }
 
+export async function loadPublicProjectJournals(
+	admin: SupabaseClient<Database>,
+	env: Env,
+	projectId: string,
+): Promise<PublicProjectJournal[]> {
+	const { data, error, status } = await journalSchemaClient(admin)
+		.from('files')
+		.select('r2_key, journal_kind, profiles!files_uploaded_by_fkey(display_name)')
+		.eq('project_id', projectId)
+		.eq('is_journal', true)
+		.or('journal_kind.eq.group,and(journal_kind.eq.personal,journal_visibility.eq.public)')
+		.is('deleted_at', null);
+	if (error) throw supabaseFailure(error, status);
+
+	const journals = await Promise.all(((data ?? []) as Array<{
+		r2_key: string;
+		journal_kind: JournalKind;
+		profiles: { display_name: string } | Array<{ display_name: string }> | null;
+	}>).map(async (file): Promise<PublicProjectJournal> => {
+		const creatorProfile = Array.isArray(file.profiles) ? file.profiles[0] : file.profiles;
+		return {
+			kind: file.journal_kind,
+			label: file.journal_kind === 'group' ? 'Group journal' : creatorProfile?.display_name ?? 'Personal journal',
+			history: parseJournalEntries(await readJournalObject(env, file.r2_key)).reverse(),
+		};
+	}));
+
+	return journals.sort((a, b) => {
+		if (a.kind !== b.kind) return a.kind === 'group' ? -1 : 1;
+		return a.label.localeCompare(b.label);
+	});
+}
+
 // The cron job's actual work, run once at Manila midnight for every project whose
 // draft has fallen behind today — normally just the drafts dated yesterday, but
 // a missed run (a deploy, a Cloudflare incident) leaves older ones queued too, and
@@ -554,11 +595,12 @@ async function finalizeOneDraft(
 	// to be saved" — but the draft still has to move forward to today, or every empty
 	// day between now and the last real entry would be retried forever.
 	if (content.trim()) {
-		const { data: file, error, status } = await admin
+		const { data: file, error, status } = await journalSchemaClient(admin)
 			.from('files')
 			.select('id, r2_key, size_bytes, uploaded_by')
 			.eq('project_id', projectId)
 			.eq('is_journal', true)
+			.eq('journal_kind', 'group')
 			.maybeSingle();
 
 		if (error) throw supabaseFailure(error, status);

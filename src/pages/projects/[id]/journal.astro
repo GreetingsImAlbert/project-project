@@ -2,17 +2,17 @@
 import { env } from 'cloudflare:workers';
 import BaseLayout from '../../../layouts/BaseLayout.astro';
 import JournalPage from '../../../components/JournalPage.svelte';
-import JournalHistory from '../../../components/JournalHistory.svelte';
+import PublicJournalTabs from '../../../components/PublicJournalTabs.svelte';
 import { getSupabaseAdmin } from '../../../lib/supabase/admin';
 import {
 	ensureGroupJournal,
 	ensureJournalDraft,
 	journalSchemaClient,
+	loadPublicProjectJournals,
 	loadProjectJournals,
-	readJournalObject,
 	type ProjectJournal,
+	type PublicProjectJournal,
 } from '../../../lib/journal';
-import { parseJournalEntries, type JournalEntry } from '../../../lib/journal-entries';
 import { getPublicProjectGate, toPublicSectionFlags, type PublicProjectFlags } from '../../../lib/project-visibility';
 
 export const prerender = false;
@@ -31,27 +31,12 @@ const admin = getSupabaseAdmin(env);
 let project: JournalProject | null = null;
 let userRole: string | undefined;
 let publicNav = false;
-let readOnly = false;
-let entries: JournalEntry[] = [];
+let publicReader = false;
+let publicJournals: PublicProjectJournal[] = [];
 let journals: ProjectJournal[] = [];
 let initialActiveJournalId: string | null = null;
 let canCreatePersonalJournal = false;
 let privateJournalManagement: Array<{ fileId: string; filename: string; creatorName: string }> = [];
-
-async function loadPublicEntries(projectId: string): Promise<JournalEntry[] | null> {
-	const { data: journalFile, error } = await journalSchemaClient(admin)
-		.from('files')
-		.select('r2_key')
-		.eq('project_id', projectId)
-		.eq('is_journal', true)
-		.eq('journal_kind', 'group')
-		.is('deleted_at', null)
-		.maybeSingle();
-
-	if (error) return null;
-	const journalContent = journalFile ? await readJournalObject(env, journalFile.r2_key) : '';
-	return parseJournalEntries(journalContent).reverse();
-}
 
 // A signed-in request gets the normal RLS project row first. Only a member gets
 // the member branch; everyone else falls through to the same public gate as a
@@ -127,13 +112,10 @@ if (!project) {
 	const gate = await getPublicProjectGate(admin, id, 'journal');
 	if (!gate) return new Response('Project not found', { status: 404 });
 
-	const publicEntries = await loadPublicEntries(gate.id);
-	if (!publicEntries) return new Response('Could not load journal', { status: 500 });
-
 	project = { ...gate, description: null, owner_id: null };
 	publicNav = true;
-	readOnly = true;
-	entries = publicEntries;
+	publicReader = true;
+	publicJournals = await loadPublicProjectJournals(admin, env, gate.id);
 }
 ---
 <BaseLayout
@@ -145,8 +127,8 @@ if (!project) {
 		publicSections: toPublicSectionFlags(project),
 	}}
 >
-	{readOnly && <JournalHistory entries={entries} />}
-	{!readOnly && initialActiveJournalId && (
+	{publicReader && <PublicJournalTabs client:load journals={publicJournals} />}
+	{!publicReader && initialActiveJournalId && (
 		<JournalPage
 			client:load
 			projectId={project.id}

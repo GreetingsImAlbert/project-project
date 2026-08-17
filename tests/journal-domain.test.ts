@@ -29,11 +29,15 @@ test('personalJournalFilename creates safe deterministic filenames', () => {
 });
 
 test('journal read permissions hide private personal journals from owners', () => {
+	const group: JournalAccessTarget = { kind: 'group', creatorId: 'owner', visibility: null };
 	assert.equal(canReadJournal(personal('private'), creator), true);
+	assert.equal(canReadJournal(personal('private'), { ...creator, viewerId: 'another-member' }), false);
 	assert.equal(canReadJournal(personal('private'), owner), false);
 	assert.equal(canReadJournal(personal('members'), member), true);
 	assert.equal(canReadJournal(personal('public'), { ...member, isProjectMember: false, publicJournalEnabled: false }), false);
 	assert.equal(canReadJournal(personal('public'), { ...member, isProjectMember: false, publicJournalEnabled: true }), true);
+	assert.equal(canReadJournal(group, { ...member, isProjectMember: false, publicJournalEnabled: false }), false);
+	assert.equal(canReadJournal(group, { ...member, isProjectMember: false, publicJournalEnabled: true }), true);
 });
 
 test('journal edit and delete permissions follow journal ownership', () => {

@@ -184,7 +184,7 @@ Update `src/components/JournalPage.svelte`:
 
 `JournalHistory.svelte` can remain the shared history renderer, with only minor prop/empty-state changes if needed.
 
-### Step 5: Update public and member visibility behavior
+### [DONE] Step 5: Update public and member visibility behavior
 
 - Public and authenticated non-member requests may load finalized group history plus finalized personal journals marked `public`, but only when `public_journal_enabled` is true.
 - Never expose any current-day draft publicly, including a `public` personal journal's draft.
