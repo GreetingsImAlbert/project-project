@@ -224,7 +224,7 @@ Refactor `finalizeStaleDrafts` and `finalizeOneDraft` to process rows by `journa
 
 No new cron trigger is needed; `src/worker.ts` continues calling the refactored finalizer once daily.
 
-### Step 8: Handle ownership changes and account deletion
+### [DONE] Step 8: Handle ownership changes and account deletion
 
 - Keep group-journal attribution on the current project owner during ownership transfer; personal journals always remain charged to their creators.
 - When a personal journal creator's account is hard-deleted, soft-delete/freeze that journal, remove its live draft, and let the existing orphan-file grace/purge policy handle the Markdown object.

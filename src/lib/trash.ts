@@ -42,7 +42,10 @@ async function purgeFiles(admin: SupabaseClient<Database>, env: Env, cutoff: str
 		.from('files')
 		.select('id, r2_key')
 		.not('deleted_at', 'is', null)
-		.or('is_journal.eq.false,journal_kind.eq.personal')
+		// Frozen personal journals belong to the account-deletion orphan grace
+		// period, not the ordinary Trash ten-day purge. Group journals are never
+		// eligible here under any circumstance.
+		.or('is_journal.eq.false,and(journal_kind.eq.personal,uploader_deleted_at.is.null)')
 		.lte('deleted_at', cutoff);
 
 	if (error) {

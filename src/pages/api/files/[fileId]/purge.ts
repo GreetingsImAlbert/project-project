@@ -20,7 +20,7 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 
 	const { data: file, error: fileError } = await journalSchemaClient(admin)
 		.from('files')
-		.select('project_id, r2_key, uploaded_by, is_journal, journal_kind, journal_visibility, deleted_at')
+		.select('project_id, r2_key, uploaded_by, uploader_deleted_at, is_journal, journal_kind, journal_visibility, deleted_at')
 		.eq('id', fileId)
 		.single();
 
@@ -40,6 +40,9 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 		.maybeSingle();
 
 	if (!membership) return new Response('File not found', { status: 404 });
+	if (file.is_journal && file.journal_kind === 'personal' && file.uploader_deleted_at) {
+		return new Response('This journal is frozen for orphan cleanup', { status: 410 });
+	}
 	const mayPurge = file.is_journal
 		? canDeleteJournal({
 			kind: file.journal_kind as JournalKind,

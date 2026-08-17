@@ -35,6 +35,61 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 	// mutation so an older database missing the DELETE policy cannot turn this into
 	// a silent no-op; the policy is still documented below for direct DB access.
 	const admin = getSupabaseAdmin(env);
+	const { data: targetMembership, error: targetMembershipError } = await admin
+		.from('project_members')
+		.select('user_id')
+		.eq('project_id', projectId)
+		.eq('user_id', memberId)
+		.maybeSingle();
+	if (targetMembershipError) {
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: `Failed to inspect member: ${targetMembershipError.message}`,
+			action: 'Failed to remove member.',
+			context: { projectId: projectId ?? null, memberId: memberId ?? null },
+		});
+	}
+	if (!targetMembership) return new Response('Member is not in this project', { status: 404 });
+
+	// A removed member must not retain a live personal draft. Finalized Markdown
+	// stays in place under its existing visibility, so the owner can delete the
+	// file later without ever receiving private content through this endpoint.
+	const { data: personalJournals, error: journalError } = await admin
+		.from('files')
+		.select('id')
+		.eq('project_id', projectId)
+		.eq('uploaded_by', memberId)
+		.eq('is_journal', true)
+		.eq('journal_kind', 'personal')
+		.is('deleted_at', null);
+	if (journalError) {
+		return errorResponse({
+			request,
+			userId: locals.user.id,
+			privateMessage: `Failed to inspect member journals: ${journalError.message}`,
+			action: 'Failed to remove member.',
+			context: { projectId: projectId ?? null, memberId: memberId ?? null },
+		});
+	}
+
+	const journalIds = (personalJournals ?? []).map((journal) => journal.id);
+	if (journalIds.length > 0) {
+		const { error: draftError } = await admin
+			.from('journal_drafts')
+			.delete()
+			.in('journal_file_id', journalIds);
+		if (draftError) {
+			return errorResponse({
+				request,
+				userId: locals.user.id,
+				privateMessage: `Failed to freeze member journals: ${draftError.message}`,
+				action: 'Failed to remove member.',
+				context: { projectId: projectId ?? null, memberId: memberId ?? null },
+			});
+		}
+	}
+
 	const { data: removed, error } = await admin
 		.from('project_members')
 		.delete()

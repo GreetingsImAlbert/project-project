@@ -109,3 +109,32 @@ test('journal finalizer isolates stale rows and charges complete Markdown growth
 	assert.match(report, /journalFileId: incident\.journalFileId/);
 	assert.match(report, /journalKind: incident\.journalKind/);
 });
+
+test('ownership changes and account/member cleanup preserve journal ownership boundaries', () => {
+	const accountDeletion = source('../src/lib/account-deletion.ts');
+	const memberDeletion = source('../src/pages/api/projects/[id]/members/[userId]/delete.ts');
+	const fileDelete = source('../src/pages/api/files/[fileId]/delete.ts');
+	const restore = source('../src/pages/api/files/[fileId]/restore.ts');
+	const purge = source('../src/pages/api/files/[fileId]/purge.ts');
+	const trashApi = source('../src/pages/api/projects/[id]/trash.ts');
+	const trashCron = source('../src/lib/trash.ts');
+	const migration = source('../supabase/migrations/20260817092407_journal_overhaul.sql');
+	const quotaSchema = source('../supabase/migrations/20260808094418_remote_schema.sql');
+
+	assert.match(accountDeletion, /reattributeGroupJournals/);
+	assert.match(accountDeletion, /freezePersonalJournals/);
+	assert.match(accountDeletion, /journal_drafts/);
+	assert.match(accountDeletion, /\.eq\('journal_kind', 'group'\)/);
+	assert.match(accountDeletion, /\.eq\('journal_kind', 'personal'\)/);
+	assert.match(accountDeletion, /\.or\('is_journal\.eq\.false,journal_kind\.eq\.personal'\)/);
+	assert.match(memberDeletion, /\.from\('journal_drafts'\)/);
+	assert.match(memberDeletion, /\.in\('journal_file_id', journalIds\)/);
+	assert.match(fileDelete, /getSupabaseAdmin/);
+	assert.match(fileDelete, /File not found/);
+	assert.match(restore, /uploader_deleted_at/);
+	assert.match(purge, /uploader_deleted_at/);
+	assert.match(trashApi, /uploader_deleted_at/);
+	assert.match(trashCron, /uploader_deleted_at\.is\.null/);
+	assert.match(migration, /where project_id = p_project_id and is_journal and journal_kind = 'group'/);
+	assert.match(quotaSchema, /where uploaded_by = target_user_id/);
+});

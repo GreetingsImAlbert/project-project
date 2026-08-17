@@ -65,7 +65,7 @@ export async function GET({ locals, params, request }: { locals: App.Locals; par
 	const [{ data: fileRows, error: filesError }, { data: folders, error: foldersError }, { data: tasks, error: tasksError }, { data: bomItems, error: bomError }, { data: transactions, error: transactionsError }] = await Promise.all([
 		journalSchemaClient(admin)
 			.from('files')
-			.select('id, filename, size_bytes, uploaded_by, is_journal, journal_kind, journal_visibility, deleted_at')
+			.select('id, filename, size_bytes, uploaded_by, uploader_deleted_at, is_journal, journal_kind, journal_visibility, deleted_at')
 			.eq('project_id', projectId)
 			.not('deleted_at', 'is', null)
 			.order('deleted_at', { ascending: false }),
@@ -107,6 +107,7 @@ export async function GET({ locals, params, request }: { locals: App.Locals; par
 			canRestore: canEditFiles,
 			canPurge: canEditFiles,
 		}];
+		if (file.journal_kind === 'personal' && file.uploader_deleted_at) return [];
 		const canManage = file.journal_kind === 'personal' && canDeleteJournal({
 			kind: file.journal_kind as JournalKind,
 			creatorId: file.uploaded_by,
