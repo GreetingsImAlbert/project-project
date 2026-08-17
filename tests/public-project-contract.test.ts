@@ -89,9 +89,9 @@ test('public route access matrix keeps flag-off reads at 404 and members role-aw
 	}
 
 	const journal = source('../src/pages/projects/[id]/journal.astro');
+	assert.match(journal, /loadProjectJournals\(admin, env, project\.id, user\.id\)/);
 	assert.match(journal, /userRole === 'owner' \|\| userRole === 'editor'/);
-	assert.match(journal, /project\.public_journal_enabled/);
-	assert.match(journal, /Astro\.redirect\(`\/projects\/\$\{project\.id\}`\)/);
+	assert.doesNotMatch(journal, /Astro\.redirect\(`\/projects\/\$\{project\.id\}`\)/);
 
 	const overview = source('../src/pages/projects/[id].astro');
 	assert.match(overview, /rpc\('public_project_get'/);

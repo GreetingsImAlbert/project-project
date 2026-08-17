@@ -164,7 +164,7 @@ Add a deterministic filename helper:
 - On teardown, save pending content when feasible, clear timers, and remove channels.
 - Preserve the existing last-writer-wins behavior within one shared group draft and document that simultaneous editing has no merge engine.
 
-### Step 4: Rebuild the Journal page and tabs
+### [DONE] Step 4: Rebuild the Journal page and tabs
 
 Update `src/pages/projects/[id]/journal.astro` to load the journal list, draft rows, creator profiles, and finalized contents. Default to the group journal; optionally support `?journal=<file-id>` so refresh/deep links retain the active tab.
 

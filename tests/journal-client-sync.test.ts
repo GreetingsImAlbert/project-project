@@ -23,8 +23,8 @@ test('legacy journal client behavior remains available until the tab migration',
 test('JournalPage flushes pending saves and rejects late cross-journal events', () => {
 	const component = readFileSync(new URL('../src/components/JournalPage.svelte', import.meta.url), 'utf8');
 	assert.match(component, /export async function flushPendingSave/);
-	assert.match(component, /targetJournalFileId !== journalFileId/);
-	assert.match(component, /sequence !== latestSaveSequence/);
+	assert.match(component, /saveSequences\.get\(journalFileId\) !== sequence/);
+	assert.match(component, /activeJournalId !== journalFileId/);
 	assert.match(component, /recentOwnWrites/);
 	assert.match(component, /isRealtimeRowForJournal/);
 	assert.match(component, /removeChannel\(channel\)/);
