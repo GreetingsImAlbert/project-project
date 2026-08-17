@@ -244,7 +244,7 @@ The export manifest currently stores one `journalDraft`. Introduce a new manifes
 - Rejects malformed cross-project journal/draft relationships, duplicate group journals, unsafe filenames, and journal files outside the protected folder.
 - Updates record counts, validation limits, remapping, import RPC SQL, fixtures, and compatibility tests.
 
-### Step 10: Update types, tests, and documentation
+### [DONE] Step 10: Update types, tests, and documentation
 
 Add or update tests for:
 

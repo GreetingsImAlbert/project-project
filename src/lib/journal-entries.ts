@@ -1,4 +1,4 @@
-// The Journal file's markdown shape: one `## YYYY-MM-DD` section per day, oldest
+// A journal Markdown file's shape: one `## YYYY-MM-DD` section per day, oldest
 // first (append-only — see journal.ts's finalize step, the only writer of new
 // sections). Parsing/appending live here, independent of R2 and Supabase, so both
 // the SSR page (read) and the cron finalize job (write) share one definition of

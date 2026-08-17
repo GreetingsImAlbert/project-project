@@ -19,7 +19,7 @@ export interface ReadableFileRow {
 // they may not. Members keep their existing RLS-scoped read — including trashed,
 // Journal, and private files — so the member side behaves exactly as before. Everyone
 // else passes only for effectively public files: the project's Files gate is on, the
-// file's own switch is on, and the file is neither deleted nor the Journal file.
+// file's own switch is on, and the file is neither deleted nor a journal file.
 export async function getReadableFile(
 	supabase: SupabaseClient,
 	admin: SupabaseClient,

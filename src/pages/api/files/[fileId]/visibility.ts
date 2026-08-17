@@ -23,7 +23,7 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 	}
 
 	if (file.is_journal) {
-		return new Response('The Journal file cannot be public', { status: 403 });
+		return new Response('Journal files cannot be public', { status: 403 });
 	}
 
 	const { data: membership } = await locals.supabase

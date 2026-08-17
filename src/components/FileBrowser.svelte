@@ -39,7 +39,7 @@
 		uploader_deleted_at?: string | null;
 		profiles?: { display_name: string } | null;
 		// Absent (rather than false) on rows this component creates itself — an upload
-		// or a copy is never the project's Journal file, so there's nothing to select.
+		// or a copy is never one of the project's journal files, so there's nothing to select.
 		is_journal?: boolean;
 		journal_kind?: 'group' | 'personal' | null;
 		journal_visibility?: 'private' | 'members' | 'public' | null;

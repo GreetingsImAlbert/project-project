@@ -17,7 +17,7 @@ export default {
 	},
 
 	// Fires once a day (see wrangler.jsonc's triggers.crons) to roll every
-	// project's Journal draft over — see finalizeStaleDrafts for what that means.
+	// each stale journal draft over — see finalizeStaleDrafts for what that means.
 	// waitUntil rather than awaiting directly: the platform tears the invocation
 	// down once this function returns, and the work here is all async I/O
 	// (Postgres, R2) that would otherwise be cut off mid-flight.

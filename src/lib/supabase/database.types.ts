@@ -982,6 +982,10 @@ export type Database = {
         Args: { p_importer_id: string; p_payload: Json }
         Returns: string
       }
+      import_project_legacy: {
+        Args: { p_importer_id: string; p_payload: Json }
+        Returns: string
+      }
       import_project_once: {
         Args: { p_import_token: string; p_importer_id: string; p_payload: Json }
         Returns: string
