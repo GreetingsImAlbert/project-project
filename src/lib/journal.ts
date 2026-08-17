@@ -155,7 +155,7 @@ export interface JournalsFolderRow {
 // These queries intentionally describe the post-migration schema locally. The
 // generated Database type remains untouched until the migration is applied and
 // the repository-required `npm run update-types` is run by the user.
-function journalDatabase(client: SupabaseClient<Database>): SupabaseClient<any> {
+export function journalSchemaClient(client: SupabaseClient<Database>): SupabaseClient<any> {
 	return client as SupabaseClient<any>;
 }
 
@@ -163,7 +163,7 @@ export async function ensureJournalsFolder(
 	admin: SupabaseClient<Database>,
 	projectId: string,
 ): Promise<JournalsFolderRow> {
-	const db = journalDatabase(admin);
+	const db = journalSchemaClient(admin);
 	const { data: existing, error: readError, status: readStatus } = await db
 		.from('folders')
 		.select('id')
@@ -205,7 +205,7 @@ async function findJournalFile(
 	kind: JournalKind,
 	creatorId?: string,
 ): Promise<JournalFileRow | null> {
-	let query = journalDatabase(admin)
+	let query = journalSchemaClient(admin)
 		.from('files')
 		.select('id, r2_key, size_bytes')
 		.eq('project_id', projectId)
@@ -231,7 +231,7 @@ async function createJournalFile(
 	const r2Key = `${projectId}/${crypto.randomUUID()}-${filename}`;
 	const sizeBytes = await writeJournalObject(env, r2Key, '');
 
-	const { data: created, error, status } = await journalDatabase(admin)
+	const { data: created, error, status } = await journalSchemaClient(admin)
 		.from('files')
 		.insert({
 			project_id: projectId,
@@ -369,7 +369,7 @@ export async function ensureJournalDraft(
 		return created;
 	}
 
-	const db = journalDatabase(supabase);
+	const db = journalSchemaClient(supabase);
 	const { data: existing, error: readError, status: readStatus } = await db
 		.from('journal_drafts')
 		.select('draft_date, content')
@@ -404,7 +404,7 @@ export async function loadProjectJournals(
 	projectId: string,
 	viewerId: string,
 ): Promise<ProjectJournal[]> {
-	const db = journalDatabase(admin);
+	const db = journalSchemaClient(admin);
 	const { data: membership, error: membershipError, status: membershipStatus } = await db
 		.from('project_members')
 		.select('role')

@@ -143,7 +143,7 @@ Add a deterministic filename helper:
 - Fall back to a stable safe label if the display name produces an empty filename.
 - Use `JOURNAL_<slug>.md`; do not automatically rename it after profile changes.
 
-### Step 2: Add journal collection/create/delete APIs
+### [DONE] Step 2: Add journal collection/create/delete APIs
 
 - Add a journal collection endpoint under `/api/projects/[id]/journals` for idempotent personal journal creation.
 - If the caller has a soft-deleted personal journal, return a restore-required result and restore it after explicit confirmation instead of inserting a duplicate.

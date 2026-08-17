@@ -8,7 +8,7 @@
   "scripts": {
     "build": "node scripts/build.mjs production",
     "build:staging": "node scripts/build.mjs staging",
-    "test": "node --test --experimental-strip-types --loader ./scripts/test-loader.mjs tests/task-status.test.ts tests/task-form.test.ts tests/image-viewer.test.ts tests/task-priority.test.ts tests/auth-feedback.test.ts tests/error-report-outbox.test.ts tests/feedback.test.ts tests/journal-domain.test.ts tests/journal-retry.test.ts tests/project-picture.test.ts tests/project-ownership.test.ts tests/project-export.test.ts tests/project-import.test.ts tests/project-import-policy.test.ts tests/project-import-remap.test.ts tests/project-visibility.test.ts tests/public-project-contract.test.ts",
+    "test": "node --test --experimental-strip-types --loader ./scripts/test-loader.mjs tests/task-status.test.ts tests/task-form.test.ts tests/image-viewer.test.ts tests/task-priority.test.ts tests/auth-feedback.test.ts tests/error-report-outbox.test.ts tests/feedback.test.ts tests/journal-api-contract.test.ts tests/journal-domain.test.ts tests/journal-retry.test.ts tests/project-picture.test.ts tests/project-ownership.test.ts tests/project-export.test.ts tests/project-import.test.ts tests/project-import-policy.test.ts tests/project-import-remap.test.ts tests/project-visibility.test.ts tests/public-project-contract.test.ts",
     "update-types": "dotenv -e .env.staging -- sh -c \"npx --yes supabase gen types typescript --project-id $SUPABASE_STAGING_REF > src/lib/supabase/database.types.ts\"",
     "dev:staging": "npm run build:staging && npx wrangler dev --env staging",
     "deploy:staging": "npm run build:staging && npx wrangler deploy --env staging",
