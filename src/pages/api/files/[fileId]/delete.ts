@@ -1,5 +1,6 @@
 import type { APIRoute } from 'astro';
 import { errorResponse } from '../../../../lib/error-report';
+import { canDeleteJournal, journalSchemaClient, type JournalKind, type JournalVisibility } from '../../../../lib/journal';
 
 export const prerender = false;
 
@@ -13,21 +14,14 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 
 	const fileId = params.fileId;
 
-	const { data: file, error: fileError } = await locals.supabase
+	const { data: file, error: fileError } = await journalSchemaClient(locals.supabase)
 		.from('files')
-		.select('project_id, is_journal')
+		.select('project_id, uploaded_by, is_journal, journal_kind, journal_visibility')
 		.eq('id', fileId)
 		.single();
 
 	if (fileError || !file) {
 		return new Response('File not found', { status: 404 });
-	}
-
-	// The RLS update policy would allow this (Journal isn't protected there — only
-	// the delete policy checks is_journal), so this app-level check is what
-	// actually protects it from ending up in the trash.
-	if (file.is_journal) {
-		return new Response('The Journal file cannot be deleted', { status: 403 });
 	}
 
 	const { data: membership } = await locals.supabase
@@ -37,11 +31,19 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 		.eq('user_id', locals.user.id)
 		.single();
 
-	if (!membership || !['owner', 'editor'].includes(membership.role)) {
+	const mayDelete = !!membership && (file.is_journal
+		? canDeleteJournal({
+			kind: file.journal_kind as JournalKind,
+			creatorId: file.uploaded_by,
+			visibility: file.journal_visibility as JournalVisibility | null,
+		}, { viewerId: locals.user.id, isProjectMember: true, role: membership.role })
+		: ['owner', 'editor'].includes(membership.role));
+	if (!mayDelete) {
 		return new Response('Forbidden', { status: 403 });
 	}
 
-	const { error } = await locals.supabase.from('files').update({ deleted_at: new Date().toISOString() }).eq('id', fileId);
+	const deletedAt = new Date().toISOString();
+	const { error } = await locals.supabase.from('files').update({ deleted_at: deletedAt }).eq('id', fileId);
 
 	if (error) {
 		return errorResponse({
@@ -51,6 +53,17 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 			action: 'Failed to delete file.',
 			context: { fileId: fileId ?? null, projectId: file.project_id },
 		});
+	}
+
+	if (file.is_journal) {
+		const { error: draftError } = await journalSchemaClient(locals.supabase)
+			.from('journal_drafts')
+			.delete()
+			.eq('journal_file_id', fileId);
+		if (draftError) {
+			await locals.supabase.from('files').update({ deleted_at: null }).eq('id', fileId).eq('deleted_at', deletedAt);
+			return new Response('Failed to remove the journal draft', { status: 500 });
+		}
 	}
 
 	return new Response(null, { status: 204 });

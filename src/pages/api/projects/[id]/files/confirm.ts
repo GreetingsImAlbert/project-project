@@ -5,6 +5,7 @@ import { getSupabaseAdmin } from '../../../../../lib/supabase/admin';
 import { wouldExceedStorageQuota } from '../../../../../lib/r2-quota';
 import { MAX_FILENAME_LENGTH } from '../../../../../lib/file-kind';
 import { logError } from '../../../../../lib/error-report';
+import { journalSchemaClient } from '../../../../../lib/journal';
 
 export const prerender = false;
 
@@ -17,6 +18,13 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 
 	const projectId = params.id;
 	const body = await request.json() as { r2Key?: string; filename?: string; mimeType?: string; folderId?: string };
+	const { data: membership } = await locals.supabase
+		.from('project_members')
+		.select('role')
+		.eq('project_id', projectId)
+		.eq('user_id', locals.user.id)
+		.maybeSingle();
+	if (!membership || !['owner', 'editor'].includes(membership.role)) return new Response('Forbidden', { status: 403 });
 
 	if (!body.r2Key || !body.filename) {
 		return new Response('Missing r2Key or filename', { status: 400 });
@@ -27,14 +35,14 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 	}
 
 	if (body.folderId) {
-		const { data: folder } = await locals.supabase
+		const { data: folder } = await journalSchemaClient(locals.supabase)
 			.from('folders')
-			.select('id')
+			.select('id, is_journals_folder')
 			.eq('id', body.folderId)
 			.eq('project_id', projectId)
 			.single();
 
-		if (!folder) {
+		if (!folder || folder.is_journals_folder) {
 			return new Response('Folder not found', { status: 400 });
 		}
 	}

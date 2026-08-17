@@ -5,6 +5,15 @@ import FileBrowser from '../../../components/FileBrowser.svelte';
 import { getSupabaseAdmin } from '../../../lib/supabase/admin';
 import { getStorageUsage, getProjectStorageBytes } from '../../../lib/r2-quota';
 import { toPublicSectionFlags, type PublicProjectFlags } from '../../../lib/project-visibility';
+import {
+	canDeleteJournal,
+	canEditJournal,
+	canReadJournal,
+	journalSchemaClient,
+	type JournalKind,
+	type JournalVisibility,
+} from '../../../lib/journal';
+import { getReadableFile } from '../../../lib/file-access';
 
 export const prerender = false;
 
@@ -25,8 +34,19 @@ interface FileRow {
 	uploaded_by?: string | null;
 	uploader_deleted_at?: string | null;
 	is_journal?: boolean;
+	journal_kind?: JournalKind | null;
+	journal_visibility?: JournalVisibility | null;
 	is_public: boolean;
 	profiles?: { display_name: string } | null;
+	canEdit?: boolean;
+	canDelete?: boolean;
+}
+
+interface FolderRow {
+	id: string;
+	name: string;
+	parent_folder_id: string | null;
+	is_journals_folder: boolean;
 }
 
 type FilesProject = {
@@ -39,7 +59,7 @@ type FilesProject = {
 let project: FilesProject | null = null;
 let readOnly = false;
 let userRole: string | undefined;
-let allFolders: { id: string; name: string; parent_folder_id: string | null }[] | null = null;
+let allFolders: FolderRow[] | null = null;
 let files: FileRow[] = [];
 let availableBytes: number | null = null;
 let storageQuotaScope: 'user' | 'global' = 'user';
@@ -68,9 +88,9 @@ if (user) {
 		// round trip and the browser sees nothing until the last one lands. None of
 		// these actually depend on each other — RLS scopes each one to the caller on
 		// its own, and the 404 checks below only need the results, not the ordering.
-		let filesQuery = Astro.locals.supabase
+		let filesQuery = journalSchemaClient(Astro.locals.supabase)
 			.from('files')
-			.select('id, filename, size_bytes, mime_type, created_at, uploaded_by, uploader_deleted_at, is_journal, is_public, profiles(display_name)')
+			.select('id, filename, size_bytes, mime_type, created_at, uploaded_by, uploader_deleted_at, is_journal, journal_kind, journal_visibility, is_public, profiles(display_name)')
 			.eq('project_id', id)
 			.is('deleted_at', null)
 			.order('created_at', { ascending: false });
@@ -88,9 +108,9 @@ if (user) {
 				.from('project_members')
 				.select('role, is_auditor, user_id')
 				.eq('project_id', id),
-			Astro.locals.supabase
+			journalSchemaClient(Astro.locals.supabase)
 				.from('folders')
-				.select('id, name, parent_folder_id')
+				.select('id, name, parent_folder_id, is_journals_folder')
 				.eq('project_id', id)
 				.is('deleted_at', null),
 			filesQuery.overrideTypes<FileRow[]>(),
@@ -98,9 +118,21 @@ if (user) {
 			getProjectStorageBytes(Astro.locals.supabase, id!),
 		]);
 
-		allFolders = allFoldersData;
-		files = filesData ?? [];
+		allFolders = (allFoldersData ?? []) as FolderRow[];
 		userRole = membersData?.find((member) => member.user_id === user.id)?.role;
+		const subject = { viewerId: user.id, isProjectMember: true, role: userRole ?? null };
+		const roleCanEditFiles = userRole === 'owner' || userRole === 'editor';
+		files = (filesData ?? []).flatMap((file) => {
+			if (!file.is_journal) return [{ ...file, canEdit: roleCanEditFiles, canDelete: roleCanEditFiles }];
+			if (!file.journal_kind) return [];
+			const target = {
+				kind: file.journal_kind,
+				creatorId: file.uploaded_by ?? null,
+				visibility: file.journal_visibility ?? null,
+			};
+			if (!canReadJournal(target, subject)) return [];
+			return [{ ...file, canEdit: canEditJournal(target, subject), canDelete: canDeleteJournal(target, subject) }];
+		});
 		storageQuotaScope = userStorageScope;
 		availableBytes = userStorageFailed ? null : storageCapBytes - totalBytes;
 		projectStorageBytes = projectStorageBytesData;
@@ -114,13 +146,8 @@ if (user) {
 		// RLS scopes this to files in the caller's projects, so an open-file param
 		// pointing anywhere else simply doesn't resolve; a bogus id is ignored too.
 		if (openFileId) {
-			const { data: openFile } = await Astro.locals.supabase
-				.from('files')
-				.select('id, filename')
-				.eq('id', openFileId)
-				.maybeSingle();
-
-			initialOpenFile = openFile ?? null;
+			const openFile = await getReadableFile(Astro.locals.supabase, admin, openFileId, user.id);
+			initialOpenFile = openFile && openFile.project_id === id ? { id: openFileId, filename: openFile.filename } : null;
 		}
 	}
 }

@@ -3,6 +3,7 @@ import { AwsClient } from 'aws4fetch';
 import { env } from 'cloudflare:workers';
 import { collectDescendantFolderIds } from '../../../../../../lib/folder-tree';
 import { errorResponse } from '../../../../../../lib/error-report';
+import { journalSchemaClient } from '../../../../../../lib/journal';
 
 export const prerender = false;
 
@@ -30,9 +31,9 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 		return new Response('Forbidden', { status: 403 });
 	}
 
-	const { data: folder, error: folderError } = await locals.supabase
+	const { data: folder, error: folderError } = await journalSchemaClient(locals.supabase)
 		.from('folders')
-		.select('id, deleted_at')
+		.select('id, deleted_at, is_journals_folder')
 		.eq('id', folderId)
 		.eq('project_id', projectId)
 		.single();
@@ -40,14 +41,22 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 	if (folderError || !folder) {
 		return new Response('Folder not found', { status: 404 });
 	}
+	if (folder.is_journals_folder) return new Response('The journals folder cannot be permanently deleted', { status: 403 });
 
 	if (!folder.deleted_at) {
 		return new Response('Folder is not in the trash', { status: 400 });
 	}
 
 	const folderIds = await collectDescendantFolderIds(locals.supabase, folderId as string);
+	const [{ data: protectedFolders }, { data: journalFiles }] = await Promise.all([
+		journalSchemaClient(locals.supabase).from('folders').select('id').in('id', folderIds).eq('is_journals_folder', true),
+		journalSchemaClient(locals.supabase).from('files').select('id').in('folder_id', folderIds).eq('is_journal', true),
+	]);
+	if ((protectedFolders?.length ?? 0) > 0 || (journalFiles?.length ?? 0) > 0) {
+		return new Response('Folders containing journals cannot be permanently deleted', { status: 403 });
+	}
 
-	const { data: files } = await locals.supabase.from('files').select('id, r2_key').in('folder_id', folderIds);
+	const { data: files } = await locals.supabase.from('files').select('id, r2_key').in('folder_id', folderIds).eq('is_journal', false);
 
 	if (files && files.length > 0) {
 		const { error: filesDeleteError } = await locals.supabase

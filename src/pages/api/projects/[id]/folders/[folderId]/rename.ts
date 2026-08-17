@@ -1,5 +1,6 @@
 import type { APIRoute } from 'astro';
 import { errorResponse } from '../../../../../../lib/error-report';
+import { journalSchemaClient } from '../../../../../../lib/journal';
 
 export const prerender = false;
 
@@ -22,9 +23,9 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 		return new Response('Forbidden', { status: 403 });
 	}
 
-	const { data: folder, error: folderError } = await locals.supabase
+	const { data: folder, error: folderError } = await journalSchemaClient(locals.supabase)
 		.from('folders')
-		.select('id')
+		.select('id, is_journals_folder')
 		.eq('id', folderId)
 		.eq('project_id', projectId)
 		.single();
@@ -32,6 +33,7 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 	if (folderError || !folder) {
 		return new Response('Folder not found', { status: 404 });
 	}
+	if (folder.is_journals_folder) return new Response('The journals folder cannot be renamed', { status: 403 });
 
 	const body = await request.json() as { name?: string };
 	const name = body.name?.trim();

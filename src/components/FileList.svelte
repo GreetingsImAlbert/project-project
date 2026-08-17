@@ -15,7 +15,11 @@
 		uploader_deleted_at?: string | null;
 		profiles?: { display_name: string } | null;
 		is_journal?: boolean;
+		journal_kind?: 'group' | 'personal' | null;
+		journal_visibility?: 'private' | 'members' | 'public' | null;
 		is_public: boolean;
+		canEdit?: boolean;
+		canDelete?: boolean;
 	}
 
 	// Mirrors FILE_GRACE_DAYS in src/lib/account-deletion.ts — kept as a plain number
@@ -112,6 +116,10 @@
 
 	function toggleActions(fileId: string) {
 		openActionsId = openActionsId === fileId ? null : fileId;
+	}
+
+	function hasActions(file: FileRow): boolean {
+		return file.is_journal ? file.canDelete === true : canEdit;
 	}
 
 	function handleWindowClick(e: MouseEvent) {
@@ -323,18 +331,22 @@
 
 {#snippet actionsPanel(file: FileRow)}
 	<div class="actions-panel" data-file-actions transition:slide={{ duration: 150 }}>
-		{@render visibilityControl(file)}
-		{#if publicFilesEnabled && file.is_public}
-			<button type="button" class="btn-plain" onclick={() => copyPublicLink(file)}>
-				{copiedLinkId === file.id ? 'Copied' : copyLinkFailedId === file.id ? 'Copy failed' : 'Copy public link'}
+		{#if file.is_journal}
+			{#if file.canDelete}<button type="button" class="btn-danger" onclick={() => handleDelete(file.id)} disabled={deletingId === file.id}>{deletingId === file.id ? 'Deleting…' : 'Delete'}</button>{/if}
+		{:else}
+			{@render visibilityControl(file)}
+			{#if publicFilesEnabled && file.is_public}
+				<button type="button" class="btn-plain" onclick={() => copyPublicLink(file)}>
+					{copiedLinkId === file.id ? 'Copied' : copyLinkFailedId === file.id ? 'Copy failed' : 'Copy public link'}
+				</button>
+			{/if}
+			<button type="button" class="btn-plain" onclick={() => openRename(file)}>Rename</button>
+			<button type="button" class="btn-plain" onclick={() => openModal(file, 'move')}>Move</button>
+			<button type="button" class="btn-plain" onclick={() => openModal(file, 'copy')}>Copy</button>
+			<button type="button" class="btn-danger" onclick={() => handleDelete(file.id)} disabled={deletingId === file.id}>
+				{deletingId === file.id ? 'Deleting…' : 'Delete'}
 			</button>
 		{/if}
-		<button type="button" class="btn-plain" onclick={() => openRename(file)}>Rename</button>
-		<button type="button" class="btn-plain" onclick={() => openModal(file, 'move')}>Move</button>
-		<button type="button" class="btn-plain" onclick={() => openModal(file, 'copy')}>Copy</button>
-		<button type="button" class="btn-danger" onclick={() => handleDelete(file.id)} disabled={deletingId === file.id}>
-			{deletingId === file.id ? 'Deleting…' : 'Delete'}
-		</button>
 	</div>
 {/snippet}
 
@@ -358,13 +370,13 @@
 					{#if parts.ext}<span class="grid-ext muted">{parts.ext}</span>{/if}
 				</button>
 
-				{#if canEdit && !file.is_journal}
+				{#if hasActions(file)}
 					<button type="button" class="grid-actions-toggle" data-file-actions aria-label="Actions" onclick={() => toggleActions(file.id)}>
 						{openActionsId === file.id ? '▴' : '▾'}
 					</button>
 				{/if}
 
-				{#if canEdit && !file.is_journal && openActionsId === file.id}
+				{#if hasActions(file) && openActionsId === file.id}
 					{@render actionsPanel(file)}
 				{/if}
 
@@ -374,7 +386,7 @@
 			</li>
 		{:else}
 			<li class="file-row" class:open={openFileId === file.id}>
-				<div class="file-header" class:with-actions={canEdit && !file.is_journal} role="button" tabindex="0" onclick={() => onFileOpen(file)} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onFileOpen(file); } }}>
+				<div class="file-header" class:with-actions={hasActions(file)} role="button" tabindex="0" onclick={() => onFileOpen(file)} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onFileOpen(file); } }}>
 					<div class="cell cell-name">
 						<span class="file-icon">📄</span>
 						<span class="file-name-text">{parts.base}</span>
@@ -389,20 +401,24 @@
 						{/if}
 					</div>
 
-					{#if canEdit && !file.is_journal}
+					{#if hasActions(file)}
 						<div class="cell cell-actions" onclick={(e) => e.stopPropagation()}>
-							{@render visibilityControl(file)}
-							{#if publicFilesEnabled && file.is_public}
-								<button type="button" class="btn-plain" onclick={() => copyPublicLink(file)}>
-									{copiedLinkId === file.id ? 'Copied' : copyLinkFailedId === file.id ? 'Copy failed' : 'Copy public link'}
+							{#if file.is_journal}
+								{#if file.canDelete}<button type="button" class="btn-danger" onclick={() => handleDelete(file.id)} disabled={deletingId === file.id}>{deletingId === file.id ? 'Deleting…' : 'Delete'}</button>{/if}
+							{:else}
+								{@render visibilityControl(file)}
+								{#if publicFilesEnabled && file.is_public}
+									<button type="button" class="btn-plain" onclick={() => copyPublicLink(file)}>
+										{copiedLinkId === file.id ? 'Copied' : copyLinkFailedId === file.id ? 'Copy failed' : 'Copy public link'}
+									</button>
+								{/if}
+								<button type="button" class="btn-plain" onclick={() => openRename(file)}>Rename</button>
+								<button type="button" class="btn-plain" onclick={() => openModal(file, 'move')}>Move</button>
+								<button type="button" class="btn-plain" onclick={() => openModal(file, 'copy')}>Copy</button>
+								<button type="button" class="btn-danger" onclick={() => handleDelete(file.id)} disabled={deletingId === file.id}>
+									{deletingId === file.id ? 'Deleting…' : 'Delete'}
 								</button>
 							{/if}
-							<button type="button" class="btn-plain" onclick={() => openRename(file)}>Rename</button>
-							<button type="button" class="btn-plain" onclick={() => openModal(file, 'move')}>Move</button>
-							<button type="button" class="btn-plain" onclick={() => openModal(file, 'copy')}>Copy</button>
-							<button type="button" class="btn-danger" onclick={() => handleDelete(file.id)} disabled={deletingId === file.id}>
-								{deletingId === file.id ? 'Deleting…' : 'Delete'}
-							</button>
 						</div>
 					{/if}
 				</div>

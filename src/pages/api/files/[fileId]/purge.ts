@@ -2,6 +2,8 @@ import type { APIRoute } from 'astro';
 import { AwsClient } from 'aws4fetch';
 import { env } from 'cloudflare:workers';
 import { errorResponse } from '../../../../lib/error-report';
+import { getSupabaseAdmin } from '../../../../lib/supabase/admin';
+import { canDeleteJournal, journalSchemaClient, type JournalKind, type JournalVisibility } from '../../../../lib/journal';
 
 export const prerender = false;
 
@@ -14,10 +16,11 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 	}
 
 	const fileId = params.fileId;
+	const admin = getSupabaseAdmin(env);
 
-	const { data: file, error: fileError } = await locals.supabase
+	const { data: file, error: fileError } = await journalSchemaClient(admin)
 		.from('files')
-		.select('project_id, r2_key, deleted_at')
+		.select('project_id, r2_key, uploaded_by, is_journal, journal_kind, journal_visibility, deleted_at')
 		.eq('id', fileId)
 		.single();
 
@@ -34,13 +37,21 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 		.select('role')
 		.eq('project_id', file.project_id)
 		.eq('user_id', locals.user.id)
-		.single();
+		.maybeSingle();
 
-	if (!membership || !['owner', 'editor'].includes(membership.role)) {
+	if (!membership) return new Response('File not found', { status: 404 });
+	const mayPurge = file.is_journal
+		? canDeleteJournal({
+			kind: file.journal_kind as JournalKind,
+			creatorId: file.uploaded_by,
+			visibility: file.journal_visibility as JournalVisibility | null,
+		}, { viewerId: locals.user.id, isProjectMember: true, role: membership.role })
+		: ['owner', 'editor'].includes(membership.role);
+	if (!mayPurge) {
 		return new Response('Forbidden', { status: 403 });
 	}
 
-	const { error } = await locals.supabase.from('files').delete().eq('id', fileId);
+	const { error } = await journalSchemaClient(admin).from('files').delete().eq('id', fileId);
 
 	if (error) {
 		return errorResponse({

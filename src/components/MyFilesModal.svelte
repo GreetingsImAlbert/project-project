@@ -19,6 +19,7 @@
 		size_bytes: number | null;
 		project_id: string;
 		projects: { name: string } | null;
+		canDelete: boolean;
 	}
 
 	let open = $state(false);
@@ -190,7 +191,7 @@
 										<span class="grid-size muted">
 											{file.size_bytes != null ? formatFileSize(file.size_bytes) : ''}
 										</span>
-										<button
+										{#if file.canDelete}<button
 											type="button"
 											class="trash-btn"
 											aria-label="Delete file"
@@ -198,7 +199,7 @@
 											disabled={deletingId === file.id}
 										>
 											🗑
-										</button>
+										</button>{/if}
 										{#if rowError?.id === file.id}<p class="row-error">{rowError.message}</p>{/if}
 									</li>
 								{:else}
@@ -210,7 +211,7 @@
 										<span class="muted file-meta">
 											{file.size_bytes != null ? formatFileSize(file.size_bytes) : ''}
 										</span>
-										<button
+										{#if file.canDelete}<button
 											type="button"
 											class="trash-btn"
 											aria-label="Delete file"
@@ -218,7 +219,7 @@
 											disabled={deletingId === file.id}
 										>
 											🗑
-										</button>
+										</button>{/if}
 										{#if rowError?.id === file.id}<p class="row-error">{rowError.message}</p>{/if}
 									</li>
 								{/if}

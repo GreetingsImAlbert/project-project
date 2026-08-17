@@ -1,5 +1,6 @@
 import type { APIRoute } from 'astro';
 import { errorResponse } from '../../../../../lib/error-report';
+import { journalSchemaClient } from '../../../../../lib/journal';
 
 export const prerender = false;
 
@@ -34,22 +35,22 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 	}
 
 	if (parentFolderId) {
-		const { data: parentFolder } = await locals.supabase
+		const { data: parentFolder } = await journalSchemaClient(locals.supabase)
 			.from('folders')
-			.select('id')
+			.select('id, is_journals_folder')
 			.eq('id', parentFolderId)
 			.eq('project_id', projectId)
 			.single();
 
-		if (!parentFolder) {
+		if (!parentFolder || parentFolder.is_journals_folder) {
 			return new Response('Parent folder not found', { status: 400 });
 		}
 	}
 
-	const { data: created, error } = await locals.supabase
+	const { data: created, error } = await journalSchemaClient(locals.supabase)
 		.from('folders')
 		.insert({ project_id: projectId, name, parent_folder_id: parentFolderId })
-		.select('id, name, parent_folder_id')
+		.select('id, name, parent_folder_id, is_journals_folder')
 		.single();
 
 	if (error) {

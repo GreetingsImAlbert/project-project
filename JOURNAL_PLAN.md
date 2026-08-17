@@ -193,7 +193,7 @@ Update `src/components/JournalPage.svelte`:
 - Do not lazily create files or drafts in the public branch.
 - Change every single-row `is_journal = true` lookup to an explicit `journal_kind = group` lookup.
 
-### Step 6: Harden Files and Trash integration
+### [DONE] Step 6: Harden Files and Trash integration
 
 Journal files must physically appear inside the protected `journals` folder, but Files actions must respect journal rules.
 

@@ -23,6 +23,7 @@
 		id: string;
 		name: string;
 		parent_folder_id: string | null;
+		is_journals_folder: boolean;
 	}
 
 	interface FileRow {
@@ -40,7 +41,11 @@
 		// Absent (rather than false) on rows this component creates itself — an upload
 		// or a copy is never the project's Journal file, so there's nothing to select.
 		is_journal?: boolean;
+		journal_kind?: 'group' | 'personal' | null;
+		journal_visibility?: 'private' | 'members' | 'public' | null;
 		is_public: boolean;
+		canEdit?: boolean;
+		canDelete?: boolean;
 	}
 
 	let {
@@ -190,6 +195,7 @@
 	let parentFolderId = $derived(
 		breadcrumbs.length > 0 ? breadcrumbs[breadcrumbs.length - 1].parent_folder_id : null
 	);
+	let currentFolderProtected = $derived(currentFolderId ? folderById.get(currentFolderId)?.is_journals_folder === true : false);
 
 	function setViewMode(mode: 'list' | 'grid') {
 		viewMode = mode;
@@ -588,7 +594,7 @@
 		</div>
 	</div>
 
-	{#if canEdit}
+		{#if canEdit && !currentFolderProtected}
 		<!-- Both of these sit on this row rather than above the create controls
 		     themselves, so the name input, the file input and the upload dropzone all
 		     stay on the same line as Back/Up and the breadcrumbs. -->
@@ -664,7 +670,7 @@
 		</p>
 	</div>
 
-	{#if canEdit}
+	{#if canEdit && !currentFolderProtected}
 		<!-- All three panels stay mounted so a half-typed name or an already-picked file
 		     survives a toggle to another mode and back. -->
 		<div class="header-actions">
@@ -714,13 +720,13 @@
 						<span class="grid-name">{folder.name}</span>
 					</a>
 
-					{#if canEdit}
+					{#if canEdit && !folder.is_journals_folder}
 						<button type="button" class="grid-actions-toggle" data-folder-actions aria-label="Actions" onclick={() => toggleFolderActions(folder.id)}>
 							{openFolderActionsId === folder.id ? '▴' : '▾'}
 						</button>
 					{/if}
 
-					{#if canEdit && openFolderActionsId === folder.id}
+					{#if canEdit && !folder.is_journals_folder && openFolderActionsId === folder.id}
 						<div class="actions-panel" data-folder-actions transition:slide={{ duration: 150 }}>
 							<button type="button" class="btn-plain" onclick={() => openRenameFolder(folder)}>Rename</button>
 							<button type="button" class="btn-danger" onclick={() => handleDeleteFolder(folder.id)} disabled={deletingFolderId === folder.id}>
@@ -735,7 +741,7 @@
 				</li>
 			{:else}
 				<li class="folder-row">
-					<a class="folder-header" class:with-actions={canEdit} href={hrefFor(folder.id)} onclick={(e) => handleLinkClick(e, folder.id)}>
+					<a class="folder-header" class:with-actions={canEdit && !folder.is_journals_folder} href={hrefFor(folder.id)} onclick={(e) => handleLinkClick(e, folder.id)}>
 						<div class="cell cell-name">
 							<span class="folder-icon">📁</span>
 							<span class="folder-name-text">{folder.name}</span>
@@ -743,7 +749,7 @@
 
 						<div class="cell cell-meta"></div>
 
-						{#if canEdit}
+						{#if canEdit && !folder.is_journals_folder}
 							<div class="cell cell-actions" onclick={(e) => e.preventDefault()}>
 								<button type="button" class="btn-plain" onclick={(e) => { e.preventDefault(); openRenameFolder(folder); }}>Rename</button>
 								<button type="button" class="btn-danger" onclick={(e) => { e.preventDefault(); handleDeleteFolder(folder.id); }} disabled={deletingFolderId === folder.id}>

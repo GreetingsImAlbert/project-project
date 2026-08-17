@@ -14,12 +14,17 @@
 		filename: string;
 		size_bytes: number | null;
 		deleted_at: string;
+		canRestore: boolean;
+		canPurge: boolean;
 	}
 
 	interface FolderRow {
 		id: string;
 		name: string;
 		deleted_at: string;
+		isJournalsFolder: boolean;
+		canRestore: boolean;
+		canPurge: boolean;
 	}
 
 	interface TaskRow {
@@ -195,15 +200,11 @@
 	);
 </script>
 
-{#snippet actions(kind: 'file' | 'folder' | 'task' | 'bom_item' | 'transaction', id: string, label: string, canAct: boolean)}
-	{#if canAct}
+{#snippet actions(kind: 'file' | 'folder' | 'task' | 'bom_item' | 'transaction', id: string, label: string, canRestore: boolean, canPurge = canRestore)}
+	{#if canRestore || canPurge}
 		<div class="row-actions">
-			<button type="button" class="btn-plain" onclick={() => restore(kind, id)} disabled={busyId === id}>
-				{busyId === id ? '…' : 'Restore'}
-			</button>
-			<button type="button" class="btn-danger" onclick={() => purgeForever(kind, id, label)} disabled={busyId === id}>
-				Delete forever
-			</button>
+			{#if canRestore}<button type="button" class="btn-plain" onclick={() => restore(kind, id)} disabled={busyId === id}>{busyId === id ? '…' : 'Restore'}</button>{/if}
+			{#if canPurge}<button type="button" class="btn-danger" onclick={() => purgeForever(kind, id, label)} disabled={busyId === id}>Delete forever</button>{/if}
 		</div>
 	{/if}
 	{#if rowError?.id === id}
@@ -231,7 +232,7 @@
 						{file.size_bytes != null ? `${Math.round(file.size_bytes).toLocaleString()} B — ` : ''}
 						{remaining} day{remaining === 1 ? '' : 's'} left
 					</span>
-					{@render actions('file', file.id, file.filename, true)}
+					{@render actions('file', file.id, file.filename, file.canRestore, file.canPurge)}
 				</li>
 			{/each}
 			</ul>
@@ -254,7 +255,7 @@
 				<li class="trash-row">
 					<span class="row-label">{folder.name}</span>
 					<span class="row-meta muted">{remaining} day{remaining === 1 ? '' : 's'} left</span>
-					{@render actions('folder', folder.id, folder.name, true)}
+					{@render actions('folder', folder.id, folder.name, folder.canRestore, folder.canPurge)}
 				</li>
 			{/each}
 			</ul>

@@ -68,8 +68,8 @@ test('public journal reads finalized, non-deleted history only', () => {
 
 test('legacy single group journal lookups identify the group kind explicitly', () => {
 	const journalLib = source('../src/lib/journal.ts');
-	const groupLookups = journalLib.match(/\.eq\('is_journal', true\)\s*\.eq\('journal_kind', 'group'\)\s*\.maybeSingle\(\)/g) ?? [];
-	assert.equal(groupLookups.length, 2);
+	assert.doesNotMatch(journalLib, /\.eq\('is_journal', true\)\s*\.maybeSingle\(\)/);
+	assert.match(journalLib, /\.eq\('is_journal', true\)\s*\.eq\('journal_kind', 'group'\)\s*\.maybeSingle\(\)/);
 });
 
 test('public Money payload excludes personal summary inputs and deleted rows', () => {

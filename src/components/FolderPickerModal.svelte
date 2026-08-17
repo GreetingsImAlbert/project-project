@@ -6,6 +6,7 @@
 		id: string;
 		name: string;
 		parent_folder_id: string | null;
+		is_journals_folder?: boolean;
 	}
 
 	let {
@@ -33,7 +34,7 @@
 	let folderById = $derived(new Map(allFolders.map((f) => [f.id, f])));
 
 	let subfolders = $derived(
-		allFolders.filter((f) => (f.parent_folder_id ?? null) === (browseFolderId ?? null))
+		allFolders.filter((f) => !f.is_journals_folder && (f.parent_folder_id ?? null) === (browseFolderId ?? null))
 	);
 
 	let breadcrumbs = $derived.by(() => {

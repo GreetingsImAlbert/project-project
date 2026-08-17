@@ -27,9 +27,7 @@ export {
 } from './journal-domain';
 export type { JournalAccessSubject, JournalAccessTarget, JournalKind, JournalVisibility } from './journal-domain';
 
-// Every project gets at most one of these — the database's
-// `journal_file_unique_per_project` partial index actually enforces that; this
-// filename is just what a member sees in the Files list.
+// The fixed visible filename for the one active group journal per project.
 export const JOURNAL_FILENAME = 'JOURNAL.md';
 export const JOURNAL_MIME = 'text/markdown';
 export const JOURNALS_FOLDER_NAME = 'journals';
@@ -302,48 +300,6 @@ export interface JournalFileRow {
 	id: string;
 	r2_key: string;
 	size_bytes: number | null;
-}
-
-// Compatibility wrapper for the current Journal page; Step 4 switches it to
-// ensureGroupJournal after the journal-overhaul migration is active.
-export async function ensureJournalFile(
-	admin: SupabaseClient<Database>,
-	env: Env,
-	projectId: string,
-	ownerId: string,
-): Promise<JournalFileRow> {
-	const db = journalSchemaClient(admin);
-	const { data: existing, error: readError, status: readStatus } = await db
-		.from('files')
-		.select('id, r2_key, size_bytes')
-		.eq('project_id', projectId)
-		.eq('is_journal', true)
-		.eq('journal_kind', 'group')
-		.maybeSingle();
-	if (readError) throw supabaseFailure(readError, readStatus);
-	if (existing) return existing;
-
-	const r2Key = `${projectId}/${crypto.randomUUID()}-${JOURNAL_FILENAME}`;
-	const sizeBytes = await writeJournalObject(env, r2Key, '');
-	const { data: created, error, status } = await db
-		.from('files')
-		.insert({
-			project_id: projectId,
-			uploaded_by: ownerId,
-			filename: JOURNAL_FILENAME,
-			r2_key: r2Key,
-			mime_type: JOURNAL_MIME,
-			size_bytes: sizeBytes,
-			is_journal: true,
-		})
-		.select('id, r2_key, size_bytes')
-		.single();
-	if (!error && created) return created;
-
-	await deleteJournalObject(env, r2Key).catch((cleanupError) => {
-		console.error(`[journal] failed to clean up orphaned object ${r2Key}: ${errorMessage(cleanupError)}`);
-	});
-	throw supabaseFailure(error ?? { message: 'Failed to create journal file' }, status);
 }
 
 export interface JournalDraftRow {

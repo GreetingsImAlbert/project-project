@@ -1,6 +1,7 @@
 import { AwsClient } from 'aws4fetch';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from './supabase/database.types';
+import { journalSchemaClient } from './journal';
 
 // How long a soft-deleted row sits recoverable in the Trash page before the daily
 // cron makes it permanent. The scheduled worker enforces this retention period.
@@ -37,10 +38,11 @@ export async function purgeTrash(admin: SupabaseClient<Database>, env: Env): Pro
 // Files need their R2 object cleaned up first — everything else is a plain row
 // delete, since the FKs on each table already say what should cascade.
 async function purgeFiles(admin: SupabaseClient<Database>, env: Env, cutoff: string): Promise<void> {
-	const { data: dueFiles, error } = await admin
+	const { data: dueFiles, error } = await journalSchemaClient(admin)
 		.from('files')
 		.select('id, r2_key')
 		.not('deleted_at', 'is', null)
+		.or('is_journal.eq.false,journal_kind.eq.personal')
 		.lte('deleted_at', cutoff);
 
 	if (error) {
@@ -71,7 +73,9 @@ async function purgeSimpleTable(
 	table: 'folders' | 'tasks' | 'bom_items' | 'transactions',
 	cutoff: string,
 ): Promise<void> {
-	const { error } = await admin.from(table).delete().not('deleted_at', 'is', null).lte('deleted_at', cutoff);
+	let query = journalSchemaClient(admin).from(table).delete().not('deleted_at', 'is', null).lte('deleted_at', cutoff);
+	if (table === 'folders') query = query.eq('is_journals_folder', false);
+	const { error } = await query;
 
 	if (error) {
 		console.error(`[trash] failed to purge ${table}: ${error.message}`);

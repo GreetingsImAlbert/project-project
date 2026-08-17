@@ -1,5 +1,6 @@
 import type { APIRoute } from 'astro';
 import { errorResponse } from '../../../../../../lib/error-report';
+import { journalSchemaClient } from '../../../../../../lib/journal';
 
 export const prerender = false;
 
@@ -29,9 +30,9 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 		return new Response('Forbidden', { status: 403 });
 	}
 
-	const { data: folder, error: folderError } = await locals.supabase
+	const { data: folder, error: folderError } = await journalSchemaClient(locals.supabase)
 		.from('folders')
-		.select('id, parent_folder_id, deleted_at')
+		.select('id, parent_folder_id, deleted_at, is_journals_folder')
 		.eq('id', folderId)
 		.eq('project_id', projectId)
 		.single();
@@ -39,6 +40,7 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 	if (folderError || !folder) {
 		return new Response('Folder not found', { status: 404 });
 	}
+	if (folder.is_journals_folder) return new Response('The journals folder cannot be restored from Trash', { status: 403 });
 
 	if (!folder.deleted_at) {
 		return new Response('Folder is not in the trash', { status: 400 });
@@ -46,12 +48,12 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 
 	let parentFolderId = folder.parent_folder_id;
 	if (parentFolderId) {
-		const { data: parent } = await locals.supabase
+		const { data: parent } = await journalSchemaClient(locals.supabase)
 			.from('folders')
-			.select('deleted_at')
+			.select('deleted_at, is_journals_folder')
 			.eq('id', parentFolderId)
 			.maybeSingle();
-		if (!parent || parent.deleted_at) parentFolderId = null;
+		if (!parent || parent.deleted_at || parent.is_journals_folder) parentFolderId = null;
 	}
 
 	const { error } = await locals.supabase
