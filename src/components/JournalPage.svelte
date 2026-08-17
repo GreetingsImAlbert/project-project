@@ -290,8 +290,7 @@
 						aria-selected={activeJournalId === journalId} aria-controls={`journal-panel-${journalId}`}
 						tabindex={activeJournalId === journalId ? 0 : -1} class:active={activeJournalId === journalId}
 						onclick={() => void selectJournal(journalId, true)} onkeydown={(event) => onTabKeydown(event, index)}>
-						<span>{journal.kind === 'group' ? 'Group' : journal.creatorName ?? journal.filename}</span>
-						<small>{journal.filename}</small>
+						<span>{journal.kind === 'group' ? 'Group' : journal.creatorName ?? 'Personal'}</span>
 					</button>
 				{/each}
 			</div>
@@ -302,24 +301,21 @@
 	{#if actionError}<p class="row-error" role="alert">{actionError}</p>{/if}
 	{#if active}
 		<div class="journal-panel" role="tabpanel" id={`journal-panel-${active.fileId}`} aria-labelledby={`journal-tab-${active.fileId}`} tabindex="0">
-			<header class="panel-head">
-				<div><h2>{active.kind === 'group' ? 'Group journal' : active.creatorName ?? 'Personal journal'}</h2><p class="muted">{active.filename}</p></div>
-				<div class="journal-actions">
-					{#if active.canChangeVisibility}
-						<label><span>Visibility</span><select value={active.visibility ?? 'private'} onchange={changeVisibility} disabled={visibilityBusy}>
-							<option value="private">Private</option><option value="members">Project Members</option><option value="public">Public</option>
-						</select></label>
-					{/if}
-					{#if active.canDelete}<button type="button" class="danger" onclick={() => void deleteJournal(active.fileId, active.filename)} disabled={deletingId === active.fileId}>Delete</button>{/if}
-				</div>
-			</header>
-			{#if active.visibility === 'public' && active.canChangeVisibility}<p class="visibility-note muted">Public access also requires Project Settings → Journal visibility to be enabled.</p>{/if}
-
 			<section class="today">
 				<div class="today-head"><h3>{active.draftDate || 'Today'}</h3><span class="save-state muted" aria-live="polite">{#if active.saveState === 'saving'}Saving…{:else if active.saveState === 'saved'}Saved{/if}</span></div>
 				{#if active.canEdit}
 					<textarea bind:this={textareaEl} value={active.content} oninput={onInput} placeholder="What did you work on today?" aria-label={`Journal entry for ${active.draftDate || 'today'}`}></textarea>
-					<p class="hint muted">Saved automatically. Simultaneous editing uses last writer wins; entries are not merged.</p>
+					<div class="draft-footer">
+						<p class="hint muted">Saved automatically. Simultaneous editing uses last writer wins; entries are not merged.</p>
+						<div class="draft-actions">
+							{#if active.canChangeVisibility}
+								<label class="visibility-picker"><span>Visibility</span><select value={active.visibility ?? 'private'} onchange={changeVisibility} disabled={visibilityBusy}>
+									<option value="private">Private</option><option value="members">Project Members</option><option value="public">Public</option>
+								</select></label>
+							{/if}
+							{#if active.canDelete}<button type="button" class="btn-danger" onclick={() => void deleteJournal(active.fileId, active.filename)} disabled={deletingId === active.fileId}>Delete</button>{/if}
+						</div>
+					</div>
 				{:else}
 					<div class="read-only-draft" aria-label={`Read-only journal entry for ${active.draftDate || 'today'}`}>{active.content || 'Nothing has been written today.'}</div>
 					<p class="hint muted">
@@ -328,6 +324,7 @@
 							: 'Only project owners and editors can edit the group journal.'}
 					</p>
 				{/if}
+				{#if active.visibility === 'public' && active.canChangeVisibility}<p class="visibility-note muted">Public access also requires Project Settings → Journal visibility to be enabled.</p>{/if}
 			</section>
 			<JournalHistory entries={active.entries} />
 		</div>
@@ -340,7 +337,7 @@
 		<section class="private-management" aria-labelledby="private-journal-management-title">
 			<h3 id="private-journal-management-title">Private journal management</h3>
 			<p class="muted">You can delete these journals as project owner, but their contents remain private.</p>
-			<ul>{#each privateManagement as row (row.fileId)}<li><span><strong>{row.creatorName}</strong><small class="muted">{row.filename}</small></span><button type="button" class="danger" onclick={() => void deleteJournal(row.fileId, `${row.creatorName}'s private journal`)} disabled={deletingId === row.fileId}>Delete</button></li>{/each}</ul>
+			<ul>{#each privateManagement as row (row.fileId)}<li><span><strong>{row.creatorName}</strong><small class="muted">{row.filename}</small></span><button type="button" class="btn-danger" onclick={() => void deleteJournal(row.fileId, `${row.creatorName}'s private journal`)} disabled={deletingId === row.fileId}>Delete</button></li>{/each}</ul>
 		</section>
 	{/if}
 </div>
@@ -353,25 +350,26 @@
 	.journal-tabs button { display: flex; flex-direction: column; align-items: flex-start; min-width: 130px; max-width: 220px; padding: var(--space-2) var(--space-3); border: 0; border-bottom: 2px solid transparent; border-radius: var(--radius-sm) var(--radius-sm) 0 0; background: transparent; color: var(--color-muted); text-align: left; }
 	.journal-tabs button:hover { background: var(--color-highlight); color: var(--color-fg); }
 	.journal-tabs button.active { border-bottom-color: var(--color-border-strong); color: var(--color-fg); background: var(--color-highlight); }
-	.journal-tabs span, .journal-tabs small { overflow: hidden; width: 100%; text-overflow: ellipsis; white-space: nowrap; }
-	.journal-tabs span { font-weight: 600; } .journal-tabs small { opacity: 0.7; }
+	.journal-tabs span { overflow: hidden; width: 100%; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 	.create-journal { flex: 0 0 auto; margin-bottom: var(--space-2); }
 	.journal-panel { display: flex; flex-direction: column; gap: var(--space-6); outline: none; }
-	.panel-head, .today-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
-	.panel-head h2, .panel-head p, .today-head h3 { margin: 0; }
-	.journal-actions { display: flex; align-items: end; gap: var(--space-2); flex-wrap: wrap; justify-content: flex-end; }
-	.journal-actions label { display: flex; flex-direction: column; gap: var(--space-1); font-size: 0.8rem; }
-	.visibility-note { margin: calc(-1 * var(--space-4)) 0 0; font-size: 0.8rem; }
+	.today-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
+	.today-head h3 { margin: 0; }
+	.draft-footer { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
+	.draft-actions { display: flex; align-items: baseline; gap: var(--space-2); margin-left: auto; }
+	.visibility-picker { display: inline-flex; align-items: center; gap: var(--space-2); margin: var(--space-2) 0 0 auto; font-size: 0.78rem; color: var(--color-muted); white-space: nowrap; }
+	.visibility-picker select { font-size: 0.78rem; padding: var(--space-1) var(--space-2); }
+	.draft-actions .btn-danger { flex: 0 0 auto; padding: var(--space-1) var(--space-2); font-size: 0.72rem; line-height: 1.2; white-space: nowrap; }
+	.visibility-note { margin: var(--space-2) 0 0; font-size: 0.8rem; }
 	.save-state { min-width: 4rem; text-align: right; font-size: 0.8rem; }
 	textarea { width: 100%; min-height: 220px; box-sizing: border-box; resize: vertical; padding: var(--space-3); font-family: inherit; font-size: 0.9rem; line-height: 1.6; }
 	.read-only-draft { min-height: 120px; padding: var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-sm); white-space: pre-wrap; line-height: 1.6; background: var(--color-highlight); }
 	.hint { margin: var(--space-2) 0 0; font-size: 0.8rem; }
-	.danger { color: var(--color-danger); }
 	.private-management { padding-top: var(--space-4); border-top: 1px solid var(--color-border); }
 	.private-management h3, .private-management p { margin-top: 0; }
 	.private-management ul { display: flex; flex-direction: column; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
 	.private-management li { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-2) 0; }
 	.private-management li span { display: flex; flex-direction: column; min-width: 0; }
 	.private-management small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-	@media (max-width: 640px) { .journal-toolbar, .panel-head { align-items: stretch; flex-direction: column; } .journal-toolbar { padding-bottom: var(--space-2); } .create-journal { align-self: flex-start; margin: 0; } .journal-actions { justify-content: flex-start; } .private-management li { align-items: flex-start; } }
+	@media (max-width: 640px) { .journal-toolbar { align-items: stretch; flex-direction: column; padding-bottom: var(--space-2); } .create-journal { align-self: flex-start; margin: 0; } .private-management li { align-items: flex-start; } }
 </style>
