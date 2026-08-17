@@ -232,7 +232,7 @@ No new cron trigger is needed; `src/worker.ts` continues calling the refactored 
 - If a member is merely removed from a project, retain the finalized file under its existing visibility, remove/freeze its live draft, and let the project owner delete it without gaining content access. Define separately whether a former member should keep access; the safe default is no, because they are no longer a project member.
 - Ensure quota aggregates continue counting each active file under its actual `uploaded_by` value.
 
-### Step 9: Version project export/import
+### [DONE] Step 9: Version project export/import
 
 The export manifest currently stores one `journalDraft`. Introduce a new manifest version that:
 

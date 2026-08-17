@@ -10,7 +10,7 @@ import {
 	PROJECT_PICTURE_ARCHIVE_PATH,
 	safeArchiveName,
 	sha256Hex,
-	type ProjectExportManifestV2,
+	type ProjectExportManifestV3,
 	type ProjectExportProject,
 	type ProjectPictureDescriptor,
 } from '../../../../lib/project-export';
@@ -153,7 +153,7 @@ export const GET: APIRoute = async ({ params, locals }) => {
 			.order('id'),
 		admin.from('project_members').select('*').eq('project_id', projectId).order('user_id'),
 		admin.from('ghost_members').select('*').eq('project_id', projectId).order('created_at').order('id'),
-		admin.from('journal_drafts').select('*').eq('project_id', projectId).maybeSingle(),
+		admin.from('journal_drafts').select('*').eq('project_id', projectId).order('journal_file_id'),
 	]);
 
 	const snapshotResults = [
@@ -166,7 +166,7 @@ export const GET: APIRoute = async ({ params, locals }) => {
 		['transactions', transactionResult],
 		['project members', memberResult],
 		['ghost members', ghostResult],
-		['journal draft', journalDraftResult],
+		['journal drafts', journalDraftResult],
 	] as const;
 	for (const [area, result] of snapshotResults) {
 		if (result.error) return databaseFailure(area, result.error);
@@ -181,7 +181,7 @@ export const GET: APIRoute = async ({ params, locals }) => {
 	const transactionRows = transactionResult.data ?? [];
 	const memberRows = memberResult.data ?? [];
 	const ghostRows = ghostResult.data ?? [];
-	const journalDraft = journalDraftResult.data ?? null;
+	const journalDrafts = journalDraftResult.data ?? [];
 
 	let projectPicture: ProjectPictureArchive;
 	try {
@@ -216,7 +216,7 @@ export const GET: APIRoute = async ({ params, locals }) => {
 		if (transaction.related_member_id) referencedUserIds.add(transaction.related_member_id);
 	}
 	for (const assignee of taskAssigneeRows) if (assignee.user_id) referencedUserIds.add(assignee.user_id);
-	if (journalDraft?.updated_by) referencedUserIds.add(journalDraft.updated_by);
+	for (const journalDraft of journalDrafts) if (journalDraft.updated_by) referencedUserIds.add(journalDraft.updated_by);
 
 	let profileRows: Pick<Row<'profiles'>, 'id' | 'display_name' | 'email'>[] = [];
 	if (referencedUserIds.size > 0) {
@@ -303,13 +303,15 @@ export const GET: APIRoute = async ({ params, locals }) => {
 			deleted_at: file.deleted_at,
 			is_public: file.is_public,
 			is_journal: file.is_journal,
+			journal_kind: file.journal_kind,
+			journal_visibility: file.journal_visibility,
 			archive_path: layout.filePaths.get(file.id)!,
 			content_size_bytes: stored.bytes.length,
 			sha256: stored.sha256,
 		};
 	});
 
-	const manifest: ProjectExportManifestV2 = {
+	const manifest: ProjectExportManifestV3 = {
 		format: PROJECT_EXPORT_FORMAT,
 		version: PROJECT_EXPORT_VERSION,
 		exportedAt,
@@ -328,13 +330,14 @@ export const GET: APIRoute = async ({ params, locals }) => {
 			taskAssignees: taskAssigneeRows.length,
 			taskCategories: categoryRows.length,
 			taskCategoryPositions: categoryPositionRows.length,
-			journalDrafts: journalDraft ? 1 : 0,
+			journalDrafts: journalDrafts.length,
 		},
 		records: {
 			projectMembers: memberRows,
 			ghostMembers: ghostRows,
 			folders: folderRows.map((folder) => ({
 				...folder,
+				is_journals_folder: folder.is_journals_folder,
 				archive_path: layout.folderArchivePaths.get(folder.id)!,
 			})),
 			files: manifestFiles,
@@ -344,7 +347,7 @@ export const GET: APIRoute = async ({ params, locals }) => {
 			taskAssignees: taskAssigneeRows,
 			taskCategories: categoryRows,
 			taskCategoryPositions: categoryPositionRows,
-			journalDraft,
+			journalDrafts,
 		},
 	};
 

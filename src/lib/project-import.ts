@@ -4,10 +4,15 @@ import {
 	PROJECT_EXPORT_FORMAT,
 	PROJECT_EXPORT_VERSION_V1,
 	PROJECT_EXPORT_VERSION_V2,
+	PROJECT_EXPORT_VERSION_V3,
 	PROJECT_PICTURE_ARCHIVE_PATH,
+	safeArchiveName,
 	sha256Hex,
 	type ProjectExportManifest,
 	type ProjectExportManifestV1,
+	type ProjectExportFileV3,
+	type ProjectExportFolderV3,
+	type ProjectExportJournalDraft,
 	type ProjectPictureDescriptor,
 	type ProjectPictureMimeType,
 } from './project-export';
@@ -401,25 +406,34 @@ function ghostMembers(value: unknown): Row<'ghost_members'>[] {
 	});
 }
 
-function folders(value: unknown): ProjectExportManifestV1['records']['folders'] {
+function folders(value: unknown, version: 1 | 2 | 3): (ProjectExportManifestV1['records']['folders'][number] | ProjectExportFolderV3)[] {
 	return array(value, 'records.folders').map((item, index) => {
 		const row = object(item, `records.folders[${index}]`);
-		exactKeys(row, `records.folders[${index}]`, ['id', 'project_id', 'name', 'parent_folder_id', 'created_at', 'deleted_at', 'archive_path']);
+		exactKeys(row, `records.folders[${index}]`, [
+			'id', 'project_id', 'name', 'parent_folder_id', 'created_at', 'deleted_at', 'archive_path',
+			...(version === PROJECT_EXPORT_VERSION_V3 ? ['is_journals_folder'] : []),
+		]);
 		uuid(row.id, `records.folders[${index}].id`);
 		uuid(row.project_id, `records.folders[${index}].project_id`);
 		string(row.name, `records.folders[${index}].name`, 255);
 		if (row.parent_folder_id !== null) uuid(row.parent_folder_id, `records.folders[${index}].parent_folder_id`);
 		nullableString(row.created_at, `records.folders[${index}].created_at`, 100);
 		nullableString(row.deleted_at, `records.folders[${index}].deleted_at`, 100);
+		if (version === PROJECT_EXPORT_VERSION_V3) bool(row.is_journals_folder, `records.folders[${index}].is_journals_folder`);
 		string(row.archive_path, `records.folders[${index}].archive_path`, PROJECT_IMPORT_LIMITS.maxPathLength);
-		return row as ProjectExportManifestV1['records']['folders'][number];
+		return row as ProjectExportManifestV1['records']['folders'][number] | ProjectExportFolderV3;
 	});
 }
 
-function files(value: unknown): ProjectExportManifestV1['records']['files'] {
+function files(value: unknown, version: 1 | 2 | 3): (ProjectExportManifestV1['records']['files'][number] | ProjectExportFileV3)[] {
 	return array(value, 'records.files').map((item, index) => {
 		const row = object(item, `records.files[${index}]`);
-		exactKeys(row, `records.files[${index}]`, ['id', 'project_id', 'folder_id', 'uploaded_by', 'filename', 'mime_type', 'size_bytes', 'storage_provider', 'uploader_deleted_at', 'created_at', 'deleted_at', 'is_public', 'is_journal', 'archive_path', 'content_size_bytes', 'sha256']);
+		exactKeys(row, `records.files[${index}]`, [
+			'id', 'project_id', 'folder_id', 'uploaded_by', 'filename', 'mime_type', 'size_bytes', 'storage_provider',
+			'uploader_deleted_at', 'created_at', 'deleted_at', 'is_public', 'is_journal',
+			...(version === PROJECT_EXPORT_VERSION_V3 ? ['journal_kind', 'journal_visibility'] : []),
+			'archive_path', 'content_size_bytes', 'sha256',
+		]);
 		uuid(row.id, `records.files[${index}].id`);
 		uuid(row.project_id, `records.files[${index}].project_id`);
 		if (row.folder_id !== null) uuid(row.folder_id, `records.files[${index}].folder_id`);
@@ -438,7 +452,11 @@ function files(value: unknown): ProjectExportManifestV1['records']['files'] {
 		if (contentSize < 0 || contentSize > PROJECT_IMPORT_LIMITS.maxFileBytes) fail('Invalid manifest: file content size is outside the allowed range.');
 		const checksum = string(row.sha256, `records.files[${index}].sha256`, 64);
 		if (!SHA256_PATTERN.test(checksum)) fail('Invalid manifest: file checksum is invalid.');
-		return row as ProjectExportManifestV1['records']['files'][number];
+		if (version === PROJECT_EXPORT_VERSION_V3) {
+			nullableString(row.journal_kind, `records.files[${index}].journal_kind`, 20);
+			nullableString(row.journal_visibility, `records.files[${index}].journal_visibility`, 20);
+		}
+		return row as ProjectExportManifestV1['records']['files'][number] | ProjectExportFileV3;
 	});
 }
 
@@ -564,10 +582,76 @@ function journalDraft(value: unknown): Row<'journal_drafts'> | null {
 	return row as Row<'journal_drafts'>;
 }
 
+function journalDrafts(value: unknown): ProjectExportJournalDraft[] {
+	return array(value, 'records.journalDrafts').map((item, index) => {
+		const row = object(item, `records.journalDrafts[${index}]`);
+		exactKeys(row, `records.journalDrafts[${index}]`, ['journal_file_id', 'project_id', 'draft_date', 'content', 'updated_at', 'updated_by']);
+		uuid(row.journal_file_id, `records.journalDrafts[${index}].journal_file_id`);
+		uuid(row.project_id, `records.journalDrafts[${index}].project_id`);
+		string(row.draft_date, `records.journalDrafts[${index}].draft_date`, 30);
+		string(row.content, `records.journalDrafts[${index}].content`, 50_000);
+		string(row.updated_at, `records.journalDrafts[${index}].updated_at`, 100);
+		if (row.updated_by !== null) uuid(row.updated_by, `records.journalDrafts[${index}].updated_by`);
+		return row as ProjectExportJournalDraft;
+	});
+}
+
+function validateV3JournalRecords(
+	folderRows: ProjectExportFolderV3[],
+	fileRows: ProjectExportFileV3[],
+	drafts: ProjectExportJournalDraft[],
+): void {
+	const journalsFolders = folderRows.filter((folder) => folder.is_journals_folder);
+	if (journalsFolders.length !== 1) fail('Invalid manifest: exactly one protected journals folder is required.');
+	const journalsFolder = journalsFolders[0];
+	if (journalsFolder.parent_folder_id !== null || journalsFolder.deleted_at !== null) {
+		fail('Invalid manifest: the protected journals folder must be a live root folder.');
+	}
+
+	const groupJournals = fileRows.filter((file) => file.is_journal && file.journal_kind === 'group');
+	if (groupJournals.length !== 1) fail('Invalid manifest: exactly one group journal is required.');
+	if (groupJournals[0].deleted_at !== null) fail('Invalid manifest: the group journal must be live.');
+
+	for (const [index, file] of fileRows.entries()) {
+		if (!file.is_journal) {
+			if (file.journal_kind !== null || file.journal_visibility !== null) {
+				fail(`Invalid manifest: records.files[${index}] has journal metadata but is not a journal.`);
+			}
+			continue;
+		}
+		if (file.folder_id !== journalsFolder.id) fail('Invalid manifest: journal file is outside the protected journals folder.');
+		if (file.journal_kind !== 'group' && file.journal_kind !== 'personal') {
+			fail(`Invalid manifest: records.files[${index}].journal_kind is unsupported.`);
+		}
+		if (safeArchiveName(file.filename) !== file.filename) {
+			fail(`Invalid manifest: journal filename ${file.filename} is unsafe.`);
+		}
+		if (file.journal_kind === 'group') {
+			if (file.filename !== 'JOURNAL.md' || file.journal_visibility !== null) {
+				fail('Invalid manifest: the group journal metadata is invalid.');
+			}
+		} else if (file.journal_visibility !== 'private' && file.journal_visibility !== 'members' && file.journal_visibility !== 'public') {
+			fail(`Invalid manifest: records.files[${index}].journal_visibility is unsupported.`);
+		}
+	}
+
+	const fileById = new Map(fileRows.map((file) => [file.id, file]));
+	const draftIds = new Set<string>();
+	for (const [index, draft] of drafts.entries()) {
+		if (draftIds.has(draft.journal_file_id)) fail(`Invalid manifest: duplicate journal draft ${draft.journal_file_id}.`);
+		draftIds.add(draft.journal_file_id);
+		const file = fileById.get(draft.journal_file_id);
+		if (!file || !file.is_journal || file.deleted_at !== null) {
+			fail(`Invalid manifest: journal draft ${index} does not reference a live journal file.`);
+		}
+		if (draft.project_id !== file.project_id) fail('Invalid manifest: journal draft crosses project boundaries.');
+	}
+}
+
 function validateManifest(raw: unknown): ProjectExportManifest {
 	const root = object(raw, 'manifest');
 	const version = root.version;
-	if (root.format !== PROJECT_EXPORT_FORMAT || (version !== PROJECT_EXPORT_VERSION_V1 && version !== PROJECT_EXPORT_VERSION_V2) || root.checksumAlgorithm !== PROJECT_EXPORT_CHECKSUM) {
+	if (root.format !== PROJECT_EXPORT_FORMAT || (version !== PROJECT_EXPORT_VERSION_V1 && version !== PROJECT_EXPORT_VERSION_V2 && version !== PROJECT_EXPORT_VERSION_V3) || root.checksumAlgorithm !== PROJECT_EXPORT_CHECKSUM) {
 		fail('Unsupported project export format or version.');
 	}
 	exactKeys(root, 'manifest', [
@@ -579,25 +663,28 @@ function validateManifest(raw: unknown): ProjectExportManifest {
 		'people',
 		'recordCounts',
 		'records',
-		...(version === PROJECT_EXPORT_VERSION_V2 ? ['projectPicture'] : []),
+		...(version === PROJECT_EXPORT_VERSION_V1 ? [] : ['projectPicture']),
 	]);
 	string(root.exportedAt, 'manifest.exportedAt', 100);
 	const project = projectRow(root.project);
-	const projectPicture = version === PROJECT_EXPORT_VERSION_V2 ? projectPictureDescriptor(root.projectPicture) : null;
+	const projectPicture = version === PROJECT_EXPORT_VERSION_V1 ? null : projectPictureDescriptor(root.projectPicture);
 	const people = peopleRows(root.people);
-	const members = projectMembers(object(root.records, 'records').projectMembers);
-	const ghosts = ghostMembers(object(root.records, 'records').ghostMembers);
-	const folderRows = folders(object(root.records, 'records').folders);
-	const fileRows = files(object(root.records, 'records').files);
-	const bomRows = bomItems(object(root.records, 'records').bomItems);
-	const transactionRows = transactions(object(root.records, 'records').transactions);
-	const taskRows = tasks(object(root.records, 'records').tasks);
-	const assigneeRows = taskAssignees(object(root.records, 'records').taskAssignees);
-	const categoryRows = taskCategories(object(root.records, 'records').taskCategories);
-	const positionRows = taskCategoryPositions(object(root.records, 'records').taskCategoryPositions);
-	const draft = journalDraft(object(root.records, 'records').journalDraft);
 	const records = object(root.records, 'records');
-	exactKeys(records, 'records', ['projectMembers', 'ghostMembers', 'folders', 'files', 'bomItems', 'transactions', 'tasks', 'taskAssignees', 'taskCategories', 'taskCategoryPositions', 'journalDraft']);
+	const recordKeys = ['projectMembers', 'ghostMembers', 'folders', 'files', 'bomItems', 'transactions', 'tasks', 'taskAssignees', 'taskCategories', 'taskCategoryPositions', ...(version === PROJECT_EXPORT_VERSION_V3 ? ['journalDrafts'] : ['journalDraft'])];
+	exactKeys(records, 'records', recordKeys);
+	const members = projectMembers(records.projectMembers);
+	const ghosts = ghostMembers(records.ghostMembers);
+	const folderRows = folders(records.folders, version);
+	const fileRows = files(records.files, version);
+	const bomRows = bomItems(records.bomItems);
+	const transactionRows = transactions(records.transactions);
+	const taskRows = tasks(records.tasks);
+	const assigneeRows = taskAssignees(records.taskAssignees);
+	const categoryRows = taskCategories(records.taskCategories);
+	const positionRows = taskCategoryPositions(records.taskCategoryPositions);
+	const draft = version === PROJECT_EXPORT_VERSION_V3 ? null : journalDraft(records.journalDraft);
+	const drafts = version === PROJECT_EXPORT_VERSION_V3 ? journalDrafts(records.journalDrafts) : [];
+	if (version === PROJECT_EXPORT_VERSION_V3) validateV3JournalRecords(folderRows as ProjectExportFolderV3[], fileRows as ProjectExportFileV3[], drafts);
 
 	const counts = object(root.recordCounts, 'recordCounts');
 	exactKeys(counts, 'recordCounts', ['projectMembers', 'ghostMembers', 'folders', 'files', 'bomItems', 'transactions', 'tasks', 'taskAssignees', 'taskCategories', 'taskCategoryPositions', 'journalDrafts']);
@@ -625,7 +712,7 @@ function validateManifest(raw: unknown): ProjectExportManifest {
 		taskAssignees: assigneeRows.length,
 		taskCategories: categoryRows.length,
 		taskCategoryPositions: positionRows.length,
-		journalDrafts: draft ? 1 : 0,
+		journalDrafts: version === PROJECT_EXPORT_VERSION_V3 ? drafts.length : draft ? 1 : 0,
 	};
 	for (const key of Object.keys(actualCounts) as (keyof typeof actualCounts)[]) if (countValues[key] !== actualCounts[key]) fail(`Invalid manifest: record count mismatch for ${key}.`);
 
@@ -661,6 +748,7 @@ function validateManifest(raw: unknown): ProjectExportManifest {
 		if (transaction.group_id && (!transactionIds.has(transaction.group_id) || transaction.group_id === transaction.id)) fail('Invalid manifest: transaction group relationship is invalid.');
 	}
 	if (draft && (draft.project_id !== project.id || (draft.updated_by && !peopleIds.has(draft.updated_by)))) fail('Invalid manifest: journal draft relationship is invalid.');
+	for (const journalDraft of drafts) if (journalDraft.project_id !== project.id || (journalDraft.updated_by && !peopleIds.has(journalDraft.updated_by))) fail('Invalid manifest: journal draft relationship is invalid.');
 
 	let layout;
 	try {
@@ -692,6 +780,20 @@ function validateManifest(raw: unknown): ProjectExportManifest {
 			journalDraft: draft,
 		},
 	};
+	if (version === PROJECT_EXPORT_VERSION_V3) {
+		const { journalDraft: _legacyDraft, ...v3BaseRecords } = baseManifest.records;
+		return {
+			...baseManifest,
+			version: PROJECT_EXPORT_VERSION_V3,
+			projectPicture,
+			records: {
+				...v3BaseRecords,
+				folders: folderRows as ProjectExportFolderV3[],
+				files: fileRows as ProjectExportFileV3[],
+				journalDrafts: drafts,
+			},
+		};
+	}
 	if (version === PROJECT_EXPORT_VERSION_V2) {
 		return { ...baseManifest, version: PROJECT_EXPORT_VERSION_V2, projectPicture };
 	}
@@ -714,7 +816,7 @@ async function validateProjectPictureEntry(
 	manifest: ProjectExportManifest,
 ): Promise<Uint8Array<ArrayBuffer> | null> {
 	const pictureEntry = archive.entries.get(PROJECT_PICTURE_ARCHIVE_PATH);
-	const descriptor = manifest.version === PROJECT_EXPORT_VERSION_V2 ? manifest.projectPicture : null;
+	const descriptor = manifest.version === PROJECT_EXPORT_VERSION_V1 ? null : manifest.projectPicture;
 	if (!descriptor || descriptor.kind === 'builtin') {
 		if (pictureEntry) fail('Invalid P2 archive: unexpected project picture entry.');
 		return null;

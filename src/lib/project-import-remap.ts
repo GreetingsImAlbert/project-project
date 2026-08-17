@@ -2,7 +2,7 @@ import type { Database } from './supabase/database.types';
 import { ProjectImportError } from './project-import';
 import type { ProjectImportOwnershipPlan } from './project-import-policy';
 import { safeArchiveName } from './project-export';
-import type { ProjectExportManifest } from './project-export';
+import type { ProjectExportManifest, ProjectExportFileV3, ProjectExportFolderV3 } from './project-export';
 import { projectAvatarStoragePath } from './avatars';
 
 type Tables = Database['public']['Tables'];
@@ -33,11 +33,11 @@ export type ImportGhostRow = Pick<
 // Import accepts legacy manifests that do not carry the post-journal-overhaul
 // folder/file metadata; the import RPC applies the schema defaults.
 export type ImportFolderRow = Omit<Row<'folders'>, 'is_journals_folder'> & {
-	is_journals_folder?: boolean;
+	is_journals_folder: boolean;
 };
 export type ImportFileRow = Omit<Row<'files'>, 'journal_kind' | 'journal_visibility'> & {
-	journal_kind?: string | null;
-	journal_visibility?: string | null;
+	journal_kind: string | null;
+	journal_visibility: string | null;
 };
 export type ImportBomRow = Omit<Row<'bom_items'>, 'total_cost'>;
 export type ImportTransactionRow = Omit<Row<'transactions'>, 'total_cost'>;
@@ -46,6 +46,10 @@ export type ImportTaskAssigneeRow = Row<'task_assignees'>;
 export type ImportTaskCategoryRow = Row<'task_categories'>;
 export type ImportTaskCategoryPositionRow = Row<'task_category_positions'>;
 export type ImportJournalDraftRow = Omit<Row<'journal_drafts'>, 'journal_file_id'> & {
+	journal_file_id: string;
+};
+
+export type LegacyImportJournalDraftRow = Omit<ImportJournalDraftRow, 'journal_file_id'> & {
 	journal_file_id?: string;
 };
 
@@ -61,7 +65,9 @@ export interface ProjectImportRemappedPayload {
 	taskAssignees: ImportTaskAssigneeRow[];
 	taskCategories: ImportTaskCategoryRow[];
 	taskCategoryPositions: ImportTaskCategoryPositionRow[];
-	journalDraft: ImportJournalDraftRow | null;
+	journalDrafts: ImportJournalDraftRow[];
+	/** @deprecated V1/V2 compatibility alias; new RPC payloads use journalDrafts. */
+	journalDraft: LegacyImportJournalDraftRow | null;
 }
 
 export interface ProjectImportIdMaps {
@@ -148,10 +154,10 @@ export function remapProjectImport(
 	const now = options.now ?? new Date().toISOString();
 	const usedIds = new Set<string>();
 	const projectId = newId(factory, usedIds, 'project');
-	const projectPicturePath = manifest.version === 2 && manifest.projectPicture?.kind === 'custom'
+	const projectPicturePath = manifest.version !== 1 && manifest.projectPicture?.kind === 'custom'
 		? projectAvatarStoragePath(projectId)
 		: null;
-	const projectAvatar = manifest.version === 2 && manifest.projectPicture?.kind === 'builtin'
+	const projectAvatar = manifest.version !== 1 && manifest.projectPicture?.kind === 'builtin'
 		? manifest.projectPicture.id
 		: projectPicturePath;
 
@@ -197,12 +203,32 @@ export function remapProjectImport(
 		};
 	});
 
-	const foldersBySourceId = new Map(manifest.records.folders.map((folder) => {
+	const sourceFolders = manifest.records.folders;
+	const sourceFiles = manifest.records.files;
+	const legacyManifest = manifest.version !== 3;
+	const sourceGroupJournals = sourceFiles.filter((file) => file.is_journal && (legacyManifest || file.journal_kind === 'group'));
+	if (legacyManifest && sourceGroupJournals.length > 1) {
+		throw new ProjectImportError('Legacy import contains duplicate journal files.');
+	}
+	if (!legacyManifest) {
+		const protectedFolders = sourceFolders.filter((folder) => folder.is_journals_folder);
+		if (protectedFolders.length !== 1) throw new ProjectImportError('Invalid import: exactly one protected journals folder is required.');
+		if (sourceGroupJournals.length !== 1 || sourceGroupJournals[0].deleted_at !== null) {
+			throw new ProjectImportError('Invalid import: exactly one live group journal is required.');
+		}
+		for (const file of sourceFiles) {
+			if (file.is_journal && file.folder_id !== protectedFolders[0].id) {
+				throw new ProjectImportError('Invalid import: journal file is outside the protected journals folder.');
+			}
+		}
+	}
+
+	const foldersBySourceId = new Map(sourceFolders.map((folder) => {
 		const id = newId(factory, usedIds, 'folder');
 		maps.folderIdsBySourceId.set(folder.id, id);
 		return [folder.id, id] as const;
 	}));
-	const folders: ImportFolderRow[] = manifest.records.folders.map((folder) => ({
+	const folders: ImportFolderRow[] = sourceFolders.map((folder) => ({
 		id: requiredMapValue(foldersBySourceId, folder.id, 'folder'),
 		project_id: projectId,
 		name: folder.name,
@@ -211,31 +237,79 @@ export function remapProjectImport(
 			: null,
 		created_at: folder.created_at,
 		deleted_at: folder.deleted_at,
+		is_journals_folder: manifest.version === 3 ? (folder as ProjectExportFolderV3).is_journals_folder : false,
 	}));
+	let journalsFolderId: string;
+	if (manifest.version === 3) {
+		const sourceJournalsFolder = sourceFolders.find((folder) => folder.is_journals_folder);
+		if (!sourceJournalsFolder) throw new ProjectImportError('Invalid import: protected journals folder is missing.');
+		journalsFolderId = requiredMapValue(foldersBySourceId, sourceJournalsFolder.id, 'journals folder');
+	} else if (sourceGroupJournals.length > 0) {
+		journalsFolderId = newId(factory, usedIds, 'journals folder');
+		folders.push({
+			id: journalsFolderId,
+			project_id: projectId,
+			name: 'journals',
+			parent_folder_id: null,
+			created_at: now,
+			deleted_at: null,
+			is_journals_folder: true,
+		});
+	} else {
+		// A few early fixtures contain a draft row without the legacy file row.
+		// Preserve that compatibility shape for callers, but do not invent a
+		// protected folder when there is no Markdown object to import.
+		journalsFolderId = '';
+	}
 
-	const filesBySourceId = new Map(manifest.records.files.map((file) => {
+	const filesBySourceId = new Map(sourceFiles.map((file) => {
 		const id = newId(factory, usedIds, 'file');
 		maps.fileIdsBySourceId.set(file.id, id);
 		return [file.id, id] as const;
 	}));
-	const files: ImportFileRow[] = manifest.records.files.map((file) => {
+	const activePersonalSourceId = manifest.version === 3
+		? [...sourceFiles]
+			.filter((file) => file.is_journal && file.journal_kind === 'personal' && file.deleted_at === null)
+			.sort((left, right) => (left.created_at ?? '').localeCompare(right.created_at ?? '') || left.id.localeCompare(right.id))[0]?.id ?? null
+		: null;
+	const journalKindOf = (file: (typeof sourceFiles)[number]): string | null => {
+		if (!file.is_journal) return null;
+		return manifest.version === 3 ? (file as ProjectExportFileV3).journal_kind : 'group';
+	};
+	const journalVisibilityOf = (file: (typeof sourceFiles)[number]): string | null => {
+		if (!file.is_journal || manifest.version !== 3) return null;
+		return (file as ProjectExportFileV3).journal_visibility;
+	};
+	const historyOnlyPersonalIds = new Set(
+		sourceFiles
+			.filter((file) => journalKindOf(file) === 'personal' && file.deleted_at === null && file.id !== activePersonalSourceId)
+			.map((file) => file.id),
+	);
+	const files: ImportFileRow[] = sourceFiles.map((file) => {
 		const id = requiredMapValue(filesBySourceId, file.id, 'file');
+		const journalKind = journalKindOf(file);
+		const filename = legacyManifest && journalKind === 'group' ? 'JOURNAL.md' : file.filename;
+		const historyOnly = historyOnlyPersonalIds.has(file.id);
 		return {
 			id,
 			project_id: projectId,
-			folder_id: file.folder_id ? requiredMapValue(foldersBySourceId, file.folder_id, 'file folder') : null,
+			folder_id: file.is_journal
+				? journalsFolderId
+				: file.folder_id ? requiredMapValue(foldersBySourceId, file.folder_id, 'file folder') : null,
 			// There is no ghost uploader column. The importer owns every imported byte.
 			uploaded_by: policy.realMember.user_id,
-			filename: file.filename,
+			filename,
 			mime_type: file.mime_type,
 			size_bytes: file.content_size_bytes,
 			storage_provider: 'r2',
 			uploader_deleted_at: null,
 			created_at: file.created_at,
-			deleted_at: file.deleted_at,
+			deleted_at: historyOnly ? now : file.deleted_at,
 			is_public: false,
 			is_journal: file.is_journal,
-			r2_key: fileKey(projectId, id, file.filename),
+			journal_kind: journalKind,
+			journal_visibility: journalVisibilityOf(file),
+			r2_key: fileKey(projectId, id, filename),
 		};
 	});
 
@@ -342,16 +416,36 @@ export function remapProjectImport(
 		created_at: position.created_at,
 	}));
 
-	const journalDraft: ImportJournalDraftRow | null = manifest.records.journalDraft
-		? {
+	const legacyDraft = manifest.version === 3 ? null : manifest.records.journalDraft;
+	const sourceDrafts = manifest.version === 3
+		? manifest.records.journalDrafts
+		: legacyDraft && sourceGroupJournals[0]
+			? [{ ...legacyDraft, journal_file_id: sourceGroupJournals[0].id }]
+			: [];
+	const journalDrafts: ImportJournalDraftRow[] = sourceDrafts.flatMap((draft) => {
+		const sourceFile = sourceFiles.find((file) => file.id === draft.journal_file_id);
+		if (!sourceFile || !sourceFile.is_journal) throw new ProjectImportError('Invalid import relationship: journal draft file is missing.');
+		if (historyOnlyPersonalIds.has(sourceFile.id)) return [];
+		return [{
+			journal_file_id: requiredMapValue(filesBySourceId, draft.journal_file_id, 'journal draft file'),
 			project_id: projectId,
-			draft_date: manifest.records.journalDraft.draft_date,
-			content: manifest.records.journalDraft.content,
-			updated_at: manifest.records.journalDraft.updated_at,
+			draft_date: draft.draft_date,
+			content: draft.content,
+			updated_at: draft.updated_at,
 			// This profile-only relationship cannot point to a ghost member.
 			updated_by: policy.realMember.user_id,
+		}];
+	});
+	const journalDraft: LegacyImportJournalDraftRow | null = legacyDraft
+		? {
+			...(sourceGroupJournals[0] ? { journal_file_id: requiredMapValue(filesBySourceId, sourceGroupJournals[0].id, 'legacy journal file') } : {}),
+			project_id: projectId,
+			draft_date: legacyDraft.draft_date,
+			content: legacyDraft.content,
+			updated_at: legacyDraft.updated_at,
+			updated_by: policy.realMember.user_id,
 		}
-		: null;
+		: journalDrafts[0] ?? null;
 
 	return {
 		payload: {
@@ -373,6 +467,7 @@ export function remapProjectImport(
 			taskAssignees,
 			taskCategories,
 			taskCategoryPositions,
+			journalDrafts,
 			journalDraft,
 		},
 		maps,
