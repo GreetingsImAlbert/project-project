@@ -124,11 +124,19 @@ export async function readJournalObject(env: Env, r2Key: string): Promise<string
 	return new TextDecoder('utf-8').decode(await object.arrayBuffer());
 }
 
-// Returns the size R2 actually recorded, same rule as every other write in this
-// app (confirm.ts, content.ts's PUT) — never the length of what was sent.
+// Named Worker environments bind the real remote bucket. Use that binding first so
+// journal creation shares the same storage path as project imports; the signed fallback
+// keeps the base local environment usable when no R2 binding is configured.
 async function writeJournalObject(env: Env, r2Key: string, content: string): Promise<number> {
-	const r2 = r2Client(env);
 	const bytes = new TextEncoder().encode(content);
+	if (env.R2_BUCKET) {
+		await env.R2_BUCKET.put(r2Key, bytes, {
+			httpMetadata: { contentType: `${JOURNAL_MIME}; charset=utf-8` },
+		});
+		return bytes.byteLength;
+	}
+
+	const r2 = r2Client(env);
 
 	const putRes = await r2.fetch(objectUrlFor(env, r2Key), {
 		method: 'PUT',
@@ -144,6 +152,11 @@ async function writeJournalObject(env: Env, r2Key: string, content: string): Pro
 }
 
 async function deleteJournalObject(env: Env, r2Key: string): Promise<void> {
+	if (env.R2_BUCKET) {
+		await env.R2_BUCKET.delete(r2Key);
+		return;
+	}
+
 	const response = await r2Client(env).fetch(objectUrlFor(env, r2Key), { method: 'DELETE' });
 	if (!response.ok && response.status !== 404) {
 		throw new Error(`Failed to remove journal object: ${response.status} ${await response.text()}`);

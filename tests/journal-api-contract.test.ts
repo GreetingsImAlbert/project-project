@@ -10,6 +10,7 @@ const collection = source('../src/pages/api/projects/[id]/journals/index.ts');
 const draft = source('../src/pages/api/projects/[id]/journals/[journalFileId]/draft.ts');
 const visibility = source('../src/pages/api/projects/[id]/journals/[journalFileId]/visibility.ts');
 const remove = source('../src/pages/api/projects/[id]/journals/[journalFileId]/delete.ts');
+const journalStorage = source('../src/lib/journal.ts');
 
 test('personal journal creation is membership-scoped, idempotent, and restore-aware', () => {
 	assert.match(collection, /if \(!locals\.user\)/);
@@ -20,6 +21,11 @@ test('personal journal creation is membership-scoped, idempotent, and restore-aw
 	assert.match(collection, /body\.restore !== true/);
 	assert.match(collection, /createPersonalJournal/);
 	assert.match(collection, /ensureJournalDraft/);
+});
+
+test('journal objects use the bound R2 bucket when available', () => {
+	assert.match(journalStorage, /if \(env\.R2_BUCKET\) \{\s*await env\.R2_BUCKET\.put/s);
+	assert.match(journalStorage, /if \(env\.R2_BUCKET\) \{\s*await env\.R2_BUCKET\.delete/s);
 });
 
 test('journal draft saves are scoped to both project and journal file', () => {
