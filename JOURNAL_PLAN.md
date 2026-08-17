@@ -122,7 +122,7 @@ Create a Supabase migration with `npx supabase migration new journal_overhaul`. 
 
 ## Implementation steps
 
-### Step 1: Add shared journal domain helpers
+### [DONE] Step 1: Add shared journal domain helpers
 
 Refactor `src/lib/journal.ts` into journal-file-aware operations:
 

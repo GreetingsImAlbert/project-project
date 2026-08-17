@@ -1,18 +1,53 @@
 import { AwsClient } from 'aws4fetch';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from './supabase/database.types';
-import { appendJournalEntry } from './journal-entries';
+import { appendJournalEntry, parseJournalEntries, type JournalEntry } from './journal-entries';
 import { createJournalCronReport, type JournalCronPhase, type JournalCronOutcome } from './journal-cron-report';
 import { retryJournalOperationWithIncident } from './journal-retry';
 import { logError } from './error-report';
 import { wouldExceedStorageQuota } from './r2-quota';
 import { appToday } from './today';
+import {
+	canChangeJournalVisibility,
+	canDeleteJournal,
+	canEditJournal,
+	canReadJournal,
+	personalJournalFilename,
+	type JournalAccessSubject,
+	type JournalAccessTarget,
+	type JournalKind,
+	type JournalVisibility,
+} from './journal-domain';
+export {
+	canChangeJournalVisibility,
+	canDeleteJournal,
+	canEditJournal,
+	canReadJournal,
+	personalJournalFilename,
+} from './journal-domain';
+export type { JournalAccessSubject, JournalAccessTarget, JournalKind, JournalVisibility } from './journal-domain';
 
 // Every project gets at most one of these — the database's
 // `journal_file_unique_per_project` partial index actually enforces that; this
 // filename is just what a member sees in the Files list.
-export const JOURNAL_FILENAME = 'Journal.md';
+export const JOURNAL_FILENAME = 'JOURNAL.md';
 export const JOURNAL_MIME = 'text/markdown';
+export const JOURNALS_FOLDER_NAME = 'journals';
+
+export interface ProjectJournal {
+	fileId: string;
+	kind: JournalKind;
+	filename: string;
+	creatorId: string | null;
+	creatorName: string | null;
+	visibility: JournalVisibility | null;
+	draft: JournalDraftRow | null;
+	history: JournalEntry[];
+	canRead: boolean;
+	canEdit: boolean;
+	canDelete: boolean;
+	canChangeVisibility: boolean;
+}
 
 // A day's worth of notes, not a document — generous, but nowhere near the 1MB
 // the general file editor allows (file-kind.ts's MAX_VIEWABLE_BYTES). Enforced
@@ -98,38 +133,191 @@ async function writeJournalObject(env: Env, r2Key: string, content: string): Pro
 	return Number(headRes.headers.get('content-length') ?? bytes.byteLength);
 }
 
+async function deleteJournalObject(env: Env, r2Key: string): Promise<void> {
+	const response = await r2Client(env).fetch(objectUrlFor(env, r2Key), { method: 'DELETE' });
+	if (!response.ok && response.status !== 404) {
+		throw new Error(`Failed to remove journal object: ${response.status} ${await response.text()}`);
+	}
+}
+
+interface JournalDomainFileRow extends JournalFileRow {
+	filename: string;
+	uploaded_by: string | null;
+	journal_kind: JournalKind;
+	journal_visibility: JournalVisibility | null;
+	profiles: { display_name: string } | Array<{ display_name: string }> | null;
+}
+
+export interface JournalsFolderRow {
+	id: string;
+}
+
+// These queries intentionally describe the post-migration schema locally. The
+// generated Database type remains untouched until the migration is applied and
+// the repository-required `npm run update-types` is run by the user.
+function journalDatabase(client: SupabaseClient<Database>): SupabaseClient<any> {
+	return client as SupabaseClient<any>;
+}
+
+export async function ensureJournalsFolder(
+	admin: SupabaseClient<Database>,
+	projectId: string,
+): Promise<JournalsFolderRow> {
+	const db = journalDatabase(admin);
+	const { data: existing, error: readError, status: readStatus } = await db
+		.from('folders')
+		.select('id')
+		.eq('project_id', projectId)
+		.eq('is_journals_folder', true)
+		.maybeSingle();
+
+	if (readError) throw supabaseFailure(readError, readStatus);
+	if (existing) return existing as JournalsFolderRow;
+
+	const { data: created, error: createError, status: createStatus } = await db
+		.from('folders')
+		.insert({
+			project_id: projectId,
+			parent_folder_id: null,
+			name: JOURNALS_FOLDER_NAME,
+			is_journals_folder: true,
+		})
+		.select('id')
+		.single();
+
+	if (!createError && created) return created as JournalsFolderRow;
+
+	// A concurrent request may have won the partial-unique-index race.
+	const { data: raced } = await db
+		.from('folders')
+		.select('id')
+		.eq('project_id', projectId)
+		.eq('is_journals_folder', true)
+		.maybeSingle();
+	if (raced) return raced as JournalsFolderRow;
+
+	throw supabaseFailure(createError ?? { message: 'Failed to create journals folder' }, createStatus);
+}
+
+async function findJournalFile(
+	admin: SupabaseClient<Database>,
+	projectId: string,
+	kind: JournalKind,
+	creatorId?: string,
+): Promise<JournalFileRow | null> {
+	let query = journalDatabase(admin)
+		.from('files')
+		.select('id, r2_key, size_bytes')
+		.eq('project_id', projectId)
+		.eq('journal_kind', kind)
+		.is('deleted_at', null);
+	if (creatorId) query = query.eq('uploaded_by', creatorId);
+
+	const { data, error, status } = await query.maybeSingle();
+	if (error) throw supabaseFailure(error, status);
+	return data as JournalFileRow | null;
+}
+
+async function createJournalFile(
+	admin: SupabaseClient<Database>,
+	env: Env,
+	projectId: string,
+	creatorId: string,
+	kind: JournalKind,
+	filename: string,
+	visibility: JournalVisibility | null,
+): Promise<JournalFileRow> {
+	const folder = await ensureJournalsFolder(admin, projectId);
+	const r2Key = `${projectId}/${crypto.randomUUID()}-${filename}`;
+	const sizeBytes = await writeJournalObject(env, r2Key, '');
+
+	const { data: created, error, status } = await journalDatabase(admin)
+		.from('files')
+		.insert({
+			project_id: projectId,
+			folder_id: folder.id,
+			uploaded_by: creatorId,
+			filename,
+			r2_key: r2Key,
+			mime_type: JOURNAL_MIME,
+			size_bytes: sizeBytes,
+			is_journal: true,
+			is_public: false,
+			journal_kind: kind,
+			journal_visibility: visibility,
+		})
+		.select('id, r2_key, size_bytes')
+		.single();
+
+	if (!error && created) return created as JournalFileRow;
+
+	try {
+		await deleteJournalObject(env, r2Key);
+	} catch (cleanupError) {
+		console.error(`[journal] failed to clean up orphaned object ${r2Key}: ${errorMessage(cleanupError)}`);
+	}
+
+	// Creation is idempotent even when two first-open/create requests race.
+	const raced = await findJournalFile(admin, projectId, kind, kind === 'personal' ? creatorId : undefined);
+	if (raced) return raced;
+	throw supabaseFailure(error ?? { message: `Failed to create ${kind} journal file` }, status);
+}
+
+export async function ensureGroupJournal(
+	admin: SupabaseClient<Database>,
+	env: Env,
+	projectId: string,
+	projectOwnerId: string,
+): Promise<JournalFileRow> {
+	return await findJournalFile(admin, projectId, 'group')
+		?? createJournalFile(admin, env, projectId, projectOwnerId, 'group', JOURNAL_FILENAME, null);
+}
+
+export async function createPersonalJournal(
+	admin: SupabaseClient<Database>,
+	env: Env,
+	projectId: string,
+	creatorId: string,
+	creatorDisplayName: string,
+): Promise<JournalFileRow> {
+	return await findJournalFile(admin, projectId, 'personal', creatorId)
+		?? createJournalFile(
+			admin,
+			env,
+			projectId,
+			creatorId,
+			'personal',
+			personalJournalFilename(creatorDisplayName),
+			'private',
+		);
+}
+
 export interface JournalFileRow {
 	id: string;
 	r2_key: string;
 	size_bytes: number | null;
 }
 
-// Lazily creates the project's one Journal file the first time anyone opens the
-// page. Runs on the admin (service-role) client rather than the caller's own —
-// the file is attributed to the project owner's storage no matter who happens to
-// be the first owner/editor to visit, and the files insert policy (uploaded_by =
-// auth.uid()) has no way to let a non-owner editor insert a row owned by someone
-// else. The role/membership check that would normally be RLS's job is done by
-// the caller before this runs (see journal.astro).
+// Compatibility wrapper for the current Journal page; Step 4 switches it to
+// ensureGroupJournal after the journal-overhaul migration is active.
 export async function ensureJournalFile(
 	admin: SupabaseClient<Database>,
 	env: Env,
 	projectId: string,
 	ownerId: string,
 ): Promise<JournalFileRow> {
-	const { data: existing } = await admin
+	const { data: existing, error: readError, status: readStatus } = await admin
 		.from('files')
 		.select('id, r2_key, size_bytes')
 		.eq('project_id', projectId)
 		.eq('is_journal', true)
 		.maybeSingle();
-
+	if (readError) throw supabaseFailure(readError, readStatus);
 	if (existing) return existing;
 
 	const r2Key = `${projectId}/${crypto.randomUUID()}-${JOURNAL_FILENAME}`;
 	const sizeBytes = await writeJournalObject(env, r2Key, '');
-
-	const { data: created, error } = await admin
+	const { data: created, error, status } = await admin
 		.from('files')
 		.insert({
 			project_id: projectId,
@@ -142,12 +330,12 @@ export async function ensureJournalFile(
 		})
 		.select('id, r2_key, size_bytes')
 		.single();
+	if (!error && created) return created;
 
-	if (error || !created) {
-		throw new Error(`Failed to create journal file: ${error?.message ?? 'unknown error'}`);
-	}
-
-	return created;
+	await deleteJournalObject(env, r2Key).catch((cleanupError) => {
+		console.error(`[journal] failed to clean up orphaned object ${r2Key}: ${errorMessage(cleanupError)}`);
+	});
+	throw supabaseFailure(error ?? { message: 'Failed to create journal file' }, status);
 }
 
 export interface JournalDraftRow {
@@ -155,33 +343,135 @@ export interface JournalDraftRow {
 	content: string;
 }
 
-// Lazily creates the project's one draft row, same idea as ensureJournalFile but
-// on the caller's own RLS-scoped client: a draft carries no per-user attribution
-// (unlike the file, nothing here is charged to anyone's storage), so an ordinary
-// owner/editor insert is all it needs.
+// Lazily creates one current-day draft for the selected journal file.
 export async function ensureJournalDraft(
 	supabase: SupabaseClient<Database>,
 	projectId: string,
+	journalFileId?: string,
 ): Promise<JournalDraftRow> {
-	const { data: existing } = await supabase
+	// Temporary legacy path for the current single-journal page. Step 4 removes
+	// this after the schema migration and journal collection loader are active.
+	if (!journalFileId) {
+		const { data: existing, error: readError, status: readStatus } = await supabase
+			.from('journal_drafts')
+			.select('draft_date, content')
+			.eq('project_id', projectId)
+			.maybeSingle();
+		if (readError) throw supabaseFailure(readError, readStatus);
+		if (existing) return existing;
+
+		const { data: created, error, status } = await supabase
+			.from('journal_drafts')
+			.insert({ project_id: projectId, draft_date: appToday(), content: '' })
+			.select('draft_date, content')
+			.single();
+		if (error || !created) throw supabaseFailure(error ?? { message: 'Failed to create journal draft' }, status);
+		return created;
+	}
+
+	const db = journalDatabase(supabase);
+	const { data: existing, error: readError, status: readStatus } = await db
 		.from('journal_drafts')
 		.select('draft_date, content')
-		.eq('project_id', projectId)
+		.eq('journal_file_id', journalFileId)
 		.maybeSingle();
 
+	if (readError) throw supabaseFailure(readError, readStatus);
 	if (existing) return existing;
 
-	const { data: created, error } = await supabase
+	const { data: created, error, status } = await db
 		.from('journal_drafts')
-		.insert({ project_id: projectId, draft_date: appToday(), content: '' })
+		.insert({ project_id: projectId, journal_file_id: journalFileId, draft_date: appToday(), content: '' })
 		.select('draft_date, content')
 		.single();
 
-	if (error || !created) {
-		throw new Error(`Failed to create journal draft: ${error?.message ?? 'unknown error'}`);
-	}
+	if (!error && created) return created as JournalDraftRow;
 
-	return created;
+	// The journal_file_id primary key makes concurrent first opens harmless.
+	const { data: raced } = await db
+		.from('journal_drafts')
+		.select('draft_date, content')
+		.eq('journal_file_id', journalFileId)
+		.maybeSingle();
+	if (raced) return raced as JournalDraftRow;
+
+	throw supabaseFailure(error ?? { message: 'Failed to create journal draft' }, status);
+}
+
+export async function loadProjectJournals(
+	admin: SupabaseClient<Database>,
+	env: Env,
+	projectId: string,
+	viewerId: string,
+): Promise<ProjectJournal[]> {
+	const db = journalDatabase(admin);
+	const { data: membership, error: membershipError, status: membershipStatus } = await db
+		.from('project_members')
+		.select('role')
+		.eq('project_id', projectId)
+		.eq('user_id', viewerId)
+		.maybeSingle();
+	if (membershipError) throw supabaseFailure(membershipError, membershipStatus);
+	if (!membership) return [];
+
+	const { data, error, status } = await db
+		.from('files')
+		.select('id, filename, r2_key, size_bytes, uploaded_by, journal_kind, journal_visibility, profiles!files_uploaded_by_fkey(display_name)')
+		.eq('project_id', projectId)
+		.eq('is_journal', true)
+		.is('deleted_at', null)
+		.order('filename', { ascending: true });
+	if (error) throw supabaseFailure(error, status);
+
+	const subject: JournalAccessSubject = {
+		viewerId,
+		isProjectMember: true,
+		role: membership.role,
+	};
+	const visibleFiles = ((data ?? []) as unknown as JournalDomainFileRow[]).filter((file) => canReadJournal({
+		kind: file.journal_kind,
+		creatorId: file.uploaded_by,
+		visibility: file.journal_visibility,
+	}, subject));
+	if (visibleFiles.length === 0) return [];
+
+	const fileIds = visibleFiles.map((file) => file.id);
+	const { data: drafts, error: draftsError, status: draftsStatus } = await db
+		.from('journal_drafts')
+		.select('journal_file_id, draft_date, content')
+		.in('journal_file_id', fileIds);
+	if (draftsError) throw supabaseFailure(draftsError, draftsStatus);
+
+	const draftByFileId = new Map<string, JournalDraftRow>(
+		(drafts ?? []).map((draft: JournalDraftRow & { journal_file_id: string }) => [draft.journal_file_id, {
+			draft_date: draft.draft_date,
+			content: draft.content,
+		}]),
+	);
+
+	return await Promise.all(visibleFiles.map(async (file): Promise<ProjectJournal> => {
+		const target: JournalAccessTarget = {
+			kind: file.journal_kind,
+			creatorId: file.uploaded_by,
+			visibility: file.journal_visibility,
+		};
+		const finalizedMarkdown = await readJournalObject(env, file.r2_key);
+		const creatorProfile = Array.isArray(file.profiles) ? file.profiles[0] : file.profiles;
+		return {
+			fileId: file.id,
+			kind: file.journal_kind,
+			filename: file.filename,
+			creatorId: file.uploaded_by,
+			creatorName: creatorProfile?.display_name ?? null,
+			visibility: file.journal_visibility,
+			draft: draftByFileId.get(file.id) ?? null,
+			history: parseJournalEntries(finalizedMarkdown).reverse(),
+			canRead: true,
+			canEdit: canEditJournal(target, subject),
+			canDelete: canDeleteJournal(target, subject),
+			canChangeVisibility: canChangeJournalVisibility(target, subject),
+		};
+	}));
 }
 
 // The cron job's actual work, run once at Manila midnight for every project whose
