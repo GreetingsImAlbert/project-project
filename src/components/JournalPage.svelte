@@ -5,15 +5,23 @@
 	import { createBrowserSupabaseClient } from '../lib/supabase/browser';
 	import { toastError } from '../lib/toast.svelte';
 	import { onSwapOrDestroy } from '../lib/island-teardown';
-	import type { SupabaseClient } from '@supabase/supabase-js';
+	import type { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js';
+	import {
+		isRealtimeRowForJournal,
+		journalDraftEndpoint,
+		journalRealtimeFilter,
+		type JournalRealtimeRow,
+	} from '../lib/journal-client-sync';
 
 	let {
 		projectId,
+		journalFileId = null,
 		initialDraftDate,
 		initialDraftContent,
 		initialEntries,
 	}: {
 		projectId: string;
+		journalFileId?: string | null;
 		initialDraftDate: string;
 		initialDraftContent: string;
 		initialEntries: JournalEntry[];
@@ -36,15 +44,36 @@
 
 	let textareaEl = $state<HTMLTextAreaElement | null>(null);
 	let saveTimer: ReturnType<typeof setTimeout> | null = null;
+	let latestSaveSequence = 0;
+	let pendingSave: Promise<void> | null = null;
+	let disposed = false;
+	const recentOwnWrites = new Map<string, number>();
 
-	async function saveDraft(value: string) {
+	function ownWriteKey(targetJournalFileId: string | null, value: string): string {
+		return `${targetJournalFileId ?? 'legacy'}\u0000${value}`;
+	}
+
+	function rememberOwnWrite(targetJournalFileId: string | null, value: string) {
+		const now = Date.now();
+		for (const [key, expiresAt] of recentOwnWrites) {
+			if (expiresAt <= now) recentOwnWrites.delete(key);
+		}
+		recentOwnWrites.set(ownWriteKey(targetJournalFileId, value), now + 30_000);
+	}
+
+	async function saveDraft(value: string, targetJournalFileId: string | null, keepalive = false) {
+		const sequence = ++latestSaveSequence;
+		rememberOwnWrite(targetJournalFileId, value);
 		saveState = 'saving';
 		try {
-			const res = await fetch(`/api/projects/${projectId}/journal/draft`, {
+			const res = await fetch(journalDraftEndpoint(projectId, targetJournalFileId), {
 				method: 'PUT',
 				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify({ content: value }),
+				keepalive,
 			});
+			// A response from a previous tab/save must not mutate the active journal.
+			if (sequence !== latestSaveSequence || targetJournalFileId !== journalFileId || disposed) return;
 			if (!res.ok) {
 				toastError(await res.text());
 				saveState = 'idle';
@@ -55,19 +84,48 @@
 			lastSavedContent = value;
 			saveState = 'saved';
 		} catch {
+			if (sequence !== latestSaveSequence || targetJournalFileId !== journalFileId || disposed) return;
 			toastError('Could not save — check your connection');
 			saveState = 'idle';
+		}
+	}
+
+	function startSave(value: string, targetJournalFileId: string | null, keepalive = false): Promise<void> {
+		const save = saveDraft(value, targetJournalFileId, keepalive);
+		pendingSave = save;
+		void save.finally(() => {
+			if (pendingSave === save) pendingSave = null;
+		});
+		return save;
+	}
+
+	// Step 4's tab controller can await this before changing journalFileId. The
+	// current single-journal page also calls it best-effort during teardown.
+	export async function flushPendingSave(keepalive = false): Promise<void> {
+		if (saveTimer) {
+			clearTimeout(saveTimer);
+			saveTimer = null;
+		}
+		const inFlight = pendingSave;
+		if (content !== lastSavedContent) {
+			await startSave(content, journalFileId, keepalive);
+		} else if (inFlight) {
+			await inFlight;
 		}
 	}
 
 	function onInput() {
 		saveState = 'idle';
 		if (saveTimer) clearTimeout(saveTimer);
-		saveTimer = setTimeout(() => saveDraft(content), SAVE_DEBOUNCE_MS);
+		const targetJournalFileId = journalFileId;
+		saveTimer = setTimeout(() => {
+			saveTimer = null;
+			void startSave(content, targetJournalFileId);
+		}, SAVE_DEBOUNCE_MS);
 	}
 
 	// Realtime: the database migrations add journal_drafts to the
-	// supabase_realtime publication, so any owner/editor's save — including this
+	// supabase_realtime publication, so any authorized save — including this
 	// tab's own, once it
 	// round-trips — arrives here as a Postgres Changes UPDATE. Own writes are
 	// recognised by matching `lastSavedContent` and skipped; anything else is a
@@ -76,7 +134,42 @@
 	// overwrite the other, the same tradeoff any single shared text field has
 	// without an operational-transform engine behind it.
 	let client: SupabaseClient | null = null;
+	let channel: RealtimeChannel | null = null;
+	let subscribedJournalFileId: string | null | undefined;
 	let tokenTimer: ReturnType<typeof setInterval> | null = null;
+
+	function subscribeToJournal(targetJournalFileId: string | null) {
+		if (!client || subscribedJournalFileId === targetJournalFileId) return;
+		if (channel) void client.removeChannel(channel);
+		subscribedJournalFileId = targetJournalFileId;
+		channel = client
+			.channel(`journal-drafts-${projectId}-${targetJournalFileId ?? 'legacy'}`)
+			.on(
+				'postgres_changes',
+				{ event: '*', schema: 'public', table: 'journal_drafts', filter: journalRealtimeFilter(projectId, targetJournalFileId) },
+				(payload) => {
+					const row = payload.new as unknown as JournalRealtimeRow;
+					if (!row?.draft_date || typeof row.content !== 'string') return;
+					if (targetJournalFileId !== journalFileId || !isRealtimeRowForJournal(row, targetJournalFileId)) return;
+					draftDate = row.draft_date;
+					if (recentOwnWrites.has(ownWriteKey(targetJournalFileId, row.content))) {
+						if (content === row.content) lastSavedContent = row.content;
+						return;
+					}
+					if (row.content !== lastSavedContent) {
+						content = row.content;
+						lastSavedContent = row.content;
+					}
+				},
+			)
+			.subscribe();
+	}
+
+	$effect(() => {
+		// A parent changing tabs first awaits flushPendingSave(), then changes this
+		// prop; the effect replaces the channel with the new journal-specific one.
+		subscribeToJournal(journalFileId);
+	});
 
 	async function refreshRealtimeAuth() {
 		if (!client) return;
@@ -93,6 +186,7 @@
 
 	onMount(() => {
 		let cancelled = false;
+		disposed = false;
 
 		(async () => {
 			try {
@@ -100,21 +194,7 @@
 				await refreshRealtimeAuth();
 				if (cancelled || !client) return;
 
-				client
-					.channel(`journal-drafts-${projectId}`)
-					.on(
-						'postgres_changes',
-						{ event: 'UPDATE', schema: 'public', table: 'journal_drafts', filter: `project_id=eq.${projectId}` },
-						(payload) => {
-							const row = payload.new as { draft_date: string; content: string };
-							draftDate = row.draft_date;
-							if (row.content !== lastSavedContent) {
-								content = row.content;
-								lastSavedContent = row.content;
-							}
-						},
-					)
-					.subscribe();
+				subscribeToJournal(journalFileId);
 
 				tokenTimer = setInterval(refreshRealtimeAuth, TOKEN_REFRESH_MS);
 			} catch {
@@ -127,10 +207,14 @@
 
 		return onSwapOrDestroy(() => {
 			cancelled = true;
-			if (saveTimer) clearTimeout(saveTimer);
+			// Fetch keepalive is the best-effort path available during navigation;
+			// callers switching tabs should await flushPendingSave before changing IDs.
+			if (content !== lastSavedContent) void flushPendingSave(true);
+			disposed = true;
 			if (tokenTimer) clearInterval(tokenTimer);
-			// Unsubscribes every channel this client holds — there's only ever the one.
-			client?.removeAllChannels();
+			if (channel && client) void client.removeChannel(channel);
+			channel = null;
+			subscribedJournalFileId = undefined;
 		});
 	});
 </script>

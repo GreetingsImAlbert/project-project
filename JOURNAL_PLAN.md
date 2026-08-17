@@ -155,7 +155,7 @@ Add a deterministic filename helper:
 - Add a dedicated personal journal delete operation, or route journal deletion through the existing file delete endpoint with centralized capability checks. Delete the live draft and soft-delete the file atomically where possible.
 - Ensure retries are idempotent and cannot create duplicate personal/group journals.
 
-### Step 3: Make realtime journal-specific
+### [DONE] Step 3: Make realtime journal-specific
 
 - Keep the realtime token endpoint membership-scoped, but allow every member who may view Journal to subscribe.
 - Subscribe by `journal_file_id` for the active tab, or subscribe once by `project_id` and route updates into state keyed by journal ID.
