@@ -48,13 +48,28 @@ test('public journal reads finalized, non-deleted history only', () => {
 	assert.deepEqual(parseJournalEntries(content), [{ date: '2026-08-10', body: 'Final note' }]);
 
 	const journalPage = source('../src/pages/projects/[id]/journal.astro');
+	const journalLib = source('../src/lib/journal.ts');
+	const publicTabs = source('../src/components/PublicJournalTabs.svelte');
+	const publicLoaderStart = journalLib.indexOf('export async function loadPublicProjectJournals');
+	const publicLoader = journalLib.slice(publicLoaderStart, journalLib.indexOf('// The cron job', publicLoaderStart));
 	const publicBranch = journalPage.slice(journalPage.indexOf('if (!project) {'));
-	assert.match(journalPage, /\.eq\('is_journal', true\)/);
-	assert.match(journalPage, /\.is\('deleted_at', null\)/);
-	assert.match(publicBranch, /readOnly = true/);
+	assert.match(publicBranch, /publicReader = true/);
+	assert.match(publicBranch, /loadPublicProjectJournals\(admin, env, gate\.id\)/);
 	assert.doesNotMatch(publicBranch, /ensureJournal(File|Draft)/);
 	assert.doesNotMatch(publicBranch, /journal_drafts/);
+	assert.match(journalLib, /journal_kind\.eq\.group,and\(journal_kind\.eq\.personal,journal_visibility\.eq\.public\)/);
+	assert.match(journalLib, /\.is\('deleted_at', null\)/);
+	assert.doesNotMatch(publicLoader, /\.from\('journal_drafts'\)/);
+	assert.doesNotMatch(publicTabs, /creatorId|fileId|draft/);
+	assert.match(publicTabs, /role="tablist"/);
+	assert.match(publicTabs, /JournalHistory entries=\{journal\.history\}/);
 	assert.match(source('../src/components/JournalHistory.svelte'), /No finalized journal entries yet/);
+});
+
+test('legacy single group journal lookups identify the group kind explicitly', () => {
+	const journalLib = source('../src/lib/journal.ts');
+	assert.doesNotMatch(journalLib, /\.eq\('is_journal', true\)\s*\.maybeSingle\(\)/);
+	assert.match(journalLib, /\.eq\('id', draft\.journal_file_id\)[\s\S]*?\.eq\('is_journal', true\)[\s\S]*?\.is\('deleted_at', null\)/);
 });
 
 test('public Money payload excludes personal summary inputs and deleted rows', () => {
@@ -89,9 +104,9 @@ test('public route access matrix keeps flag-off reads at 404 and members role-aw
 	}
 
 	const journal = source('../src/pages/projects/[id]/journal.astro');
+	assert.match(journal, /loadProjectJournals\(admin, env, project\.id, user\.id\)/);
 	assert.match(journal, /userRole === 'owner' \|\| userRole === 'editor'/);
-	assert.match(journal, /project\.public_journal_enabled/);
-	assert.match(journal, /Astro\.redirect\(`\/projects\/\$\{project\.id\}`\)/);
+	assert.doesNotMatch(journal, /Astro\.redirect\(`\/projects\/\$\{project\.id\}`\)/);
 
 	const overview = source('../src/pages/projects/[id].astro');
 	assert.match(overview, /rpc\('public_project_get'/);

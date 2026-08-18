@@ -14,7 +14,7 @@ import { CUSTOM_AVATAR_MAX_BYTES } from '../src/lib/avatars.ts';
 import { buildProjectImportOwnershipPlan } from '../src/lib/project-import-policy.ts';
 import { remapProjectImport } from '../src/lib/project-import-remap.ts';
 import { zip } from '../src/lib/zip.ts';
-import { createImportManifest, IMPORT_IDS } from './project-import-fixture.ts';
+import { createImportManifest, createJournalImportManifestV3, IMPORT_IDS } from './project-import-fixture.ts';
 
 const encoder = new TextEncoder();
 const text = (value: string) => encoder.encode(value) as Uint8Array<ArrayBuffer>;
@@ -38,6 +38,22 @@ function fixtureArchive(
 		{ name: 'files/Root/' },
 		{ name: 'files/Root/Child/' },
 		...(pictureBytes ? [{ name: PROJECT_PICTURE_ARCHIVE_PATH, bytes: pictureBytes }] : []),
+		{ name: manifest.records.files[0].archive_path, bytes: fileBytes },
+	]);
+}
+
+function journalFixtureArchive(manifest: ProjectExportManifest, fileBytes: Uint8Array<ArrayBuffer>) {
+	const legacy = JSON.stringify({ project: manifest.project.name });
+	return archive([
+		{ name: 'README.txt', body: `Project: ${manifest.project.name}\n` },
+		{ name: 'manifest.json', body: JSON.stringify(manifest) },
+		{ name: 'tasks.json', body: legacy },
+		{ name: 'bom.json', body: legacy },
+		{ name: 'transactions.json', body: legacy },
+		{ name: 'members.json', body: legacy },
+		{ name: 'files/' },
+		{ name: 'files/journals/' },
+		{ name: 'files/Docs/' },
 		{ name: manifest.records.files[0].archive_path, bytes: fileBytes },
 	]);
 }
@@ -324,10 +340,97 @@ test('legacy and built-in manifests reject unexpected picture payloads', async (
 	);
 });
 
+test('V3 journal manifests preserve protected folder metadata and file-keyed drafts', async () => {
+	const fileBytes = text('# Group history\n');
+	const manifest = createJournalImportManifestV3();
+	manifest.records.files[0].content_size_bytes = fileBytes.length;
+	manifest.records.files[0].sha256 = await sha256Hex(fileBytes);
+	const validated = await validateP2ProjectArchive(journalFixtureArchive(manifest, fileBytes));
+	assert.equal(validated.manifest.version, 3);
+	assert.equal(validated.manifest.records.journalDrafts.length, 1);
+	assert.equal(validated.manifest.records.folders.filter((folder) => folder.is_journals_folder).length, 1);
+	const remapped = remapProjectImport(manifest, buildProjectImportOwnershipPlan(manifest, IMPORT_IDS.importer));
+	assert.equal(remapped.payload.folders.filter((folder) => folder.is_journals_folder).length, 1);
+	assert.equal(remapped.payload.files[0].journal_kind, 'group');
+	assert.equal(remapped.payload.journalDrafts[0].journal_file_id, remapped.payload.files[0].id);
+
+	const duplicateGroup = structuredClone(manifest);
+	duplicateGroup.records.files.push({ ...duplicateGroup.records.files[0], id: IMPORT_IDS.ghost, archive_path: 'files/journals/JOURNAL-2.md' });
+	duplicateGroup.recordCounts.files = 2;
+	await assert.rejects(
+		() => validateP2ProjectArchive(journalFixtureArchive(duplicateGroup, fileBytes)),
+		(error: unknown) => error instanceof ProjectImportError && /exactly one group journal/.test(error.message),
+	);
+
+	const outsideFolder = structuredClone(manifest);
+	outsideFolder.records.files[0].folder_id = IMPORT_IDS.childFolder;
+	await assert.rejects(
+		() => validateP2ProjectArchive(journalFixtureArchive(outsideFolder, fileBytes)),
+		(error: unknown) => error instanceof ProjectImportError && /outside the protected journals folder/.test(error.message),
+	);
+
+	const unsafeFilename = structuredClone(manifest);
+	unsafeFilename.records.files[0].filename = 'JOURNAL/evil.md';
+	await assert.rejects(
+		() => validateP2ProjectArchive(journalFixtureArchive(unsafeFilename, fileBytes)),
+		(error: unknown) => error instanceof ProjectImportError && /filename .* is unsafe/.test(error.message),
+	);
+});
+
+test('V3 remapping collapses duplicate active personal journals to one draft owner', () => {
+	const manifest = createJournalImportManifestV3();
+	const personalOne = {
+		...manifest.records.files[0],
+		id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+		filename: 'JOURNAL_Former-member.md',
+		journal_kind: 'personal' as const,
+		journal_visibility: 'members' as const,
+		created_at: '2026-08-01T00:00:00.000Z',
+		archive_path: 'files/journals/JOURNAL_Former-member.md',
+	};
+	const personalTwo = {
+		...personalOne,
+		id: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
+		filename: 'JOURNAL_Former-member-2.md',
+		created_at: '2026-08-02T00:00:00.000Z',
+		archive_path: 'files/journals/JOURNAL_Former-member-2.md',
+	};
+	manifest.records.files.push(personalOne, personalTwo);
+	manifest.records.journalDrafts.push(
+		{ ...manifest.records.journalDrafts[0], journal_file_id: personalOne.id },
+		{ ...manifest.records.journalDrafts[0], journal_file_id: personalTwo.id },
+	);
+	manifest.recordCounts.files = manifest.records.files.length;
+	manifest.recordCounts.journalDrafts = manifest.records.journalDrafts.length;
+
+	const ownership = buildProjectImportOwnershipPlan(manifest, IMPORT_IDS.importer);
+	const remapped = remapProjectImport(manifest, ownership, { now: '2026-08-17T00:00:00.000Z' });
+	const personalFiles = remapped.payload.files.filter((file) => file.journal_kind === 'personal');
+	assert.equal(personalFiles.filter((file) => file.deleted_at === null).length, 1);
+	assert.equal(personalFiles.filter((file) => file.deleted_at === '2026-08-17T00:00:00.000Z').length, 1);
+	assert.equal(remapped.payload.journalDrafts.filter((draft) => personalFiles.some((file) => file.id === draft.journal_file_id && file.deleted_at === null)).length, 1);
+});
+
+test('legacy V1 journal rows migrate to the protected group journal shape', () => {
+	const manifest = createImportManifest();
+	manifest.records.files[0].is_journal = true;
+	manifest.records.files[0].folder_id = null;
+	manifest.records.files[0].filename = 'Journal.md';
+	manifest.records.files[0].archive_path = 'files/Journal.md';
+	const ownership = buildProjectImportOwnershipPlan(manifest, IMPORT_IDS.importer);
+	const remapped = remapProjectImport(manifest, ownership, { now: '2026-08-17T00:00:00.000Z' });
+	const group = remapped.payload.files.find((file) => file.is_journal);
+	assert.equal(group?.journal_kind, 'group');
+	assert.equal(group?.filename, 'JOURNAL.md');
+	assert.equal(group?.folder_id, remapped.payload.folders.find((folder) => folder.is_journals_folder)?.id);
+	assert.equal(remapped.payload.journalDrafts[0].journal_file_id, group?.id);
+});
+
 test('import migrations retain atomic and idempotent database safeguards', () => {
 	const atomic = readFileSync(new URL('../supabase/migrations/20260810042553_import_project_rpc.sql', import.meta.url), 'utf8');
 	const visibility = readFileSync(new URL('../supabase/migrations/20260811001455_import_project_public_sections.sql', import.meta.url), 'utf8');
 	const retry = readFileSync(new URL('../supabase/migrations/20260810045524_project_import_idempotency.sql', import.meta.url), 'utf8');
+	const journalV3 = readFileSync(new URL('../supabase/migrations/20260817101048_project_export_journal_v3.sql', import.meta.url), 'utf8');
 	const exporter = readFileSync(new URL('../src/pages/api/projects/[id]/download-all.ts', import.meta.url), 'utf8');
 	const importer = readFileSync(new URL('../src/pages/api/projects/import.ts', import.meta.url), 'utf8');
 
@@ -356,4 +459,11 @@ test('import migrations retain atomic and idempotent database safeguards', () =>
 	assert.match(importer, /deleteStagedProjectPicture\(admin, failedPicture\)/);
 	assert.match(importer, /const duplicatePicture = stagedPicture/);
 	assert.match(importer, /admin\.rpc\('import_project_once'/);
+	assert.match(journalV3, /import_project_legacy/);
+	assert.match(journalV3, /journalDrafts/);
+	assert.match(journalV3, /is_journals_folder/);
+	assert.match(journalV3, /exactly one group journal/);
+	assert.match(exporter, /ProjectExportManifestV3/);
+	assert.match(exporter, /journalDrafts/);
+	assert.match(importer, /manifest\.version !== 1/);
 });

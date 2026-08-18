@@ -23,7 +23,9 @@ export const GET: APIRoute = async ({ params, locals }) => {
 		.eq('user_id', locals.user.id)
 		.single();
 
-	if (!membership || !['owner', 'editor'].includes(membership.role)) {
+	// Read-only members also subscribe to journals they may view. Per-journal RLS
+	// decides which draft rows the token can actually receive.
+	if (!membership) {
 		return new Response('Forbidden', { status: 403 });
 	}
 

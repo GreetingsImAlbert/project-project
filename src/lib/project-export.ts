@@ -4,7 +4,8 @@ import type { Database } from './supabase/database.types';
 export const PROJECT_EXPORT_FORMAT = 'p2-project-export' as const;
 export const PROJECT_EXPORT_VERSION_V1 = 1 as const;
 export const PROJECT_EXPORT_VERSION_V2 = 2 as const;
-export const PROJECT_EXPORT_VERSION = PROJECT_EXPORT_VERSION_V2;
+export const PROJECT_EXPORT_VERSION_V3 = 3 as const;
+export const PROJECT_EXPORT_VERSION = PROJECT_EXPORT_VERSION_V3;
 export const PROJECT_EXPORT_CHECKSUM = 'sha256' as const;
 export const PROJECT_PICTURE_ARCHIVE_PATH = 'project-picture.img' as const;
 
@@ -38,15 +39,49 @@ export interface ProjectExportPerson {
 	email: string | null;
 }
 
-export type ProjectExportFolder = Row<'folders'> & {
+// Legacy V1/V2 archives predate the journal-folder marker and journal metadata;
+// V3 emits the schema fields explicitly while these types preserve old imports.
+export type ProjectExportFolder = Omit<Row<'folders'>, 'is_journals_folder'> & {
+	is_journals_folder?: boolean;
 	archive_path: string;
 };
 
-export type ProjectExportFile = Omit<Row<'files'>, 'r2_key'> & {
+export type ProjectExportFile = Omit<Row<'files'>, 'r2_key' | 'journal_kind' | 'journal_visibility'> & {
+	journal_kind?: string | null;
+	journal_visibility?: string | null;
 	archive_path: string;
 	content_size_bytes: number;
 	sha256: string;
 };
+
+export type ProjectExportFolderV3 = Omit<Row<'folders'>, 'is_journals_folder'> & {
+	is_journals_folder: boolean;
+	archive_path: string;
+};
+
+export type ProjectExportFileV3 = Omit<Row<'files'>, 'r2_key' | 'journal_kind' | 'journal_visibility'> & {
+	journal_kind: string | null;
+	journal_visibility: string | null;
+	archive_path: string;
+	content_size_bytes: number;
+	sha256: string;
+};
+
+export type ProjectExportJournalDraft = Row<'journal_drafts'>;
+
+interface ProjectExportRecordCounts {
+	projectMembers: number;
+	ghostMembers: number;
+	folders: number;
+	files: number;
+	bomItems: number;
+	transactions: number;
+	tasks: number;
+	taskAssignees: number;
+	taskCategories: number;
+	taskCategoryPositions: number;
+	journalDrafts: number;
+}
 
 interface ProjectExportManifestBase {
 	format: typeof PROJECT_EXPORT_FORMAT;
@@ -54,19 +89,7 @@ interface ProjectExportManifestBase {
 	checksumAlgorithm: typeof PROJECT_EXPORT_CHECKSUM;
 	project: ProjectExportProject;
 	people: ProjectExportPerson[];
-	recordCounts: {
-		projectMembers: number;
-		ghostMembers: number;
-		folders: number;
-		files: number;
-		bomItems: number;
-		transactions: number;
-		tasks: number;
-		taskAssignees: number;
-		taskCategories: number;
-		taskCategoryPositions: number;
-		journalDrafts: number;
-	};
+	recordCounts: ProjectExportRecordCounts;
 	records: {
 		projectMembers: Row<'project_members'>[];
 		ghostMembers: Row<'ghost_members'>[];
@@ -78,7 +101,7 @@ interface ProjectExportManifestBase {
 		taskAssignees: Row<'task_assignees'>[];
 		taskCategories: Row<'task_categories'>[];
 		taskCategoryPositions: Row<'task_category_positions'>[];
-		journalDraft: Row<'journal_drafts'> | null;
+		journalDraft: Omit<Row<'journal_drafts'>, 'journal_file_id'> & { journal_file_id?: string } | null;
 	};
 }
 
@@ -91,7 +114,25 @@ export interface ProjectExportManifestV2 extends ProjectExportManifestBase {
 	projectPicture: ProjectPictureDescriptor | null;
 }
 
-export type ProjectExportManifest = ProjectExportManifestV1 | ProjectExportManifestV2;
+export interface ProjectExportManifestV3 extends Omit<ProjectExportManifestBase, 'records'> {
+	version: typeof PROJECT_EXPORT_VERSION_V3;
+	projectPicture: ProjectPictureDescriptor | null;
+	records: {
+		projectMembers: Row<'project_members'>[];
+		ghostMembers: Row<'ghost_members'>[];
+		folders: ProjectExportFolderV3[];
+		files: ProjectExportFileV3[];
+		bomItems: Row<'bom_items'>[];
+		transactions: Row<'transactions'>[];
+		tasks: Row<'tasks'>[];
+		taskAssignees: Row<'task_assignees'>[];
+		taskCategories: Row<'task_categories'>[];
+		taskCategoryPositions: Row<'task_category_positions'>[];
+		journalDrafts: ProjectExportJournalDraft[];
+	};
+}
+
+export type ProjectExportManifest = ProjectExportManifestV1 | ProjectExportManifestV2 | ProjectExportManifestV3;
 
 interface FolderForLayout {
 	id: string;

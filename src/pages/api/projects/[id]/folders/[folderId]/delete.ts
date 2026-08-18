@@ -1,5 +1,7 @@
 import type { APIRoute } from 'astro';
 import { errorResponse } from '../../../../../../lib/error-report';
+import { collectDescendantFolderIds } from '../../../../../../lib/folder-tree';
+import { journalSchemaClient } from '../../../../../../lib/journal';
 
 export const prerender = false;
 
@@ -26,15 +28,25 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 		return new Response('Forbidden', { status: 403 });
 	}
 
-	const { data: folder, error: folderError } = await locals.supabase
+	const { data: folder, error: folderError } = await journalSchemaClient(locals.supabase)
 		.from('folders')
-		.select('id')
+		.select('id, is_journals_folder')
 		.eq('id', folderId)
 		.eq('project_id', projectId)
 		.single();
 
 	if (folderError || !folder) {
 		return new Response('Folder not found', { status: 404 });
+	}
+	if (folder.is_journals_folder) return new Response('The journals folder cannot be deleted', { status: 403 });
+
+	const folderIds = await collectDescendantFolderIds(locals.supabase, folderId!);
+	const [{ data: protectedFolders }, { data: journalFiles }] = await Promise.all([
+		journalSchemaClient(locals.supabase).from('folders').select('id').in('id', folderIds).eq('is_journals_folder', true),
+		journalSchemaClient(locals.supabase).from('files').select('id').in('folder_id', folderIds).eq('is_journal', true),
+	]);
+	if ((protectedFolders?.length ?? 0) > 0 || (journalFiles?.length ?? 0) > 0) {
+		return new Response('Folders containing journals cannot be deleted', { status: 403 });
 	}
 
 	const deletedAt = new Date().toISOString();

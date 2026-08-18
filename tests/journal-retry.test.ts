@@ -135,6 +135,8 @@ test('journal cron incidents produce one structured admin error-report payload',
 		errorCode: 'PGRST303',
 		status: 401,
 		projectId: null,
+		journalFileId: null,
+		journalKind: null,
 	});
 });
 
@@ -147,10 +149,14 @@ test('journal cron project reports include project scope and exhausted outcome',
 		cron: '0 16 * * *',
 		scheduledAt: '2026-08-12T16:00:00.000Z',
 		projectId: 'project-123',
+		journalFileId: 'journal-file-123',
+		journalKind: 'personal',
 	});
 
 	assert.match(report.message, /exhausted retries.*4 attempts/);
 	assert.equal(report.context?.projectId, 'project-123');
+	assert.equal(report.context?.journalFileId, 'journal-file-123');
+	assert.equal(report.context?.journalKind, 'personal');
 	assert.equal(report.context?.outcome, 'exhausted');
 });
 

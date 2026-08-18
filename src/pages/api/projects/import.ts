@@ -96,7 +96,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
 		}
 		const remapped = remapProjectImport(validated.manifest, ownership);
 		if (remapped.projectPicturePath) {
-			const picture = validated.manifest.version === 2 && validated.manifest.projectPicture?.kind === 'custom'
+			const picture = validated.manifest.version !== 1 && validated.manifest.projectPicture?.kind === 'custom'
 				? validated.manifest.projectPicture
 				: null;
 			if (!picture || !validated.projectPictureBytes) {

@@ -11,6 +11,8 @@ export interface JournalCronIncident {
 	cron: string | null;
 	scheduledAt: string;
 	projectId?: string | null;
+	journalFileId?: string | null;
+	journalKind?: 'group' | 'personal' | null;
 }
 
 interface ErrorLike {
@@ -36,7 +38,7 @@ function statusValue(value: unknown): number | null {
 export function createJournalCronReport(incident: JournalCronIncident): ErrorReportInput {
 	const error = errorLike(incident.error);
 	const errorMessage = stringValue(error?.message) ?? String(incident.error);
-	const action = incident.phase === 'read-stale-drafts' ? 'reading stale drafts' : 'finalizing a project';
+	const action = incident.phase === 'read-stale-drafts' ? 'reading stale drafts' : 'finalizing a journal';
 	const outcome = incident.outcome === 'recovered' ? 'recovered after retry' : 'exhausted retries';
 
 	return {
@@ -54,6 +56,8 @@ export function createJournalCronReport(incident: JournalCronIncident): ErrorRep
 			errorCode: stringValue(error?.code),
 			status: statusValue(error?.status),
 			projectId: incident.projectId ?? null,
+			journalFileId: incident.journalFileId ?? null,
+			journalKind: incident.journalKind ?? null,
 		},
 	};
 }

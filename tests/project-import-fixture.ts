@@ -1,4 +1,4 @@
-import type { ProjectExportManifestV1 } from '../src/lib/project-export.ts';
+import type { ProjectExportManifestV1, ProjectExportManifestV3 } from '../src/lib/project-export.ts';
 
 export const IMPORT_IDS = {
 	project: '11111111-1111-4111-8111-111111111111',
@@ -108,6 +108,41 @@ export function createImportManifest(): ProjectExportManifestV1 {
 			taskCategories: [{ project_id: id.project, name: 'Build', color_index: 2 }],
 			taskCategoryPositions: [{ id: id.categoryPosition, project_id: id.project, category_name: 'Build', priority_position: 0, created_at: '2026-08-04T00:00:00.000Z' }],
 			journalDraft: { project_id: id.project, draft_date: '2026-08-04', content: 'Draft', updated_at: '2026-08-04T00:00:00.000Z', updated_by: id.owner },
+		},
+	};
+}
+
+export function createJournalImportManifestV3(): ProjectExportManifestV3 {
+	const legacy = createImportManifest();
+	const id = IMPORT_IDS;
+	const journalDraft = legacy.records.journalDraft!;
+	return {
+		...legacy,
+		version: 3,
+		projectPicture: null,
+		records: {
+			projectMembers: legacy.records.projectMembers,
+			ghostMembers: legacy.records.ghostMembers,
+			folders: [
+				{ ...legacy.records.folders[0], name: 'journals', is_journals_folder: true, archive_path: 'files/journals/' },
+				{ ...legacy.records.folders[1], parent_folder_id: null, name: 'Docs', is_journals_folder: false, archive_path: 'files/Docs/' },
+			],
+			files: [{
+				...legacy.records.files[0],
+				folder_id: id.rootFolder,
+				filename: 'JOURNAL.md',
+				is_journal: true,
+				journal_kind: 'group',
+				journal_visibility: null,
+				archive_path: 'files/journals/JOURNAL.md',
+			}],
+			bomItems: legacy.records.bomItems,
+			transactions: legacy.records.transactions,
+			tasks: legacy.records.tasks,
+			taskAssignees: legacy.records.taskAssignees,
+			taskCategories: legacy.records.taskCategories,
+			taskCategoryPositions: legacy.records.taskCategoryPositions,
+			journalDrafts: [{ ...journalDraft, journal_file_id: id.file }],
 		},
 	};
 }

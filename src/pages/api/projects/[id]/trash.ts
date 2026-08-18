@@ -1,4 +1,7 @@
+import { env } from 'cloudflare:workers';
 import { errorResponse } from '../../../../lib/error-report';
+import { getSupabaseAdmin } from '../../../../lib/supabase/admin';
+import { canDeleteJournal, journalSchemaClient, type JournalKind, type JournalVisibility } from '../../../../lib/journal';
 
 export const prerender = false;
 
@@ -7,12 +10,17 @@ interface FileRow {
 	filename: string;
 	size_bytes: number | null;
 	deleted_at: string;
+	canRestore: boolean;
+	canPurge: boolean;
 }
 
 interface FolderRow {
 	id: string;
 	name: string;
 	deleted_at: string;
+	isJournalsFolder: boolean;
+	canRestore: boolean;
+	canPurge: boolean;
 }
 
 interface TaskRow {
@@ -44,22 +52,29 @@ export async function GET({ locals, params, request }: { locals: App.Locals; par
 
 	const projectId = params.id;
 	if (!projectId) return new Response('Project not found', { status: 404 });
+	const { data: membership } = await locals.supabase
+		.from('project_members')
+		.select('role')
+		.eq('project_id', projectId)
+		.eq('user_id', locals.user.id)
+		.maybeSingle();
+	if (!membership) return new Response('Project not found', { status: 404 });
+	const admin = getSupabaseAdmin(env);
+	const canEditFiles = membership.role === 'owner' || membership.role === 'editor';
 
-	const [{ data: files, error: filesError }, { data: folders, error: foldersError }, { data: tasks, error: tasksError }, { data: bomItems, error: bomError }, { data: transactions, error: transactionsError }] = await Promise.all([
-		locals.supabase
+	const [{ data: fileRows, error: filesError }, { data: folders, error: foldersError }, { data: tasks, error: tasksError }, { data: bomItems, error: bomError }, { data: transactions, error: transactionsError }] = await Promise.all([
+		journalSchemaClient(admin)
 			.from('files')
-			.select('id, filename, size_bytes, deleted_at')
+			.select('id, filename, size_bytes, uploaded_by, uploader_deleted_at, is_journal, journal_kind, journal_visibility, deleted_at')
 			.eq('project_id', projectId)
 			.not('deleted_at', 'is', null)
-			.order('deleted_at', { ascending: false })
-			.overrideTypes<FileRow[]>(),
-		locals.supabase
+			.order('deleted_at', { ascending: false }),
+		journalSchemaClient(locals.supabase)
 			.from('folders')
-			.select('id, name, deleted_at')
+			.select('id, name, deleted_at, is_journals_folder')
 			.eq('project_id', projectId)
 			.not('deleted_at', 'is', null)
-			.order('deleted_at', { ascending: false })
-			.overrideTypes<FolderRow[]>(),
+			.order('deleted_at', { ascending: false }),
 		locals.supabase
 			.from('tasks')
 			.select('id, name, category, deleted_at')
@@ -83,6 +98,38 @@ export async function GET({ locals, params, request }: { locals: App.Locals; par
 			.order('deleted_at', { ascending: false })
 			.overrideTypes<TransactionRow[]>(),
 	]);
+	const files: FileRow[] = (fileRows ?? []).flatMap((file: any) => {
+		if (!file.is_journal) return [{
+			id: file.id,
+			filename: file.filename,
+			size_bytes: file.size_bytes,
+			deleted_at: file.deleted_at,
+			canRestore: canEditFiles,
+			canPurge: canEditFiles,
+		}];
+		if (file.journal_kind === 'personal' && file.uploader_deleted_at) return [];
+		const canManage = file.journal_kind === 'personal' && canDeleteJournal({
+			kind: file.journal_kind as JournalKind,
+			creatorId: file.uploaded_by,
+			visibility: file.journal_visibility as JournalVisibility | null,
+		}, { viewerId: locals.user!.id, isProjectMember: true, role: membership.role });
+		return canManage ? [{
+			id: file.id,
+			filename: file.filename,
+			size_bytes: file.size_bytes,
+			deleted_at: file.deleted_at,
+			canRestore: true,
+			canPurge: true,
+		}] : [];
+	});
+	const visibleFolders: FolderRow[] = (folders ?? []).map((folder: any) => ({
+		id: folder.id,
+		name: folder.name,
+		deleted_at: folder.deleted_at,
+		isJournalsFolder: folder.is_journals_folder,
+		canRestore: canEditFiles && !folder.is_journals_folder,
+		canPurge: canEditFiles && !folder.is_journals_folder,
+	}));
 
 	if (filesError || foldersError || tasksError || bomError || transactionsError) {
 		return errorResponse({
@@ -95,7 +142,7 @@ export async function GET({ locals, params, request }: { locals: App.Locals; par
 	}
 
 	return Response.json(
-		{ files: files ?? [], folders: folders ?? [], tasks: tasks ?? [], bomItems: bomItems ?? [], transactions: transactions ?? [] },
+		{ files, folders: visibleFolders, tasks: tasks ?? [], bomItems: bomItems ?? [], transactions: transactions ?? [] },
 		{ headers: { 'cache-control': 'private, no-store' } },
 	);
 }

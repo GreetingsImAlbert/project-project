@@ -1,6 +1,6 @@
 // The one place the app decides what day it is.
 //
-// Every calendar day this app draws a line on — a Journal draft rolling into its
+// Every calendar day this app draws a line on — a journal draft rolling into its
 // file, a task deadline turning overdue — is a day in Asia/Manila, not in the
 // Worker's UTC and not in whatever zone the reader's browser happens to be set to.
 // A project's members share one schedule, so they need one calendar; picking the

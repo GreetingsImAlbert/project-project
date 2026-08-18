@@ -23,9 +23,9 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 
 	// RLS would allow this (rename doesn't touch is_journal), but the Journal page
 	// looks the file up by the is_journal flag alone, so this is purely a UX guard —
-	// the "no action buttons" rule for the Journal file, enforced server-side too.
+	// the "no action buttons" rule for journal files, enforced server-side too.
 	if (file.is_journal) {
-		return new Response('The Journal file cannot be renamed', { status: 403 });
+		return new Response('Journal files cannot be renamed', { status: 403 });
 	}
 
 	const { data: membership } = await locals.supabase

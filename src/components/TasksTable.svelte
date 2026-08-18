@@ -184,7 +184,7 @@
 	let addCategorySelect = $state('');
 	let addCategoryNew = $state('');
 	let addDescription = $state('');
-	let addStartDate = $state(today);
+	let addStartDate = $state('');
 	let addStartTime = $state(DEFAULT_START_TIME);
 	let addDeadline = $state('');
 	// Pre-filled rather than left empty: a deadline with no stated time is due at the end
@@ -835,7 +835,7 @@
 			draftDeadlineTime = task.deadline_time;
 		}
 		if (field === 'startDate') {
-			draftStartDate = task.start_date ?? today;
+			draftStartDate = task.start_date ?? '';
 			draftStartTime = task.start_time;
 		}
 		if (field === 'description') draftDescription = task.description ?? '';
@@ -1044,7 +1044,7 @@
 			addCategorySelect = '';
 			addCategoryNew = '';
 			addDescription = '';
-			addStartDate = today;
+			addStartDate = '';
 			addStartTime = DEFAULT_START_TIME;
 			addDeadline = '';
 			addDeadlineTime = DEFAULT_DEADLINE_TIME;
@@ -1385,10 +1385,14 @@
 				</div>
 			{:else}
 				<div class="detail-line">
-					<span class="date-value">
-						{formatDeadline(task.start_date ?? today, today)}
-						<span class="date-time">{formatDeadlineTime(task.start_time)}</span>
-					</span>
+					{#if task.start_date}
+						<span class="date-value">
+							{formatDeadline(task.start_date, today)}
+							<span class="date-time">{formatDeadlineTime(task.start_time)}</span>
+						</span>
+					{:else}
+						<span class="task-sub">no start date</span>
+					{/if}
 					{#if canEdit}{@render editIcon('Edit start', () => startField(task, 'startDate'))}{/if}
 				</div>
 			{/if}
@@ -1850,10 +1854,14 @@
 								<!-- Date and time on the one line: the relative form ('in 3 days')
 								     moved to the detail panel, since the date already says it. -->
 				<div class="cell cell-start">
-					<span class="date-value">
-						{formatDeadline(task.start_date ?? today, today)}
-						<span class="date-time">{formatDeadlineTime(task.start_time)}</span>
-					</span>
+					{#if task.start_date}
+						<span class="date-value">
+							{formatDeadline(task.start_date, today)}
+							<span class="date-time">{formatDeadlineTime(task.start_time)}</span>
+						</span>
+					{:else}
+						<span class="task-sub">no start date</span>
+					{/if}
 				</div>
 
 				<div class="cell cell-deadline">

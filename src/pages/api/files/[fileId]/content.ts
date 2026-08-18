@@ -6,6 +6,7 @@ import { wouldExceedStorageQuota } from '../../../../lib/r2-quota';
 import { fileKind, isTextKind, MAX_VIEWABLE_BYTES } from '../../../../lib/file-kind';
 import { getReadableFile } from '../../../../lib/file-access';
 import { errorResponse } from '../../../../lib/error-report';
+import { canEditJournal, journalSchemaClient, type JournalKind, type JournalVisibility } from '../../../../lib/journal';
 
 export const prerender = false;
 
@@ -100,7 +101,13 @@ export const GET: APIRoute = async ({ params, request, locals }) => {
 			.eq('user_id', locals.user.id)
 			.single();
 
-		canEdit = !!membership && ['owner', 'editor'].includes(membership.role);
+		canEdit = !!membership && (file.is_journal
+			? canEditJournal({
+				kind: file.journal_kind as JournalKind,
+				creatorId: file.uploaded_by,
+				visibility: file.journal_visibility as JournalVisibility | null,
+			}, { viewerId: locals.user.id, isProjectMember: true, role: membership.role })
+			: ['owner', 'editor'].includes(membership.role));
 	}
 
 	// The object's ETag rides along so a later save can tell whether it's overwriting the
@@ -124,13 +131,13 @@ export const PUT: APIRoute = async ({ params, request, locals }) => {
 
 	const { fileId } = params;
 
-	const { data: file, error: fileError } = await locals.supabase
+	const { data: file, error: fileError } = await journalSchemaClient(locals.supabase)
 		.from('files')
-		.select('project_id, r2_key, filename, mime_type, size_bytes, uploaded_by')
+		.select('project_id, r2_key, filename, mime_type, size_bytes, uploaded_by, is_journal, journal_kind, journal_visibility, deleted_at')
 		.eq('id', fileId)
 		.single();
 
-	if (fileError || !file) {
+	if (fileError || !file || file.deleted_at) {
 		return new Response('File not found', { status: 404 });
 	}
 
@@ -143,7 +150,14 @@ export const PUT: APIRoute = async ({ params, request, locals }) => {
 		.eq('user_id', locals.user.id)
 		.single();
 
-	if (!membership || !['owner', 'editor'].includes(membership.role)) {
+	const mayEdit = !!membership && (file.is_journal
+		? canEditJournal({
+			kind: file.journal_kind as JournalKind,
+			creatorId: file.uploaded_by,
+			visibility: file.journal_visibility as JournalVisibility | null,
+		}, { viewerId: locals.user.id, isProjectMember: true, role: membership.role })
+		: ['owner', 'editor'].includes(membership.role));
+	if (!mayEdit) {
 		return new Response('Forbidden', { status: 403 });
 	}
 

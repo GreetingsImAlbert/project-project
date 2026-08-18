@@ -80,6 +80,91 @@ async function repointTransactionsToGhosts(
 	}
 }
 
+interface OwnedJournalRow {
+	id: string;
+	project_id: string;
+	journal_kind: string | null;
+}
+
+// A hard-deleted account must never leave the required group journal attributed
+// to a missing profile. Transfer normally does this in one SQL transaction, but
+// this guard makes the deletion path safe even if an older transfer or a manual
+// repair left the attribution behind.
+async function reattributeGroupJournals(
+	admin: SupabaseClient<Database>,
+	userId: string,
+): Promise<void> {
+	const { data: rows, error } = await admin
+		.from('files')
+		.select('id, project_id, journal_kind')
+		.eq('uploaded_by', userId)
+		.eq('is_journal', true)
+		.eq('journal_kind', 'group');
+	if (error) throw new Error(`Failed to inspect group journal ownership: ${error.message}`);
+
+	const groupJournals = (rows ?? []) as OwnedJournalRow[];
+	if (groupJournals.length === 0) return;
+
+	const projectIds = [...new Set(groupJournals.map((row) => row.project_id))];
+	const { data: projects, error: projectError } = await admin
+		.from('projects')
+		.select('id, owner_id')
+		.in('id', projectIds);
+	if (projectError) throw new Error(`Failed to inspect group journal owners: ${projectError.message}`);
+
+	const ownerByProject = new Map((projects ?? []).map((project) => [project.id, project.owner_id]));
+	for (const journal of groupJournals) {
+		const ownerId = ownerByProject.get(journal.project_id);
+		if (!ownerId || ownerId === userId) {
+			throw new Error(`Cannot delete ${userId}: group journal ${journal.id} has no successor owner`);
+		}
+
+		const { error: updateError } = await admin
+			.from('files')
+			.update({ uploaded_by: ownerId, uploader_deleted_at: null })
+			.eq('id', journal.id)
+			.eq('project_id', journal.project_id)
+			.eq('uploaded_by', userId)
+			.eq('journal_kind', 'group');
+		if (updateError) {
+			throw new Error(`Failed to reattribute group journal ${journal.id}: ${updateError.message}`);
+		}
+	}
+}
+
+// Personal journal Markdown remains recoverable through the orphan-file grace
+// period, but its live draft and journal visibility must stop with the account.
+async function freezePersonalJournals(
+	admin: SupabaseClient<Database>,
+	userId: string,
+	deletedAt: string,
+): Promise<void> {
+	const { data: rows, error } = await admin
+		.from('files')
+		.select('id')
+		.eq('uploaded_by', userId)
+		.eq('is_journal', true)
+		.eq('journal_kind', 'personal');
+	if (error) throw new Error(`Failed to inspect personal journals: ${error.message}`);
+
+	const journalIds = (rows ?? []).map((row) => row.id);
+	if (journalIds.length === 0) return;
+
+	const { error: draftError } = await admin
+		.from('journal_drafts')
+		.delete()
+		.in('journal_file_id', journalIds);
+	if (draftError) throw new Error(`Failed to remove deleted-account journal drafts: ${draftError.message}`);
+
+	const { error: freezeError } = await admin
+		.from('files')
+		.update({ deleted_at: deletedAt, uploader_deleted_at: deletedAt })
+		.in('id', journalIds)
+		.eq('uploaded_by', userId)
+		.eq('journal_kind', 'personal');
+	if (freezeError) throw new Error(`Failed to freeze personal journals: ${freezeError.message}`);
+}
+
 // The actual, permanent removal — only ever called by the cron once a pending
 // deletion has cleared its grace period (see purgeExpiredPendingDeletions).
 export async function hardDeleteAccount(admin: SupabaseClient<Database>, userId: string): Promise<void> {
@@ -109,10 +194,18 @@ export async function hardDeleteAccount(admin: SupabaseClient<Database>, userId:
 
 	await repointTransactionsToGhosts(admin, userId, displayName);
 
+	const deletedAt = new Date().toISOString();
+	await reattributeGroupJournals(admin, userId);
+	await freezePersonalJournals(admin, userId, deletedAt);
+
 	// Stamped before the delete, not after — uploaded_by is about to go null via
 	// its own on-delete-set-null FK, so this is the last moment anything ties these
 	// rows back to this particular account.
-	await admin.from('files').update({ uploader_deleted_at: new Date().toISOString() }).eq('uploaded_by', userId);
+	const { error: orphanStampError } = await admin
+		.from('files')
+		.update({ uploader_deleted_at: deletedAt })
+		.eq('uploaded_by', userId);
+	if (orphanStampError) throw new Error(`Failed to mark uploaded files for ${userId}: ${orphanStampError.message}`);
 
 	// Same idea for task appointments: user_id is about to go null (on delete set
 	// null, not cascade, matching the database foreign-key behavior), so the row
@@ -151,16 +244,17 @@ export async function purgeExpiredPendingDeletions(admin: SupabaseClient<Databas
 	}
 }
 
-// Runs daily alongside purgeExpiredPendingDeletions. Deletes any file whose
-// uploader was hard-deleted more than FILE_GRACE_DAYS ago — R2 object and row
-// both — giving other project members a window to save a copy first.
+// Runs daily alongside purgeExpiredPendingDeletions. Deletes orphaned normal files
+// and frozen personal journals after FILE_GRACE_DAYS. The required group journal
+// is deliberately excluded even if a stale uploader-deletion marker exists.
 export async function purgeOrphanedFiles(admin: SupabaseClient<Database>, env: Env): Promise<void> {
 	const cutoff = new Date(Date.now() - FILE_GRACE_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
 	const { data: dueFiles, error } = await admin
 		.from('files')
-		.select('id, r2_key')
+		.select('id, r2_key, is_journal, journal_kind')
 		.not('uploader_deleted_at', 'is', null)
+		.or('is_journal.eq.false,journal_kind.eq.personal')
 		.lte('uploader_deleted_at', cutoff);
 
 	if (error) {

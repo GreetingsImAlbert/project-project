@@ -1,5 +1,6 @@
 import type { APIRoute } from 'astro';
 import { errorResponse } from '../../../../lib/error-report';
+import { journalSchemaClient } from '../../../../lib/journal';
 
 export const prerender = false;
 
@@ -10,14 +11,17 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 
 	const fileId = params.fileId;
 
-	const { data: file, error: fileError } = await locals.supabase
+	const { data: file, error: fileError } = await journalSchemaClient(locals.supabase)
 		.from('files')
-		.select('project_id')
+		.select('project_id, is_journal')
 		.eq('id', fileId)
 		.single();
 
 	if (fileError || !file) {
 		return new Response('File not found', { status: 404 });
+	}
+	if (file.is_journal) {
+		return new Response('Journal files cannot be moved', { status: 403 });
 	}
 
 	const { data: membership } = await locals.supabase
@@ -35,14 +39,14 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
 	const targetFolderId = body.folderId || null;
 
 	if (targetFolderId) {
-		const { data: targetFolder } = await locals.supabase
+		const { data: targetFolder } = await journalSchemaClient(locals.supabase)
 			.from('folders')
-			.select('id')
+			.select('id, is_journals_folder')
 			.eq('id', targetFolderId)
 			.eq('project_id', file.project_id)
 			.single();
 
-		if (!targetFolder) {
+		if (!targetFolder || targetFolder.is_journals_folder) {
 			return new Response('Target folder not found', { status: 400 });
 		}
 	}

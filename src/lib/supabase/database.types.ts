@@ -151,6 +151,8 @@ export type Database = {
           id: string
           is_journal: boolean
           is_public: boolean
+          journal_kind: string | null
+          journal_visibility: string | null
           mime_type: string | null
           project_id: string
           r2_key: string
@@ -167,6 +169,8 @@ export type Database = {
           id?: string
           is_journal?: boolean
           is_public?: boolean
+          journal_kind?: string | null
+          journal_visibility?: string | null
           mime_type?: string | null
           project_id: string
           r2_key: string
@@ -183,6 +187,8 @@ export type Database = {
           id?: string
           is_journal?: boolean
           is_public?: boolean
+          journal_kind?: string | null
+          journal_visibility?: string | null
           mime_type?: string | null
           project_id?: string
           r2_key?: string
@@ -220,6 +226,7 @@ export type Database = {
           created_at: string | null
           deleted_at: string | null
           id: string
+          is_journals_folder: boolean
           name: string
           parent_folder_id: string | null
           project_id: string
@@ -228,6 +235,7 @@ export type Database = {
           created_at?: string | null
           deleted_at?: string | null
           id?: string
+          is_journals_folder?: boolean
           name: string
           parent_folder_id?: string | null
           project_id: string
@@ -236,6 +244,7 @@ export type Database = {
           created_at?: string | null
           deleted_at?: string | null
           id?: string
+          is_journals_folder?: boolean
           name?: string
           parent_folder_id?: string | null
           project_id?: string
@@ -449,6 +458,7 @@ export type Database = {
         Row: {
           content: string
           draft_date: string
+          journal_file_id: string
           project_id: string
           updated_at: string
           updated_by: string | null
@@ -456,6 +466,7 @@ export type Database = {
         Insert: {
           content?: string
           draft_date?: string
+          journal_file_id: string
           project_id: string
           updated_at?: string
           updated_by?: string | null
@@ -463,15 +474,23 @@ export type Database = {
         Update: {
           content?: string
           draft_date?: string
+          journal_file_id?: string
           project_id?: string
           updated_at?: string
           updated_by?: string | null
         }
         Relationships: [
           {
+            foreignKeyName: "journal_drafts_file_project_fkey"
+            columns: ["journal_file_id", "project_id"]
+            isOneToOne: false
+            referencedRelation: "files"
+            referencedColumns: ["id", "project_id"]
+          },
+          {
             foreignKeyName: "journal_drafts_project_id_fkey"
             columns: ["project_id"]
-            isOneToOne: true
+            isOneToOne: false
             referencedRelation: "projects"
             referencedColumns: ["id"]
           },
@@ -963,6 +982,10 @@ export type Database = {
         Args: { p_importer_id: string; p_payload: Json }
         Returns: string
       }
+      import_project_legacy: {
+        Args: { p_importer_id: string; p_payload: Json }
+        Returns: string
+      }
       import_project_once: {
         Args: { p_import_token: string; p_importer_id: string; p_payload: Json }
         Returns: string
@@ -1052,6 +1075,10 @@ export type Database = {
         Returns: undefined
       }
       task_project_id: { Args: { check_task_id: string }; Returns: string }
+      transfer_project_ownership: {
+        Args: { p_new_owner_id: string; p_project_id: string }
+        Returns: undefined
+      }
       update_task_with_assignees: {
         Args: {
           p_category: string
